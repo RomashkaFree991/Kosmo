@@ -1,5 +1,5 @@
-// Kosmo — экран входа: две темы (Liquid Glass / Material You), маска номера,
-// выбор страны, вход по QR, экран кода и динамический цвет Material You.
+// Kosmo — экран входа: заставка с планетой, две темы (Liquid Glass / Material You),
+// маска номера, выбор страны, вход по QR, ввод 6-значного кода и динамический цвет.
 
 const MCU_URL = 'https://cdn.jsdelivr.net/npm/@material/material-color-utilities@0.3.0/+esm';
 
@@ -7,6 +7,7 @@ const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 const root = document.documentElement;
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const store = {
   get(key) { try { return localStorage.getItem(`kosmo:${key}`); } catch { return null; } },
@@ -38,9 +39,13 @@ function springEasing({ stiffness, damping, mass = 1 }) {
   return { easing: `linear(0, ${stops.slice(1).join(', ')})`, duration: Math.round(t * 1000) };
 }
 
+let introEasing = 'cubic-bezier(0.32, 0.72, 0, 1)';
+let bouncyEasing = 'cubic-bezier(0.34, 1.4, 0.64, 1)';
 if (CSS.supports('transition-timing-function', 'linear(0, 1)')) {
   const smooth = springEasing({ stiffness: 260, damping: 30 });
   const bouncy = springEasing({ stiffness: 380, damping: 22 });
+  introEasing = springEasing({ stiffness: 120, damping: 17 }).easing;
+  bouncyEasing = bouncy.easing;
   root.style.setProperty('--spring', smooth.easing);
   root.style.setProperty('--spring-dur', `${smooth.duration}ms`);
   root.style.setProperty('--spring-bouncy', bouncy.easing);
@@ -73,10 +78,9 @@ function switchTheme(theme, origin) {
   const r = origin.getBoundingClientRect();
   const x = r.left + r.width / 2;
   const y = r.top + r.height / 2;
-  const radius = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y));
   root.style.setProperty('--vt-x', `${x}px`);
   root.style.setProperty('--vt-y', `${y}px`);
-  root.style.setProperty('--vt-r', `${radius}px`);
+  root.style.setProperty('--vt-r', `${Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y))}px`);
   document.startViewTransition(() => applyTheme(theme));
 }
 
@@ -97,50 +101,72 @@ seg.addEventListener('keydown', (e) => {
 applyTheme(store.get('theme') === 'material' ? 'material' : 'glass');
 
 /* ---------------------------------------------------------------------------
+   Заставка: планета появляется в центре экрана, рисуются кольца,
+   затем она уменьшается и улетает на своё место, а интерфейс проявляется
+   --------------------------------------------------------------------------- */
+async function playIntro() {
+  if (!root.classList.contains('is-intro')) {
+    root.classList.add('is-ready');
+    return;
+  }
+  const logo = $('#logo');
+  const r = logo.getBoundingClientRect();
+  const dx = innerWidth / 2 - (r.left + r.width / 2);
+  const dy = innerHeight / 2 - (r.top + r.height / 2);
+  const scale = Math.min(2.4, (Math.min(innerWidth, innerHeight) * 0.6) / r.width);
+  const from = `translate(${dx}px, ${dy}px) scale(${scale})`;
+  logo.style.transform = from;
+
+  await wait(1750);   // планета + оба кольца
+  const flight = logo.animate([{ transform: from }, { transform: 'none' }], { duration: 1100, easing: introEasing });
+  logo.style.removeProperty('transform');
+  await wait(220);
+  root.classList.add('is-ready');
+  await flight.finished;
+  await wait(900);
+  root.classList.remove('is-intro');   // дальше планета просто «парит»
+}
+playIntro();
+
+/* ---------------------------------------------------------------------------
    Страны и маска номера (# — цифра)
    --------------------------------------------------------------------------- */
 const COUNTRIES = [
-  { iso: 'ru', name: 'Россия', dial: '7', mask: '### ###-##-##' },
-  { iso: 'kz', name: 'Казахстан', dial: '7', mask: '### ###-##-##' },
-  { iso: 'by', name: 'Беларусь', dial: '375', mask: '## ###-##-##' },
-  { iso: 'ua', name: 'Украина', dial: '380', mask: '## ###-##-##' },
-  { iso: 'uz', name: 'Узбекистан', dial: '998', mask: '## ###-##-##' },
-  { iso: 'kg', name: 'Кыргызстан', dial: '996', mask: '### ###-###' },
-  { iso: 'tj', name: 'Таджикистан', dial: '992', mask: '## ###-####' },
-  { iso: 'am', name: 'Армения', dial: '374', mask: '## ###-###' },
-  { iso: 'az', name: 'Азербайджан', dial: '994', mask: '## ###-##-##' },
-  { iso: 'ge', name: 'Грузия', dial: '995', mask: '### ##-##-##' },
-  { iso: 'md', name: 'Молдова', dial: '373', mask: '#### ####' },
-  { iso: 'tr', name: 'Турция', dial: '90', mask: '### ###-##-##' },
-  { iso: 'ae', name: 'ОАЭ', dial: '971', mask: '## ###-####' },
-  { iso: 'de', name: 'Германия', dial: '49', mask: '### ########' },
-  { iso: 'us', name: 'США', dial: '1', mask: '(###) ###-####' },
-  { iso: 'gb', name: 'Великобритания', dial: '44', mask: '#### ######' },
+  { iso: 'ru', name: 'Russia', dial: '7', mask: '### ###-##-##' },
+  { iso: 'kz', name: 'Kazakhstan', dial: '7', mask: '### ###-##-##' },
+  { iso: 'by', name: 'Belarus', dial: '375', mask: '## ###-##-##' },
+  { iso: 'ua', name: 'Ukraine', dial: '380', mask: '## ###-##-##' },
+  { iso: 'uz', name: 'Uzbekistan', dial: '998', mask: '## ###-##-##' },
+  { iso: 'kg', name: 'Kyrgyzstan', dial: '996', mask: '### ###-###' },
+  { iso: 'tj', name: 'Tajikistan', dial: '992', mask: '## ###-####' },
+  { iso: 'am', name: 'Armenia', dial: '374', mask: '## ###-###' },
+  { iso: 'az', name: 'Azerbaijan', dial: '994', mask: '## ###-##-##' },
+  { iso: 'ge', name: 'Georgia', dial: '995', mask: '### ##-##-##' },
+  { iso: 'md', name: 'Moldova', dial: '373', mask: '#### ####' },
+  { iso: 'tr', name: 'Turkey', dial: '90', mask: '### ###-##-##' },
+  { iso: 'ae', name: 'United Arab Emirates', dial: '971', mask: '## ###-####' },
+  { iso: 'de', name: 'Germany', dial: '49', mask: '### ########' },
+  { iso: 'us', name: 'United States', dial: '1', mask: '(###) ###-####' },
+  { iso: 'gb', name: 'United Kingdom', dial: '44', mask: '#### ######' },
 ];
 
 let country = COUNTRIES.find((c) => c.iso === store.get('country')) ?? COUNTRIES[0];
 
 const field = $('#phone-field');
 const phone = $('#phone');
-const hint = $('#phone-hint');
-const HINT_DEFAULT = hint.textContent;
 
 const flagUrl = (iso) => `https://flagcdn.com/${iso}.svg`;
 const maxDigits = () => country.mask.split('#').length - 1;
+const isComplete = () => phone.value.replace(/\D/g, '').length === maxDigits();
 
 function formatDigits(digits) {
   let out = '';
   let i = 0;
   for (const ch of country.mask) {
     if (i >= digits.length) break;
-    if (ch === '#') out += digits[i++];
-    else out += ch;
+    out += ch === '#' ? digits[i++] : ch;
   }
   return out;
-}
-
-function placeholderFor(mask) {
-  return mask.replace(/#/g, '0');
 }
 
 function onPhoneInput() {
@@ -150,29 +176,16 @@ function onPhoneInput() {
     if (digits.startsWith(country.dial)) digits = digits.slice(country.dial.length);
     else if (country.dial === '7' && digits.startsWith('8')) digits = digits.slice(1);
   }
-  digits = digits.slice(0, maxDigits());
-  phone.value = formatDigits(digits);
-  updateFieldState();
+  phone.value = formatDigits(digits.slice(0, maxDigits()));
+  field.classList.toggle('has-value', phone.value.length > 0);
+  if (isComplete()) field.classList.remove('is-error');
 }
 
-function updateFieldState() {
-  const hasValue = phone.value.length > 0;
-  field.classList.toggle('has-value', hasValue);
-  field.classList.toggle('is-floated', hasValue || document.activeElement === phone);
-  if (field.classList.contains('is-error') && isComplete()) setError(null);
-}
-
-const isComplete = () => phone.value.replace(/\D/g, '').length === maxDigits();
-
-function setError(message) {
+function shakeField() {
   field.classList.remove('is-error');
-  hint.classList.toggle('is-error', Boolean(message));
-  hint.textContent = message ?? HINT_DEFAULT;
-  if (message) {
-    void field.offsetWidth; // перезапуск анимации тряски
-    field.classList.add('is-error');
-    navigator.vibrate?.(30);
-  }
+  void field.offsetWidth; // перезапуск анимации тряски
+  field.classList.add('is-error');
+  navigator.vibrate?.(30);
 }
 
 function setCountry(next) {
@@ -181,22 +194,19 @@ function setCountry(next) {
   const flag = $('#country-flag');
   flag.src = flagUrl(next.iso);
   $('#country-dial').textContent = `+${next.dial}`;
-  $('#country-btn').setAttribute('aria-label', `Страна: ${next.name}, +${next.dial}`);
-  phone.placeholder = placeholderFor(next.mask);
+  $('#country-btn').setAttribute('aria-label', `Country: ${next.name}, +${next.dial}`);
+  phone.placeholder = next.mask.replace(/#/g, '0');
   onPhoneInput();
-  // Маленький «прыжок» флага при смене страны
   flag.animate(
     [{ transform: 'scale(0.6) rotate(-8deg)', opacity: 0 }, { transform: 'none', opacity: 1 }],
-    { duration: 450, easing: getComputedStyle(root).getPropertyValue('--spring-bouncy').trim() || 'ease-out' },
+    { duration: 450, easing: bouncyEasing },
   );
 }
 
 phone.addEventListener('input', onPhoneInput);
-phone.addEventListener('focus', updateFieldState);
-phone.addEventListener('blur', updateFieldState);
 $('#clear-btn').addEventListener('click', () => {
   phone.value = '';
-  updateFieldState();
+  onPhoneInput();
   phone.focus();
 });
 setCountry(country);
@@ -212,7 +222,7 @@ function openSheet(kind) {
   lastFocus = document.activeElement;
   $('#sheet-country').hidden = kind !== 'country';
   $('#sheet-qr').hidden = kind !== 'qr';
-  $('#sheet-title').textContent = kind === 'country' ? 'Выберите страну' : 'Вход по QR-коду';
+  $('#sheet-title').textContent = kind === 'country' ? 'Choose country' : 'Log in with QR code';
   sheet.hidden = false;
   scrim.hidden = false;
   if (kind === 'country') renderCountries('');
@@ -278,7 +288,7 @@ document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeSheet
   sheet.addEventListener('pointercancel', end);
 })();
 
-const CHECK_SVG = '<svg class="country-check" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></svg>';
+const CHECK_SVG = '<svg class="i country-check" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
 
 function renderCountries(query) {
   const q = query.trim().toLowerCase().replace(/^\+/, '');
@@ -286,13 +296,13 @@ function renderCountries(query) {
   const items = COUNTRIES.filter((c) => !q || c.name.toLowerCase().includes(q) || c.dial.startsWith(q));
   list.innerHTML = items.length
     ? items.map((c, i) => `
-      <li class="country-item" role="option" tabindex="-1" data-iso="${c.iso}" aria-selected="${c.iso === country.iso}" style="--i:${i}">
+      <li class="country-item" role="option" data-iso="${c.iso}" aria-selected="${c.iso === country.iso}" style="--i:${i}">
         <img class="flag" src="${flagUrl(c.iso)}" alt="" width="26" height="19" loading="lazy">
         <span class="country-name">${c.name}</span>
         <span class="country-dial">+${c.dial}</span>
         ${c.iso === country.iso ? CHECK_SVG : ''}
       </li>`).join('')
-    : '<li class="country-empty">Ничего не найдено</li>';
+    : '<li class="country-empty">Nothing found</li>';
 }
 
 $('#country-search').addEventListener('input', (e) => renderCountries(e.target.value));
@@ -318,28 +328,26 @@ function renderQr() {
   const n = 25;
   let seed = 7;
   const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-  const eye = (x, y) => (x < 7 && y < 7) || (x >= n - 7 && y < 7) || (x < 7 && y >= n - 7);
+  const nearEye = (x, y) => (x < 8 && y < 8) || (x >= n - 8 && y < 8) || (x < 8 && y >= n - 8);
   let cells = '';
   for (let y = 0; y < n; y++) {
     for (let x = 0; x < n; x++) {
-      if (eye(x, y) || (x < 8 && y < 8) || (x >= n - 8 && y < 8) || (x < 8 && y >= n - 8)) continue;
-      if (rand() > 0.52) cells += `<rect x="${x}" y="${y}" width="1" height="1" rx="0.3"/>`;
+      if (!nearEye(x, y) && rand() > 0.52) cells += `<rect x="${x}" y="${y}" width="1" height="1" rx="0.3"/>`;
     }
   }
-  const eyeSvg = (x, y) => `
+  const eye = (x, y) => `
     <rect x="${x + 0.5}" y="${y + 0.5}" width="6" height="6" rx="1.8" fill="none" stroke="currentColor" stroke-width="1"/>
     <rect x="${x + 2}" y="${y + 2}" width="3" height="3" rx="0.9"/>`;
   $('#qr-box').innerHTML = `
-    <svg viewBox="0 0 ${n} ${n}" role="img" aria-label="QR-код для входа" style="color:inherit">
-      <g fill="currentColor">${cells}${eyeSvg(0, 0)}${eyeSvg(n - 7, 0)}${eyeSvg(0, n - 7)}</g>
+    <svg viewBox="0 0 ${n} ${n}" role="img" aria-label="Login QR code">
+      <g fill="currentColor">${cells}${eye(0, 0)}${eye(n - 7, 0)}${eye(0, n - 7)}</g>
     </svg>`;
-  $('#qr-box').style.color = root.dataset.theme === 'glass' ? '#000' : '';
 }
 
 /* ---------------------------------------------------------------------------
    Переход между экранами
    --------------------------------------------------------------------------- */
-function showScreen(nextId, direction) {
+function showScreen(nextId, direction, onShown) {
   const current = $('.screen.is-active');
   const next = $(nextId);
   if (current === next) return;
@@ -359,7 +367,7 @@ function showScreen(nextId, direction) {
       next.classList.remove(enter);
     });
     refreshRefraction();
-    next.querySelector(nextId === '#screen-code' ? '.otp-cell' : '#phone')?.focus({ preventScroll: true });
+    onShown?.();
   });
 }
 
@@ -367,106 +375,90 @@ function showScreen(nextId, direction) {
    Отправка номера → экран кода
    --------------------------------------------------------------------------- */
 const submitBtn = $('#submit-btn');
-let resendTimer = null;
 
 $('#phone-form').addEventListener('submit', (e) => {
   e.preventDefault();
   if (submitBtn.classList.contains('is-loading')) return;
   if (!isComplete()) {
-    setError(phone.value ? 'Номер введён не полностью' : 'Введите номер телефона');
+    shakeField();
     phone.focus();
     return;
   }
-  setError(null);
   // В M3 кнопка морфится в круг: фиксируем ширину, чтобы переход был плавным
   submitBtn.style.width = `${submitBtn.offsetWidth}px`;
   requestAnimationFrame(() => submitBtn.classList.add('is-loading'));
   setTimeout(() => {
-    $('#code-phone').textContent = `+${country.dial} ${phone.value}`;
     resetOtp();
-    startResendTimer();
-    showScreen('#screen-code', 'forward');
+    showScreen('#screen-code', 'forward', () => otpInput.focus({ preventScroll: true }));
     submitBtn.classList.remove('is-loading');
     submitBtn.style.removeProperty('width');
   }, 1100);
 });
 
 $('#back-btn').addEventListener('click', () => {
-  clearInterval(resendTimer);
-  showScreen('#screen-phone', 'back');
-});
-
-function startResendTimer() {
-  const btn = $('#resend-btn');
-  let left = 59;
-  btn.disabled = true;
-  btn.innerHTML = 'Отправить снова через <span id="resend-timer">0:59</span>';
-  clearInterval(resendTimer);
-  resendTimer = setInterval(() => {
-    left -= 1;
-    if (left <= 0) {
-      clearInterval(resendTimer);
-      btn.disabled = false;
-      btn.textContent = 'Отправить код снова';
-      return;
-    }
-    $('#resend-timer').textContent = `0:${String(left).padStart(2, '0')}`;
-  }, 1000);
-}
-$('#resend-btn').addEventListener('click', () => {
-  toast('Новый код отправлен');
-  startResendTimer();
+  showScreen('#screen-phone', 'back', () => phone.focus({ preventScroll: true }));
 });
 
 /* ---------------------------------------------------------------------------
-   Ввод кода
+   Ввод кода: одно настоящее поле поверх шести ячеек.
+   Каждая новая цифра «всплывает» в своей ячейке, стёртая — улетает вверх.
    --------------------------------------------------------------------------- */
 const otp = $('#otp');
+const otpInput = $('#otp-input');
 const cells = $$('.otp-cell');
+const CODE_LENGTH = cells.length;
+let shown = '';
+
+cells.forEach((c, i) => c.style.setProperty('--i', i));
+
+function renderOtp() {
+  const value = otpInput.value.replace(/\D/g, '').slice(0, CODE_LENGTH);
+  otpInput.value = value;
+  cells.forEach((cell, i) => {
+    if (value[i] !== shown[i]) {
+      cell.querySelectorAll('.digit:not(.is-out)').forEach((old) => {
+        old.classList.add('is-out');
+        old.addEventListener('animationend', () => old.remove(), { once: true });
+      });
+      if (value[i]) {
+        const digit = document.createElement('span');
+        digit.className = 'digit';
+        digit.textContent = value[i];
+        cell.append(digit);
+      }
+    }
+    cell.classList.toggle('is-filled', Boolean(value[i]));
+    cell.classList.toggle('is-active', i === Math.min(value.length, CODE_LENGTH - 1));
+  });
+  shown = value;
+  if (value.length === CODE_LENGTH) finishOtp();
+}
+
+function finishOtp() {
+  otp.classList.add('is-done');
+  otpInput.disabled = true;
+  otpInput.blur();
+  navigator.vibrate?.([10, 40, 10]);
+  toast('Signed in — demo, the code is not checked');
+}
 
 function resetOtp() {
   otp.classList.remove('is-done');
-  cells.forEach((c) => { c.value = ''; c.classList.remove('is-filled'); c.disabled = false; });
+  otpInput.disabled = false;
+  otpInput.value = '';
+  cells.forEach((c) => c.replaceChildren());
+  shown = '';
+  renderOtp();
 }
 
-function fillFrom(index, digits) {
-  [...digits].forEach((d, k) => {
-    const cell = cells[index + k];
-    if (!cell) return;
-    cell.value = d;
-    cell.classList.remove('is-filled');
-    void cell.offsetWidth;
-    cell.classList.add('is-filled');
-  });
-  const nextEmpty = cells.find((c) => !c.value);
-  (nextEmpty ?? cells[cells.length - 1]).focus();
-  if (cells.every((c) => c.value)) {
-    otp.classList.add('is-done');
-    cells.forEach((c) => { c.disabled = true; });
-    navigator.vibrate?.([10, 40, 10]);
-    toast('Готово! Это демо — код не проверяется');
-  }
-}
-
-cells.forEach((cell, i) => {
-  cell.addEventListener('input', () => {
-    const digits = cell.value.replace(/\D/g, '');
-    cell.value = '';
-    if (digits) fillFrom(i, digits);
-  });
-  cell.addEventListener('keydown', (e) => {
-    if (e.key === 'Backspace' && !cell.value && i > 0) {
-      cells[i - 1].value = '';
-      cells[i - 1].focus();
-      e.preventDefault();
-    } else if (e.key === 'ArrowLeft' && i > 0) cells[i - 1].focus();
-    else if (e.key === 'ArrowRight' && i < cells.length - 1) cells[i + 1].focus();
-  });
-  cell.addEventListener('paste', (e) => {
-    e.preventDefault();
-    const digits = (e.clipboardData?.getData('text') ?? '').replace(/\D/g, '');
-    if (digits) fillFrom(i, digits.slice(0, cells.length - i));
-  });
+otpInput.addEventListener('input', renderOtp);
+otpInput.addEventListener('focus', () => otp.classList.add('is-focused'));
+otpInput.addEventListener('blur', () => otp.classList.remove('is-focused'));
+// Курсор всегда в конце: стрелки и клики не двигают его внутрь кода
+const caretToEnd = () => requestAnimationFrame(() => otpInput.setSelectionRange(otpInput.value.length, otpInput.value.length));
+otpInput.addEventListener('click', caretToEnd);
+otpInput.addEventListener('keydown', (e) => {
+  if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) e.preventDefault();
 });
 
 /* ---------------------------------------------------------------------------
@@ -545,7 +537,7 @@ function applySeed(hex) {
       '--md-sys-color-tertiary': `hsl(${(h + 60) % 360} 50% 80%)`,
       '--md-sys-color-surface-container': `hsl(${h} 8% 12%)`,
       '--md-sys-color-surface-container-high': `hsl(${h} 8% 17%)`,
-      '--md-btn-bg': `hsl(${h} 90% 97%)`,
+      '--md-btn-bg': `hsl(${h} 90% 98%)`,
       '--md-btn-fg': `hsl(${h} 70% 12%)`,
     });
   }
@@ -564,9 +556,9 @@ function hueOf(hex) {
 }
 
 function renderSwatches(extra) {
-  const seeds = extra && !SEEDS.includes(extra) ? [extra, ...SEEDS] : SEEDS;
+  const seeds = extra && !SEEDS.includes(extra) ? [extra, ...SEEDS.slice(0, -1)] : SEEDS;
   $('#palette-row').innerHTML = seeds.map((s) => `
-    <button class="swatch" type="button" role="radio" data-seed="${s}" style="--sw:${s}" aria-label="Цвет ${s}" aria-checked="false"></button>`).join('');
+    <button class="swatch" type="button" role="radio" data-seed="${s}" style="--sw:${s}" aria-label="Color ${s}" aria-checked="false"></button>`).join('');
 }
 
 $('#palette-row').addEventListener('click', (e) => {
@@ -574,7 +566,7 @@ $('#palette-row').addEventListener('click', (e) => {
   if (sw) withTransition(() => applySeed(sw.dataset.seed));
 });
 
-// Плавная смена палитры через View Transitions (обычный кроссфейд)
+// Плавная смена палитры: раскрытие снизу вверх через View Transitions
 function withTransition(fn) {
   if (document.startViewTransition && !reducedMotion.matches) {
     root.style.setProperty('--vt-x', '50%');
@@ -590,18 +582,16 @@ $('#photo-input').addEventListener('change', async (e) => {
   e.target.value = '';
   if (!file) return;
   await mcuReady;
-  if (!mcu) { toast('Не удалось загрузить библиотеку цветов'); return; }
+  if (!mcu) { toast('Color library failed to load'); return; }
   const img = new Image();
   img.src = URL.createObjectURL(file);
   try {
     await img.decode();
-    const argb = await mcu.sourceColorFromImage(img);
-    const hex = mcu.hexFromArgb(argb).toUpperCase();
+    const hex = mcu.hexFromArgb(await mcu.sourceColorFromImage(img)).toUpperCase();
     renderSwatches(hex);
     withTransition(() => applySeed(hex));
-    toast(`Цвет из фото: ${hex}`);
   } catch {
-    toast('Не получилось прочитать изображение');
+    toast('Could not read this image');
   } finally {
     URL.revokeObjectURL(img.src);
   }
