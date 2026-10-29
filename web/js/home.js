@@ -2,12 +2,14 @@
 // синхронизация между вкладками (новые сообщения, входы, завершённые сессии).
 
 import {
-  $, $$, db, tab, current, wait, toast, escapeHtml, userAvatarHtml, kosmoAvatar, cosmicBadge, refreshRefraction,
+  $, $$, root, db, tab, current, wait, toast, escapeHtml, userAvatarHtml, kosmoAvatar, cosmicBadge, refreshRefraction,
 } from './core.js';
 import { state, openPanel, closePanel, panelOpen, onPanelClose, resetPanels } from './panels.js';
 import {
   KOSMO, KOSMO_NAME, chats, renderChatList, refreshOpenChat, openChat, openDm, openChatId, previewText,
+  chatOverlayOpen, leaveArchive,
 } from './chats.js';
+import { overlayOpen, closeOverlay } from './panels.js';
 import { renderProfile, renderSessions, resetProfileCache } from './profile.js';
 import { applyDesign } from './design.js';
 import { hydrateMedia } from './media.js';
@@ -26,45 +28,16 @@ const ICON = {
 };
 
 /* ---------------------------------------------------------------------------
-   Лента: только официальные посты Kosmo
+   Лента: пока пусто
    --------------------------------------------------------------------------- */
-const POSTS = [
-  { time: 'Pinned', text: 'Welcome to Kosmo — one messenger, two looks. Open Profile → Designs to switch between Liquid Glass and Material You, pick a color, a background and avatar shapes.', art: 'linear-gradient(135deg, #64d2ff, #7d5cff 50%, #bf5af2)', likes: 892, comments: 41, views: '12K' },
-  { time: 'Security', text: 'Every new sign-in to your account appears in the Kosmo chat with its device, IP address and location. Only trusted devices can terminate other sessions.', art: 'radial-gradient(circle at 72% 30%, #ffd6a5 0 5%, transparent 6%), radial-gradient(circle at 25% 110%, #3a1c71, transparent 60%), linear-gradient(160deg, #0b1d3a, #000 70%)', likes: 431, comments: 19, views: '6.1K' },
-];
-const fmt = (n) => (n >= 1000 ? `${(n / 1000).toFixed(1).replace(/\.0$/, '')}K` : String(n));
-
 function renderFeed() {
-  $('#feed').innerHTML = POSTS.map((p, i) => `
-    <article class="post" style="--i:${i}">
-      <header class="post-head">
-        ${kosmoAvatar('avatar-sm')}
-        <div>
-          <div class="post-author">${KOSMO_NAME}</div>
-          <div class="post-time">${p.time}</div>
-        </div>
-      </header>
-      <p class="post-text">${p.text}</p>
-      <div class="post-art" style="--art:${p.art}" role="img" aria-label="Illustration"></div>
-      <div class="post-actions">
-        <button class="post-action" type="button" data-like="${i}" aria-pressed="false">${ICON.heart}<span>${fmt(p.likes)}</span></button>
-        <button class="post-action" type="button">${ICON.comment}<span>${p.comments}</span></button>
-        <button class="post-action" type="button" aria-label="Share">${ICON.share}</button>
-        <span class="post-views">${ICON.eye}${p.views}</span>
-      </div>
-    </article>`).join('');
+  $('#feed').innerHTML = `
+    <div class="feed-empty">
+      <div class="feed-empty-art" aria-hidden="true">${kosmoAvatar('avatar-feed')}<span class="orbit-ring"></span><span class="orbit-moon"></span></div>
+      <h3>Nothing here yet</h3>
+      <p>Posts from channels you follow will appear in your feed.</p>
+    </div>`;
 }
-
-$('#feed').addEventListener('click', (e) => {
-  const btn = e.target.closest('[data-like]');
-  if (!btn) return;
-  const post = POSTS[btn.dataset.like];
-  const liked = btn.getAttribute('aria-pressed') !== 'true';
-  btn.setAttribute('aria-pressed', String(liked));
-  btn.classList.toggle('is-liked', liked);
-  btn.querySelector('span').textContent = fmt(post.likes + (liked ? 1 : 0));
-  if (liked) navigator.vibrate?.(8);
-});
 
 /* ---------------------------------------------------------------------------
    Поиск: официальный Kosmo и люди (по имени, @username или ID)
@@ -85,7 +58,7 @@ function renderSearch(query) {
   const out = $('#search-results');
   const kosmo = !q || 'kosmo official'.includes(q);
   const people = Object.values(db.all())
-    .filter((u) => u.id !== me.id && (!q || u.name.toLowerCase().includes(q) || u.username.includes(q) || u.publicId === q));
+    .filter((u) => u.id !== me.id && (!q || u.name.toLowerCase().includes(q) || (u.username && u.username.includes(q)) || u.publicId === q));
   if (!kosmo && !people.length) {
     out.innerHTML = `<div class="search-empty">${ICON.empty}<span>No results</span></div>`;
     return;
@@ -103,7 +76,7 @@ function renderSearch(query) {
         ${userAvatarHtml(u)}
         <div class="chat-top"><span class="chat-name name-with-badge">${highlight(u.name, query)}${u.role === 'owner' ? cosmicBadge('owner') : ''}</span></div>
         <div class="chat-meta"></div>
-        <div class="chat-bottom"><span class="chat-text">@${highlight(u.username, query)}</span></div>
+        <div class="chat-bottom"><span class="chat-text">${u.username ? `@${highlight(u.username, query)}` : `ID ${escapeHtml(u.publicId)}`}</span></div>
       </li>`).join('')}</ul>`,
   ].filter(Boolean).join('');
   hydrateMedia(out);
@@ -214,7 +187,9 @@ document.addEventListener('kosmo:panel-open', closeMenu);
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape' || app.hidden) return;
   if (!menu.hidden) closeMenu();
-  else if (!$('.ctx-menu')) closePanel();
+  else if (chatOverlayOpen() && !overlayOpen()) return;   // меню сообщения/чата закрывает chats.js
+  else if (overlayOpen()) closeOverlay();
+  else closePanel();
 });
 
 /* ---------------------------------------------------------------------------
@@ -277,6 +252,8 @@ async function leave(message) {
   app.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'scale(0.96)' }], { duration: 300, easing: 'ease-in', fill: 'forwards' });
   await wait(300);
   app.hidden = true;
+  root.classList.remove('in-app');
+  leaveArchive();
   app.getAnimations().forEach((a) => a.cancel());
   state.acc = null;
   resetProfileCache();
@@ -306,6 +283,7 @@ export function showApp({ animate = true } = {}) {
   currentView = 'chats';
   moveThumb('chats');
   app.hidden = false;
+  root.classList.add('in-app');
   if (animate) {
     app.classList.add('is-entering');
     setTimeout(() => app.classList.remove('is-entering'), 1000);

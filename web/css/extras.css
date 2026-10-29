@@ -1,0 +1,461 @@
+/* ==========================================================================
+   Kosmo — дополнения: защита от копирования и масштаба, Material-цвета
+   для панелей и пилюль, анимированные галочки, архив, реакции, меню
+   сообщений, ответ/изменение, закреп, свои эмодзи, переключатели.
+   ========================================================================== */
+
+/* ---------- Нельзя выделять и копировать текст, нельзя масштабировать ---------- */
+html { touch-action: pan-x pan-y; }
+body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+input, textarea { -webkit-user-select: text; user-select: text; }
+img { -webkit-user-drag: none; }
+
+/* ---------- Material You: панели, меню и пилюли в цветах палитры ---------- */
+html[data-theme="material"] {
+  --md-tint: color-mix(in srgb, var(--md-sys-color-primary) 12%, var(--md-sys-color-surface-container));
+  --md-tint-high: color-mix(in srgb, var(--md-sys-color-primary) 18%, var(--md-sys-color-surface-container-high));
+  --c-sheet-bg: var(--md-tint);
+}
+html[data-theme="material"] .title-pill {
+  background: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-secondary-container);
+}
+html[data-theme="material"] .pill-sub { color: color-mix(in srgb, var(--md-sys-color-on-secondary-container) 70%, transparent); }
+html[data-theme="material"] .circle-btn {
+  background: var(--md-sys-color-primary-container);
+  color: var(--md-sys-color-on-primary-container);
+}
+html[data-theme="material"] .tabbar,
+html[data-theme="material"] .menu,
+html[data-theme="material"] .react-bar,
+html[data-theme="material"] .compose-bar,
+html[data-theme="material"] .composer-field,
+html[data-theme="material"] .composer-ro,
+html[data-theme="material"] .search-pill,
+html[data-theme="material"] .pinned-bar,
+html[data-theme="material"] .search { background: var(--md-tint-high); }
+html[data-theme="material"] .tile,
+html[data-theme="material"] .group,
+html[data-theme="material"] .sess-card,
+html[data-theme="material"] .note,
+html[data-theme="material"] .palette { background: var(--md-tint); }
+html[data-theme="material"] .seg { background: var(--md-tint); }
+html[data-theme="material"] .menu-item:hover { background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent); }
+
+/* ---------- Кнопки-пилюли в шапке ---------- */
+button.title-pill { border: 0; padding: 0 16px; font: inherit; color: inherit; cursor: pointer; transition: scale 300ms var(--spring-bouncy); }
+button.title-pill:active { scale: 0.97; }
+.chat-head-avatar { padding: 0; border: 0; background: none; cursor: pointer; transition: scale 300ms var(--spring-bouncy); }
+.chat-head-avatar:active { scale: 0.92; }
+.panel-chat.is-kosmo [data-open-user] { cursor: default; }
+
+/* ---------- Галочки: рисуются при отправке, вторая — когда прочитали ---------- */
+.ticks {
+  flex: none;
+  width: 16px; height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.ticks path { stroke-dasharray: 1; stroke-dashoffset: 0; }
+.tick-in .t1 { animation: draw-line 420ms 80ms ease-out both; }
+.tick-read .t2 { animation: draw-line 420ms ease-out both; }
+@keyframes draw-line { from { stroke-dashoffset: 1; } }
+.chat-time .ticks { color: var(--c-accent); }
+
+/* «Космические» галочки: галочка дорисовывается, звёзды мерцают, по планете бежит блик */
+.cosmic-badge .cb-check { stroke-dasharray: 1; animation: draw-line 600ms 150ms ease-out both; }
+.cosmic-badge .cb-star { transform-box: fill-box; transform-origin: center; animation: cb-twinkle 2.6s ease-in-out infinite; }
+.cosmic-badge .cb-star-2 { animation-delay: 1.3s; }
+@keyframes cb-twinkle { 50% { opacity: 0.2; scale: 0.4; } }
+
+/* ---------- Архив: отдельный экран ---------- */
+.chat-list.slide-in-right { animation: list-in-right 440ms var(--spring) both; }
+.chat-list.slide-in-left { animation: list-in-left 440ms var(--spring) both; }
+@keyframes list-in-right { from { opacity: 0; transform: translateX(48px); } }
+@keyframes list-in-left { from { opacity: 0; transform: translateX(-48px); } }
+
+/* ---------- Лента: пусто ---------- */
+.feed-empty, .chat-empty { text-align: center; }
+.feed-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  margin: 70px auto 0;
+  max-width: 320px;
+  padding: 0 24px;
+  animation: chat-in 640ms var(--spring) both;
+}
+.feed-empty h3 { margin: 18px 0 0; font-size: 21px; font-weight: 700; }
+.feed-empty p { margin: 0; font-size: 15px; line-height: 1.4; color: var(--c-text-2); }
+.feed-empty-art { position: relative; width: 150px; height: 150px; display: grid; place-items: center; }
+.avatar-feed { width: 90px; height: 90px; }
+
+/* ---------- Чат: сообщения прижаты к низу, как в мессенджерах ---------- */
+.panel-chat .messages { justify-content: flex-end; }
+.panel-chat.is-composing .messages { padding-bottom: 170px; }
+.tile-muted { color: var(--c-text-3); font-weight: 500; }
+.tile-hidden {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 11px;
+  font-weight: 600;
+  vertical-align: 1px;
+}
+.tile-hidden svg { width: 12px; height: 12px; }
+
+/* Закреплённое сообщение под шапкой */
+.pinned-bar {
+  position: sticky;
+  z-index: 3;
+  top: calc(max(14px, env(safe-area-inset-top)) + 64px);
+  display: flex;
+  align-items: center;
+  margin: -4px 16px 6px;
+  border-radius: 999px;
+  animation: chat-in 420ms var(--spring) both;
+}
+.pinned-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 4px 8px 16px;
+  border: 0;
+  background: none;
+  text-align: left;
+}
+.pinned-main svg { flex: none; width: 18px; height: 18px; color: var(--c-accent); }
+.pinned-text { min-width: 0; display: flex; flex-direction: column; font-size: 13px; line-height: 1.25; }
+.pinned-text b { color: var(--c-accent); font-weight: 600; }
+.pinned-text span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--c-text-2); }
+.pinned-close { flex: none; width: 40px; height: 40px; display: grid; place-items: center; margin-right: 4px; border: 0; border-radius: 50%; background: none; color: var(--c-text-2); }
+.pinned-close svg { width: 16px; height: 16px; }
+
+/* Ответ / изменение: полоска над полем ввода */
+.compose-bar {
+  position: fixed;
+  z-index: 3;
+  left: 50%;
+  bottom: calc(max(12px, env(safe-area-inset-bottom)) + 58px);
+  width: min(680px, calc(100% - 20px));
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 6px 6px 14px;
+  border-radius: 20px;
+  transform: translateX(-50%);
+  animation: bar-in 360ms var(--spring) both;
+}
+@keyframes bar-in { from { opacity: 0; transform: translate(-50%, 16px); } }
+.cb-icon { color: var(--c-accent); display: grid; }
+.cb-icon svg { width: 20px; height: 20px; }
+.cb-text { flex: 1; min-width: 0; display: flex; flex-direction: column; font-size: 13px; line-height: 1.3; border-left: 2px solid var(--c-accent); padding-left: 10px; }
+.cb-text b { color: var(--c-accent); font-weight: 600; }
+.cb-text span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--c-text-2); }
+.cb-close { width: 36px; height: 36px; display: grid; place-items: center; border: 0; border-radius: 50%; background: none; color: var(--c-text-2); }
+.cb-close svg { width: 16px; height: 16px; }
+
+.emoji-btn {
+  flex: none;
+  width: 36px; height: 36px;
+  display: grid; place-items: center;
+  margin-right: -8px;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--c-text-2);
+  transition: scale 300ms var(--spring-bouncy), color 200ms ease;
+}
+.emoji-btn:active { scale: 0.88; }
+.emoji-btn svg { width: 24px; height: 24px; }
+.composer.is-recording .emoji-btn { visibility: hidden; }
+
+/* Ответ внутри сообщения */
+.b-reply {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 140px;
+  margin: 0 0 6px;
+  padding: 4px 10px;
+  border: 0;
+  border-left: 3px solid currentColor;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.12);
+  color: inherit;
+  text-align: left;
+  font-size: 13px;
+  line-height: 1.3;
+}
+.theirs .b-reply { color: var(--c-accent); background: color-mix(in srgb, var(--c-accent) 14%, transparent); }
+.b-reply b { font-weight: 600; }
+.b-reply span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--c-text); opacity: 0.85; }
+.mine .b-reply span { color: inherit; }
+.b-reply.is-gone { opacity: 0.6; }
+.b-meta em { font-style: normal; margin-right: 4px; }
+
+/* Сообщение-эмодзи: без «пузыря», крупно и анимированно */
+.bubble.kind-emoji { background: none !important; padding: 6px 14px 0; }
+.emoji-big { width: 128px; height: 128px; filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.35)); }
+.is-new .emoji-big { animation: emoji-drop 700ms var(--spring-bouncy) both; }
+@keyframes emoji-drop { from { transform: scale(0.3) rotate(-20deg); opacity: 0; } }
+.kind-emoji .b-meta {
+  float: none;
+  display: flex;
+  width: fit-content;
+  margin: 2px 0 0 auto;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.4);
+  color: #fff;
+  opacity: 1;
+}
+.theirs .kind-emoji .b-meta { margin-left: 0; }
+.emoji-inline { width: 20px; height: 20px; }
+.emoji-inline * { animation: none !important; }
+
+/* Реакции под сообщением */
+.reactions { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0 2px; }
+.reaction {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 28px;
+  padding: 0 8px 0 4px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+  color: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  transition: scale 300ms var(--spring-bouncy), background 200ms ease;
+}
+.reaction:not(:has(span)) { padding: 0 4px; }
+.reaction:active { scale: 0.9; }
+.reaction .emoji { width: 21px; height: 21px; }
+.reaction .emoji * { animation: none !important; }
+.mine .reaction { background: rgba(255, 255, 255, 0.2); }
+.mine .reaction.is-mine { background: #fff; color: var(--c-accent); }
+.theirs .reaction.is-mine { background: var(--c-accent); color: #fff; }
+html[data-theme="material"] .mine .reaction.is-mine { background: var(--md-sys-color-on-primary); color: var(--md-sys-color-primary); }
+html[data-theme="material"] .theirs .reaction.is-mine { background: var(--md-sys-color-primary); color: var(--md-sys-color-on-primary); }
+.reaction.is-new { animation: react-pop 520ms var(--spring-bouncy) both; }
+@keyframes react-pop { from { scale: 0.2; opacity: 0; } 60% { scale: 1.2; } }
+
+.burst { position: fixed; z-index: 60; width: 0; height: 0; pointer-events: none; }
+.burst span {
+  position: absolute;
+  left: -3px; top: -3px;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--c-accent);
+  animation: burst 620ms ease-out forwards;
+}
+.burst span:nth-child(3n) { background: #ffcc00; }
+.burst span:nth-child(3n + 1) { background: #ff5f7a; }
+@keyframes burst {
+  from { transform: rotate(var(--a)) translateY(0) scale(1); opacity: 1; }
+  to { transform: rotate(var(--a)) translateY(-30px) scale(0.3); opacity: 0; }
+}
+
+/* Подсветка при переходе к сообщению и удаление */
+.bubble-row.is-flash .bubble { animation: flash 1.1s ease both; }
+@keyframes flash { 25% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--c-accent) 55%, transparent); scale: 1.03; } }
+.bubble-row.is-pressing .bubble { scale: 0.97; transition: scale 300ms ease 120ms; }
+.bubble-row.is-deleting { animation: msg-out 260ms ease-in forwards; }
+@keyframes msg-out { to { opacity: 0; transform: scale(0.7); filter: blur(4px); } }
+
+/* Меню по долгому нажатию на сообщение */
+.msg-clone {
+  position: fixed !important;
+  z-index: 31;
+  margin: 0;
+  max-width: none;
+  pointer-events: none;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.55);
+}
+.msg-clone.is-closing { animation: fade-out 160ms ease both; }
+.msg-menu {
+  position: fixed;
+  z-index: 32;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+.msg-menu.is-mine { align-items: flex-end; }
+.msg-menu.is-closing { animation: fade-out 160ms ease both; }
+.react-bar {
+  position: relative;
+  display: flex;
+  gap: 2px;
+  padding: 6px;
+  border-radius: 999px;
+  animation: menu-in 420ms var(--spring-bouncy) both;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.5);
+}
+html[data-theme="glass"] .react-bar { background: var(--c-sheet-bg); }
+.react-opt {
+  width: 40px; height: 40px;
+  display: grid; place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  animation: react-in 420ms var(--spring-bouncy) both;
+  animation-delay: calc(60ms + var(--i) * 30ms);
+  transition: scale 300ms var(--spring-bouncy), background 200ms ease;
+}
+.react-opt .emoji { width: 31px; height: 31px; }
+.react-opt:hover { scale: 1.25; }
+.react-opt:active { scale: 0.9; }
+.react-opt.is-mine { background: color-mix(in srgb, var(--c-accent) 30%, transparent); }
+@keyframes react-in { from { opacity: 0; scale: 0.3; translate: 0 10px; } }
+.msg-actions {
+  position: relative !important;
+  top: auto !important;
+  left: auto !important;
+  width: 240px;
+  margin-top: var(--gap);
+  transform-origin: 30px 0 !important;
+}
+.is-mine .msg-actions { transform-origin: 210px 0 !important; }
+
+/* Выбор эмодзи */
+.emoji-picker {
+  position: fixed;
+  top: auto;
+  left: auto;
+  right: max(10px, calc((100% - 680px) / 2));
+  bottom: calc(max(12px, env(safe-area-inset-bottom)) + 58px);
+  width: min(336px, calc(100% - 20px));
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+  padding: 10px;
+  border-radius: 26px;
+  transform-origin: calc(100% - 70px) 100%;
+  z-index: 6;
+}
+.emoji-opt {
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 18px;
+  background: none;
+  animation: react-in 420ms var(--spring-bouncy) both;
+  animation-delay: calc(var(--i) * 22ms);
+  transition: scale 300ms var(--spring-bouncy), background 200ms ease;
+}
+.emoji-opt:hover { background: rgba(255, 255, 255, 0.08); scale: 1.08; }
+.emoji-opt:active { scale: 0.9; }
+.emoji-opt .emoji { width: 52px; height: 52px; }
+
+/* ---------- Анимации эмодзи ---------- */
+.emoji { overflow: visible; }
+.emoji * { transform-box: fill-box; transform-origin: center; }
+.e-beat { animation: e-beat 1.3s ease-in-out infinite; }
+.e-delay { animation-delay: 0.35s; }
+@keyframes e-beat { 0%, 60%, 100% { scale: 1; } 15% { scale: 1.16; } 30% { scale: 0.94; } 45% { scale: 1.08; } }
+.e-nod { transform-origin: 30% 90% !important; animation: e-nod 1.6s ease-in-out infinite; }
+@keyframes e-nod { 0%, 100% { rotate: 0deg; } 30% { rotate: -12deg; } 55% { rotate: 6deg; } }
+.e-flicker { transform-origin: 50% 100% !important; animation: e-flicker 0.9s ease-in-out infinite alternate; }
+.e-flicker-in { transform-origin: 50% 100% !important; animation: e-flicker 0.6s ease-in-out infinite alternate-reverse; }
+@keyframes e-flicker { from { scale: 0.94 1.04; } to { scale: 1.04 0.95; } }
+.e-shake { animation: e-shake 1.4s ease-in-out infinite; }
+@keyframes e-shake { 0%, 50%, 100% { rotate: 0deg; } 10%, 30% { rotate: -7deg; } 20%, 40% { rotate: 7deg; } }
+.e-tear-l, .e-tear-r { animation: e-tear 1.4s ease-in infinite; }
+.e-tear-r { animation-delay: 0.4s; }
+@keyframes e-tear { 0% { translate: 0 0; opacity: 1; } 100% { translate: 0 9px; opacity: 0; } }
+.e-gasp { animation: e-gasp 1.6s ease-in-out infinite; }
+@keyframes e-gasp { 50% { scale: 1.25 1.15; } }
+.e-drop { animation: e-drop 1.8s ease-in infinite; }
+@keyframes e-drop { 0% { translate: 0 0; opacity: 1; } 90% { translate: 0 12px; opacity: 0; } 100% { opacity: 0; } }
+.e-glint { animation: e-glint 2.4s ease-in-out infinite; }
+@keyframes e-glint { 0%, 60% { translate: -4px 0; opacity: 0; } 70% { opacity: 0.9; } 100% { translate: 22px 0; opacity: 0; } }
+.e-confetti { animation: e-confetti 1.4s ease-in-out infinite alternate; }
+@keyframes e-confetti { from { translate: -3px 4px; rotate: -6deg; } to { translate: 3px -3px; rotate: 6deg; } }
+.e-hover { animation: e-hover 1.6s ease-in-out infinite alternate; }
+@keyframes e-hover { from { translate: -2px 2px; } to { translate: 2px -2px; } }
+.e-thrust { transform-origin: 50% 0 !important; animation: e-flicker 0.25s linear infinite alternate; }
+.e-twinkle { animation: e-twinkle 2s ease-in-out infinite; }
+@keyframes e-twinkle { 0%, 100% { rotate: -8deg; scale: 1; } 50% { rotate: 8deg; scale: 1.08; } }
+.e-spark { animation: cb-twinkle 1.8s ease-in-out infinite; }
+
+/* ---------- Переключатели (Liquid Glass — как в iOS, Material — M3 switch) ---------- */
+.switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 46px;
+  padding: 0 4px;
+  font-size: 16px;
+  cursor: pointer;
+}
+.switch {
+  appearance: none;
+  -webkit-appearance: none;
+  flex: none;
+  position: relative;
+  width: 51px; height: 31px;
+  margin: 0;
+  border-radius: 999px;
+  background: rgba(120, 120, 128, 0.5);
+  cursor: pointer;
+  transition: background 250ms ease;
+}
+.switch::before {
+  content: "";
+  position: absolute;
+  top: 2px; left: 2px;
+  width: 27px; height: 27px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.25);
+  transition: translate var(--spring-bouncy-dur) var(--spring-bouncy), width 200ms ease;
+}
+.switch:active::before { width: 33px; }
+.switch:checked { background: #30d158; }
+.switch:checked::before { translate: 20px 0; }
+.switch:checked:active::before { translate: 14px 0; }
+.switch:focus-visible { outline: 2px solid var(--c-accent); outline-offset: 3px; }
+html[data-theme="material"] .switch {
+  width: 52px; height: 32px;
+  background: var(--md-sys-color-surface-container-highest);
+  box-shadow: inset 0 0 0 2px var(--md-sys-color-outline);
+}
+html[data-theme="material"] .switch::before {
+  top: 8px; left: 8px;
+  width: 16px; height: 16px;
+  background: var(--md-sys-color-outline);
+  box-shadow: none;
+  transition: translate 300ms var(--md-emphasized), width 200ms ease, height 200ms ease, top 200ms ease, left 200ms ease;
+}
+html[data-theme="material"] .switch:checked { background: var(--md-sys-color-primary); box-shadow: none; }
+html[data-theme="material"] .switch:checked::before {
+  top: 4px; left: 4px;
+  width: 24px; height: 24px;
+  background: var(--md-sys-color-on-primary);
+  translate: 20px 0;
+}
+html[data-theme="material"] .switch:active::before { width: 28px; height: 28px; top: 2px; left: 2px; }
+
+/* ---------- Профиль собеседника поверх чата ---------- */
+.panel-overlay { z-index: 7; }
+.panel.is-under { opacity: 0.4; }
+html[data-theme] .panel.is-open.is-under { transform: translateX(-18%) scale(0.96); }
+/* в форме профиля общее правило для полей не должно растягивать переключатель */
+.setup-form input.switch { flex: none; width: 51px; height: 31px; }
+html[data-theme="material"] .setup-form input.switch { width: 52px; height: 32px; }

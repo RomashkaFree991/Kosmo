@@ -35,6 +35,7 @@ export function openPanel(id) {
 }
 
 export function closePanel({ instant = false } = {}) {
+  if (overlayId) closeOverlay();
   if (!openId) return;
   const id = openId;
   const panel = $(`#panel-${id}`);
@@ -64,4 +65,38 @@ export function resetPanels() {
 
 document.addEventListener('click', (e) => {
   if (e.target.closest('[data-close-panel]')) closePanel();
+});
+
+/* ---------------------------------------------------------------------------
+   Панель поверх панели (профиль собеседника поверх чата)
+   --------------------------------------------------------------------------- */
+let overlayId = null;
+let overlayOpener = null;
+
+export const overlayOpen = () => overlayId;
+
+export function openOverlay(id) {
+  const panel = $(`#panel-${id}`);
+  overlayOpener = document.activeElement;
+  overlayId = id;
+  panel.inert = false;
+  panel.setAttribute('aria-hidden', 'false');
+  panel.classList.add('is-open');
+  if (openId) $(`#panel-${openId}`).classList.add('is-under');
+  refreshRefraction();
+}
+
+export function closeOverlay() {
+  if (!overlayId) return;
+  const panel = $(`#panel-${overlayId}`);
+  panel.classList.remove('is-open');
+  panel.inert = true;
+  panel.setAttribute('aria-hidden', 'true');
+  if (openId) $(`#panel-${openId}`).classList.remove('is-under');
+  overlayId = null;
+  overlayOpener?.focus?.({ preventScroll: true });
+}
+
+document.addEventListener('click', (e) => {
+  if (e.target.closest('[data-close-overlay]')) closeOverlay();
 });

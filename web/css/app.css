@@ -613,7 +613,7 @@ html[data-theme="material"] .tab.is-active .tab-label { font-weight: 700; }
 }
 html[data-theme="material"] .panel { transition: transform 450ms var(--md-emphasized), visibility 0s linear 450ms; }
 .panel::-webkit-scrollbar { display: none; }
-.panel.is-open { transform: none; visibility: visible; transition-delay: 0s; }
+html[data-theme] .panel.is-open { transform: none; visibility: visible; transition-delay: 0s; }
 /* основной экран уезжает влево и гаснет, нижняя панель опускается */
 .app.has-panel .views { transform: translateX(-22%) scale(0.94); opacity: 0; }
 .app.has-panel .tabbar { transform: translate(-50%, 150%) scale(0.9); opacity: 0; pointer-events: none; }

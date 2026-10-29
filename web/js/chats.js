@@ -1,6 +1,7 @@
-// Чаты: список (закрепить / архив / удалить по долгому нажатию), чат Kosmo
-// с уведомлениями о входах, личные чаты с людьми, поле ввода с вложениями
-// (фото, видео, код, музыка) и голосовыми.
+// Чаты: список (закрепить / архив / удалить по долгому нажатию), архив отдельным
+// экраном, чат Kosmo с уведомлениями о входах, личные чаты: вложения, голосовые,
+// свои анимированные эмодзи, а по долгому нажатию на сообщение — реакции,
+// ответ, копирование, изменение, закрепление и удаление (у себя или у всех).
 // Демо: переписка хранится в localStorage этого браузера, файлы — в IndexedDB.
 
 import {
@@ -8,8 +9,10 @@ import {
   formatDate, formatTime, refreshRefraction,
 } from './core.js';
 import { formatPhone, openSheet } from './phone.js';
-import { state, openPanel, panelOpen, onPanelClose } from './panels.js';
+import { state, openPanel, panelOpen, onPanelClose, overlayOpen } from './panels.js';
 import { putBlob, mediaUrl, hydrateMedia, compressImage, mediaDuration } from './media.js';
+import { EMOJI, EMOJI_IDS, REACTIONS, emojiSvg } from './emoji.js';
+import { showUser } from './people.js';
 
 export const KOSMO = 'kosmo';
 
@@ -31,12 +34,19 @@ export const chats = {
     store.setJSON('chats', all);
     return m;
   },
-  markRead(id, userId) {
+  update(id, fn) {
     const all = this.all();
-    if (!all[id]) return;
-    all[id].read[userId] = Date.now();
+    if (!all[id]) return null;
+    fn(all[id]);
+    store.setJSON('chats', all);
+    return all[id];
+  },
+  remove(id) {
+    const all = this.all();
+    delete all[id];
     store.setJSON('chats', all);
   },
+  markRead(id, userId) { this.update(id, (c) => { c.read[userId] = Date.now(); }); },
 };
 
 const prefs = (id) => state.acc.user.chatPrefs?.[id] ?? {};
@@ -74,11 +84,21 @@ export const ICON = {
   play: svg('<path d="M8 5.5v13l10.5-6.5z" fill="currentColor"/>'),
   pause: svg('<path d="M8 5.5v13M16 5.5v13" stroke-width="3"/>'),
   copy: svg('<rect x="8.5" y="8.5" width="11" height="11" rx="2.5"/><path d="M15.5 8.5V6a1.5 1.5 0 0 0-1.5-1.5H6A1.5 1.5 0 0 0 4.5 6v8A1.5 1.5 0 0 0 6 15.5h2.5"/>'),
-  check: svg('<path d="M5 12.5l4.5 4.5L19 7.5"/>'),
-  checks: svg('<path d="M2.5 12.5l4 4L15 8M10.5 15.5l1 1L20 8"/>'),
+  reply: svg('<path d="M10 8L5 12.5l5 4.5"/><path d="M5.5 12.5H14a5 5 0 0 1 5 5v1"/>'),
+  edit: svg('<path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16z"/><path d="M13.5 6.5l4 4"/>'),
+  user: svg('<circle cx="12" cy="8.5" r="3.8"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/>'),
+  users: svg('<circle cx="9" cy="9" r="3.2"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0M15.5 6.2a3 3 0 0 1 0 5.6M17 14.2a5 5 0 0 1 3.5 4.8"/>'),
 };
 export const deviceIcon = (type) => ICON[type] ?? ICON.desktop;
 export const KOSMO_NAME = `<span class="name-with-badge">Kosmo ${cosmicBadge('official')}</span>`;
+
+// Галочки «отправлено / прочитано»; cls — анимация появления
+function ticks(read, cls = '') {
+  return `<svg class="ticks${read ? ' is-read' : ''} ${cls}" viewBox="0 0 24 24" aria-label="${read ? 'Read' : 'Sent'}">
+    <path class="t1" pathLength="1" d="${read ? 'M2.5 12.5l4 4L15 8' : 'M5 12.5l4.5 4.5L19 7.5'}"/>
+    ${read ? '<path class="t2" pathLength="1" d="M10.5 15.5l1 1L20 8"/>' : ''}
+  </svg>`;
+}
 
 const shortTime = (t) => (new Date(t).toDateString() === new Date().toDateString() ? formatTime(t) : formatDate(t).split(',')[0]);
 const fmtDur = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
@@ -152,8 +172,15 @@ export function previewText(m) {
     case 'voice': return `Voice message · ${fmtDur(m.duration ?? 0)}`;
     case 'audio': return m.name ?? 'Music';
     case 'code': return `Code · ${m.lang}`;
+    case 'emoji': return `${EMOJI[m.emoji]?.label ?? 'Emoji'} emoji`;
     default: return m.text;
   }
+}
+
+// Сообщения чата, которые видит этот пользователь
+function visible(c, me) {
+  const cleared = prefs(c.id).clearedAt ?? 0;
+  return c.messages.filter((m) => m.at > cleared && !m.hiddenFor?.includes(me));
 }
 
 function listItems() {
@@ -170,7 +197,7 @@ function listItems() {
   }
   for (const c of chats.forUser(me)) {
     const p = prefs(c.id);
-    const msgs = c.messages.filter((m) => m.at > (p.clearedAt ?? 0));
+    const msgs = visible(c, me);
     if (!msgs.length) continue;
     const otherId = c.members.find((x) => x !== me) ?? me;
     const other = db.get(otherId) ?? { id: otherId, name: 'Deleted account', username: '', avatar: {} };
@@ -190,51 +217,81 @@ function chatRow(it, i) {
   const avatar = it.kosmo ? kosmoAvatar() : userAvatarHtml(it.other);
   const name = it.kosmo ? KOSMO_NAME : displayName(it.other);
   const status = it.unread ? `<span class="badge">${it.unread}</span>` : it.pinned ? svg('<path d="M9 4h6l-1 6 3 3v1H7v-1l3-3zM12 14v6"/>', 'i pin') : '';
-  const tick = it.mine ? (it.mineRead ? ICON.checks : ICON.check) : '';
   return `
     <li class="chat ripple-host" style="--i:${i}" data-chat="${it.id}" tabindex="0" role="button">
       ${avatar}
       <div class="chat-top"><span class="chat-name">${name}</span></div>
-      <div class="chat-meta"><span class="chat-time">${tick}${shortTime(it.lastAt)}</span>${status}</div>
+      <div class="chat-meta"><span class="chat-time">${it.mine ? ticks(it.mineRead) : ''}${shortTime(it.lastAt)}</span>${status}</div>
       <div class="chat-bottom"><span class="chat-text">${it.preview}</span></div>
     </li>`;
 }
 
-let archiveOpen = false;
+// Архив — отдельный экран: в основном списке архивных чатов нет,
+// сверху только строка «Archived chats», а в архиве вместо «+» — «назад»
+let archiveMode = false;
 let listSig = '';
+
+function setArchiveMode(on) {
+  if (archiveMode === on) return;
+  archiveMode = on;
+  $('#new-btn').hidden = on;
+  $('#archive-back').hidden = !on;
+  $('#chats-title').textContent = on ? 'Archive' : 'Chats';
+  const list = $('#chat-list');
+  list.classList.remove('slide-in-left', 'slide-in-right');
+  void list.offsetWidth;
+  list.classList.add(on ? 'slide-in-right' : 'slide-in-left');
+  listSig = '';
+  renderChatList();
+  refreshRefraction();
+}
+$('#archive-back').addEventListener('click', () => setArchiveMode(false));
+export const leaveArchive = () => setArchiveMode(false);
 
 export function renderChatList() {
   const items = listItems();
   const main = items.filter((it) => !it.archived);
   const archived = items.filter((it) => it.archived);
-  const sig = JSON.stringify([items, archiveOpen, state.acc.user.avatar, document.documentElement.dataset.theme]);
   const total = items.reduce((n, it) => n + (it.unread || 0), 0);
   const badge = $('#chats-badge');
   badge.hidden = !total;
   badge.textContent = total;
+  if (archiveMode && !archived.length) { setArchiveMode(false); return; }
+  const sig = JSON.stringify([items, archiveMode, state.acc.user.avatar]);
   if (sig === listSig) return;
   listSig = sig;
 
-  const archiveRow = archived.length ? `
-    <li class="chat archive-row ripple-host" data-archive-toggle tabindex="0" role="button" aria-expanded="${archiveOpen}">
-      <span class="avatar archive-avatar">${ICON.archive}</span>
-      <div class="chat-top"><span class="chat-name">Archived chats</span></div>
-      <div class="chat-meta">${archived.some((a) => a.unread) ? `<span class="badge is-muted">${archived.reduce((n, a) => n + a.unread, 0)}</span>` : ''}</div>
-      <div class="chat-bottom"><span class="chat-text">${archived.map((a) => (a.kosmo ? 'Kosmo' : escapeHtml(a.other.name))).join(', ')}</span></div>
-    </li>
-    ${archiveOpen ? `<li class="archive-list"><ul class="chat-list">${archived.map(chatRow).join('')}</ul></li>` : ''}` : '';
-
-  $('#chat-list').innerHTML = archiveRow + main.map(chatRow).join('')
-    + (items.length ? '' : `<li class="list-empty">${ICON.archive}<span>No chats yet. Find people in Search.</span></li>`);
+  let html;
+  if (archiveMode) {
+    html = archived.map(chatRow).join('');
+  } else {
+    const archiveRow = archived.length ? `
+      <li class="chat archive-row ripple-host" data-archive-open tabindex="0" role="button">
+        <span class="avatar archive-avatar">${ICON.archive}</span>
+        <div class="chat-top"><span class="chat-name">Archived chats</span></div>
+        <div class="chat-meta">${archived.some((a) => a.unread) ? `<span class="badge is-muted">${archived.reduce((n, a) => n + a.unread, 0)}</span>` : ''}</div>
+        <div class="chat-bottom"><span class="chat-text">${archived.map((a) => (a.kosmo ? 'Kosmo' : escapeHtml(a.other.name))).join(', ')}</span></div>
+      </li>` : '';
+    html = archiveRow + main.map(chatRow).join('')
+      + (main.length ? '' : `<li class="list-empty">${ICON.users}<span>No chats yet. Find people in Search.</span></li>`);
+  }
+  $('#chat-list').innerHTML = html;
   hydrateMedia($('#chat-list'));
 }
 
 /* ---------------------------------------------------------------------------
-   Долгое нажатие / правый клик: закрепить, архив, удалить
+   Долгое нажатие / правый клик по чату: закрепить, архив, удалить
    --------------------------------------------------------------------------- */
 const ctx = { el: null, row: null, id: null, suppressClick: false };
 
-function openCtx(row, x, y) {
+function placeMenu(menu, rect, x, height) {
+  const top = rect.bottom + 8 + height < innerHeight ? rect.bottom + 8 : rect.top - height - 8;
+  menu.style.top = `${Math.max(12, top)}px`;
+  menu.style.left = `${Math.min(Math.max(16, (x ?? rect.left + 24) - 40), innerWidth - 246)}px`;
+  menu.style.transformOrigin = top > rect.top ? '40px 0' : '40px 100%';
+}
+
+function openCtx(row, x) {
   closeCtx();
   const id = row.dataset.chat;
   const item = listItems().find((it) => it.id === id);
@@ -242,6 +299,7 @@ function openCtx(row, x, y) {
   navigator.vibrate?.(12);
   ctx.row = row;
   ctx.id = id;
+  ctx.item = item;
   row.classList.add('is-held');
   const scrim = document.createElement('div');
   scrim.className = 'ctx-scrim';
@@ -255,13 +313,7 @@ function openCtx(row, x, y) {
   $('#app').append(scrim, menu);
   ctx.el = menu;
   ctx.scrim = scrim;
-  // меню под строкой, а если не влезает — над ней
-  const r = row.getBoundingClientRect();
-  const mh = 160;
-  const top = r.bottom + 8 + mh < innerHeight ? r.bottom + 8 : r.top - mh - 8;
-  menu.style.top = `${Math.max(12, top)}px`;
-  menu.style.left = `${Math.min(Math.max(16, (x ?? r.left + 24) - 40), innerWidth - 246)}px`;
-  menu.style.transformOrigin = top > r.top ? '40px 0' : '40px 100%';
+  placeMenu(menu, row.getBoundingClientRect(), x, 200);
   scrim.addEventListener('click', closeCtx);
   menu.querySelector('.menu-item').focus({ preventScroll: true });
   refreshRefraction();
@@ -279,10 +331,8 @@ function closeCtx() {
 
 document.addEventListener('click', (e) => {
   const btn = e.target.closest('[data-ctx]');
-  if (!btn) return;
-  const id = ctx.id;
-  const item = listItems().find((it) => it.id === id);
-  if (!item) { closeCtx(); return; }
+  if (!btn || !ctx.el) return;
+  const { id, item } = ctx;
   const action = btn.dataset.ctx;
   if (action === 'pin') {
     setPref(id, { pinned: item.pinned ? 0 : Date.now() });
@@ -291,15 +341,21 @@ document.addEventListener('click', (e) => {
     setPref(id, { archived: !item.archived, pinned: 0 });
     toast(item.archived ? 'Moved back to chats' : 'Moved to archive');
   } else if (action === 'delete') {
-    // подтверждение прямо в меню
+    // подтверждение прямо в меню: у себя или у обоих
+    const name = item.kosmo ? 'Kosmo' : escapeHtml(item.other.name.split(/\s+/)[0]);
     ctx.el.innerHTML = `
-      <p class="ctx-confirm">Delete this chat? It will disappear from your list. New messages will bring it back.</p>
-      <button class="menu-item danger" type="button" data-ctx="delete-yes">${ICON.trash}Delete chat</button>
+      <p class="ctx-confirm">Delete this chat?</p>
+      <button class="menu-item danger" type="button" data-ctx="delete-me">${ICON.user}Delete for me</button>
+      ${item.kosmo ? '' : `<button class="menu-item danger" type="button" data-ctx="delete-all">${ICON.users}Delete for me and ${name}</button>`}
       <button class="menu-item" type="button" data-ctx="cancel">Cancel</button>`;
     return;
-  } else if (action === 'delete-yes') {
+  } else if (action === 'delete-me') {
     setPref(id, { clearedAt: Date.now(), pinned: 0, archived: false });
-    toast('Chat deleted');
+    toast('Chat deleted for you');
+  } else if (action === 'delete-all') {
+    chats.remove(id);
+    setPref(id, { pinned: 0, archived: false });
+    toast('Chat deleted for both of you');
   }
   closeCtx();
   renderChatList();
@@ -317,7 +373,7 @@ document.addEventListener('click', (e) => {
     timer = setTimeout(() => {
       ctx.suppressClick = true;
       row.classList.remove('is-pressing');
-      openCtx(row, start.x, start.y);
+      openCtx(row, start.x);
     }, 450);
   });
   const cancel = () => { clearTimeout(timer); $$('.chat.is-pressing', list).forEach((r) => r.classList.remove('is-pressing')); };
@@ -330,24 +386,27 @@ document.addEventListener('click', (e) => {
     if (!row) return;
     e.preventDefault();
     cancel();
-    openCtx(row, e.clientX, e.clientY);
+    openCtx(row, e.clientX);
   });
   list.addEventListener('click', (e) => {
     if (ctx.suppressClick) { ctx.suppressClick = false; e.stopPropagation(); return; }
-    if (e.target.closest('[data-archive-toggle]')) {
-      archiveOpen = !archiveOpen;
-      renderChatList();
-      return;
-    }
+    if (e.target.closest('[data-archive-open]')) { setArchiveMode(true); return; }
     const row = e.target.closest('.chat[data-chat]');
     if (row) openChat(row.dataset.chat);
   }, true);
   list.addEventListener('keydown', (e) => {
+    if (e.target.closest('[data-archive-open]') && e.key === 'Enter') { setArchiveMode(true); return; }
     const row = e.target.closest('.chat[data-chat]');
     if (row && e.key === 'Enter') openChat(row.dataset.chat);
     if (row && (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10'))) { e.preventDefault(); openCtx(row); }
   });
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeCtx(); });
+  // Escape закрывает только меню, а не весь чат
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape' || !(ctx.el || mm.el)) return;
+    e.stopImmediatePropagation();
+    closeCtx();
+    closeMsgMenu();
+  });
 })();
 
 /* ---------------------------------------------------------------------------
@@ -355,10 +414,13 @@ document.addEventListener('click', (e) => {
    --------------------------------------------------------------------------- */
 const open = { id: null, otherId: null };
 let known = new Set();
+const tickMemo = new Map();      // id сообщения → 'sent' | 'read'
+const reactMemo = new Map();     // id сообщения → реакции при прошлой отрисовке
 const panel = $('#panel-chat');
 const messagesBox = $('#messages');
 
 export const openChatId = () => (panelOpen() === 'chat' ? open.id : null);
+const isDm = () => open.id && open.id !== KOSMO;
 
 export function openChat(id) {
   if (id === KOSMO) {
@@ -381,8 +443,8 @@ export function openDm(userId) {
 
 function chatMessages() {
   if (open.id === KOSMO) return kosmoMessages();
-  const cleared = prefs(open.id).clearedAt ?? 0;
-  return (chats.get(open.id)?.messages ?? []).filter((m) => m.at > cleared);
+  const c = chats.get(open.id);
+  return c ? visible(c, state.acc.user.id) : [];
 }
 
 function markOpenRead() {
@@ -397,36 +459,77 @@ function markOpenRead() {
   state.reload();
 }
 
-function showChat() {
+function paintHeader() {
   const isKosmo = open.id === KOSMO;
   const other = isKosmo ? null : db.get(open.otherId);
   $('#chat-title').innerHTML = isKosmo ? KOSMO_NAME : displayName(other ?? { name: 'Deleted account' });
-  $('#chat-sub').textContent = isKosmo ? 'official account' : other ? `@${other.username}` : '';
+  $('#chat-sub').textContent = isKosmo ? 'official account' : other ? (other.username ? `@${other.username}` : `ID ${other.publicId}`) : '';
   $('#chat-head-avatar').innerHTML = isKosmo ? kosmoAvatar('avatar-head') : userAvatarHtml(other ?? { name: '?' }, 'avatar-head');
+  hydrateMedia($('#chat-head-avatar'));
+}
+
+function showChat() {
+  const isKosmo = open.id === KOSMO;
+  paintHeader();
   panel.classList.toggle('is-kosmo', isKosmo);
   const msgs = chatMessages();
   // непрочитанные появятся с анимацией
   const unread = isKosmo ? kosmoUnread() : msgs.filter((m) => m.from !== state.acc.user.id && m.at > (chats.get(open.id)?.read[state.acc.user.id] ?? 0)).length;
   known = new Set(msgs.slice(0, msgs.length - unread).map((m) => m.id));
+  tickMemo.clear();
+  reactMemo.clear();
   markOpenRead();
   resetComposer();
   renderMessages({ scroll: true });
   renderChatList();
   openPanel('chat');
-  hydrateMedia(panel);
   if (!isKosmo) setTimeout(() => input.focus({ preventScroll: true }), 380);
 }
 
 onPanelClose('chat', () => {
   stopRecording(false);
   closeAttach();
+  closePicker();
+  closeMsgMenu();
   player.pause();
 });
 
-function bubble(m, isNew) {
-  const mine = m.from === state.acc.user.id;
+// Тап по имени или аватару в шапке — профиль собеседника
+document.addEventListener('click', (e) => {
+  if (e.target.closest('[data-open-user]') && isDm() && open.otherId) showUser(open.otherId);
+});
+
+function quoteHtml(m, all) {
+  const target = all.find((x) => x.id === m.replyTo);
+  if (!target) return '<div class="b-reply is-gone"><b>Deleted message</b></div>';
+  const who = target.from === state.acc.user.id ? 'You' : escapeHtml(db.get(target.from)?.name ?? 'Deleted account');
+  return `<button class="b-reply" type="button" data-jump="${target.id}"><b>${who}</b><span>${escapeHtml(previewText(target))}</span></button>`;
+}
+
+function reactionsHtml(m) {
+  const me = state.acc.user.id;
+  const entries = Object.entries(m.reactions ?? {}).filter(([, users]) => users.length);
+  if (!entries.length) return '';
+  const prev = reactMemo.get(m.id) ?? {};
+  return `<div class="reactions">${entries.map(([id, users]) => {
+    const changed = (prev[id]?.length ?? 0) < users.length;
+    return `<button class="reaction${users.includes(me) ? ' is-mine' : ''}${changed ? ' is-new' : ''}" type="button" data-react-toggle="${id}" data-msg="${m.id}" aria-label="${EMOJI[id]?.label} ${users.length}">
+      ${emojiSvg(id)}${users.length > 1 ? `<span>${users.length}</span>` : ''}
+    </button>`;
+  }).join('')}</div>`;
+}
+
+function bubble(m, isNew, all) {
+  const me = state.acc.user.id;
+  const mine = m.from === me;
   const chat = chats.get(open.id);
   const read = mine && (chat?.read[open.otherId] ?? 0) >= m.at;
+  // анимация галочек: первая рисуется при отправке, вторая — когда прочитали
+  const tickState = read ? 'read' : 'sent';
+  const was = tickMemo.get(m.id);
+  const tickCls = !mine ? '' : !was && isNew ? 'tick-in' : was === 'sent' && read ? 'tick-read' : '';
+  tickMemo.set(m.id, tickState);
+
   let body = '';
   switch (m.kind) {
     case 'photo':
@@ -459,16 +562,23 @@ function bubble(m, isNew) {
           <pre><code>${escapeHtml(m.text)}</code></pre>
         </div>`;
       break;
+    case 'emoji':
+      body = emojiSvg(m.emoji, 'emoji-big');
+      break;
     default:
       body = `<p class="b-text">${escapeHtml(m.text).replace(/\n/g, '<br>')}</p>`;
   }
-  return `
+  const html = `
     <div class="bubble-row ${mine ? 'mine' : 'theirs'}${isNew ? ' is-new' : ''}" data-id="${m.id}">
       <div class="bubble kind-${m.kind ?? 'text'}">
+        ${m.replyTo ? quoteHtml(m, all) : ''}
         ${body}
-        <span class="b-meta">${formatTime(m.at)}${mine ? (read ? ICON.checks : ICON.check) : ''}</span>
+        ${reactionsHtml(m)}
+        <span class="b-meta">${m.edited ? '<em>edited</em>' : ''}${formatTime(m.at)}${mine ? ticks(read, tickCls) : ''}</span>
       </div>
     </div>`;
+  reactMemo.set(m.id, structuredClone(m.reactions ?? {}));
+  return html;
 }
 
 function emptyState() {
@@ -483,13 +593,24 @@ function emptyState() {
       </div>
       <h3>No messages yet</h3>
       <p>Send ${first} a message, a photo or a voice note.</p>
-      <button class="btn btn-secondary glass" type="button" data-say-hello>Say hello</button>
+      <button class="btn btn-secondary glass" type="button" data-say-hello>${emojiSvg('heart', 'emoji-inline')}Say hello</button>
     </div>`;
+}
+
+function paintPinned() {
+  const bar = $('#pinned-bar');
+  const c = isDm() ? chats.get(open.id) : null;
+  const msgs = chatMessages();
+  const m = c?.pinned && msgs.find((x) => x.id === c.pinned);
+  bar.hidden = !m;
+  panel.classList.toggle('has-pinned', Boolean(m));
+  if (m) $('#pinned-preview').textContent = previewText(m);
 }
 
 export function renderMessages({ scroll = false } = {}) {
   if (!open.id) return;
   const msgs = chatMessages();
+  paintPinned();
   if (!msgs.length && open.id !== KOSMO) {
     messagesBox.innerHTML = emptyState();
     hydrateMedia(messagesBox);
@@ -501,37 +622,84 @@ export function renderMessages({ scroll = false } = {}) {
     const sep = day !== lastDay ? `<div class="day-chip">${formatDate(m.at).split(',')[0]}</div>` : '';
     lastDay = day;
     const isNew = !known.has(m.id);
-    return sep + (open.id === KOSMO ? kosmoCard(m, isNew) : bubble(m, isNew));
+    return sep + (open.id === KOSMO ? kosmoCard(m, isNew) : bubble(m, isNew, msgs));
   }).join('');
   msgs.forEach((m) => known.add(m.id));
   hydrateMedia(messagesBox);
   if (scroll) requestAnimationFrame(() => { panel.scrollTop = panel.scrollHeight; });
 }
 
-// Новое сообщение пришло, пока чат открыт
+// Новое сообщение пришло (или что-то изменилось), пока чат открыт
 export function refreshOpenChat() {
   if (!openChatId()) return;
   const before = known.size;
   markOpenRead();
+  paintHeader();
   renderMessages({ scroll: chatMessages().length > before });
 }
 
+function jumpTo(id) {
+  const row = messagesBox.querySelector(`.bubble-row[data-id="${id}"]`);
+  if (!row) return;
+  row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  row.classList.remove('is-flash');
+  void row.offsetWidth;
+  row.classList.add('is-flash');
+}
+
+$('#pinned-jump').addEventListener('click', () => { const c = chats.get(open.id); if (c?.pinned) jumpTo(c.pinned); });
+$('#pinned-close').addEventListener('click', () => {
+  chats.update(open.id, (c) => { delete c.pinned; });
+  renderMessages();
+  toast('Message unpinned');
+});
+
 /* ---------------------------------------------------------------------------
-   Отправка
+   Отправка, ответ, изменение
    --------------------------------------------------------------------------- */
+let compose = null;   // { mode: 'reply' | 'edit', id }
+
 function send(msg) {
   const me = state.acc.user.id;
-  chats.send(open.id, [me, open.otherId], { from: me, kind: 'text', ...msg });
+  const extra = compose?.mode === 'reply' ? { replyTo: compose.id } : {};
+  chats.send(open.id, [me, open.otherId], { from: me, kind: 'text', ...extra, ...msg });
   // удалённый или архивный чат возвращается в список
   const p = prefs(open.id);
   if (p.archived) setPref(open.id, { archived: false });
+  setCompose(null);
   state.reload();
   renderMessages({ scroll: true });
   renderChatList();
 }
 
+function setCompose(next) {
+  compose = next;
+  const bar = $('#compose-bar');
+  bar.hidden = !next;
+  panel.classList.toggle('is-composing', Boolean(next));
+  if (!next) return;
+  const m = chatMessages().find((x) => x.id === next.id);
+  if (!m) { setCompose(null); return; }
+  $('#cb-icon').innerHTML = next.mode === 'edit' ? ICON.edit : ICON.reply;
+  $('#cb-title').textContent = next.mode === 'edit' ? 'Edit message'
+    : `Reply to ${m.from === state.acc.user.id ? 'yourself' : db.get(m.from)?.name ?? 'message'}`;
+  $('#cb-preview').textContent = previewText(m);
+  if (next.mode === 'edit') {
+    input.value = m.text;
+    autosize();
+    setMode('send');
+  }
+  input.focus({ preventScroll: true });
+  refreshRefraction();
+}
+
+$('#cb-close').addEventListener('click', () => {
+  if (compose?.mode === 'edit') { input.value = ''; autosize(); setMode('voice'); }
+  setCompose(null);
+});
+
 document.addEventListener('click', (e) => {
-  if (e.target.closest('[data-say-hello]')) send({ text: 'Hello! 👋' });
+  if (e.target.closest('[data-say-hello]')) send({ kind: 'emoji', emoji: 'heart' });
   const copyBtn = e.target.closest('[data-copy-code]');
   if (copyBtn) {
     navigator.clipboard?.writeText(copyBtn.closest('.b-code').querySelector('code').textContent)
@@ -539,15 +707,230 @@ document.addEventListener('click', (e) => {
   }
   const photo = e.target.closest('[data-view-photo]');
   if (photo) openViewer(photo.querySelector('img').src);
+  const jump = e.target.closest('[data-jump]');
+  if (jump) jumpTo(jump.dataset.jump);
+  const r = e.target.closest('[data-react-toggle]');
+  if (r) toggleReaction(r.dataset.msg, r.dataset.reactToggle);
 });
 
 /* ---------------------------------------------------------------------------
-   Поле ввода: «+» слева, голосовое / отправить справа
+   Реакции (одна на человека, как в Telegram)
+   --------------------------------------------------------------------------- */
+function toggleReaction(msgId, emoji) {
+  const me = state.acc.user.id;
+  let added = false;
+  chats.update(open.id, (c) => {
+    const m = c.messages.find((x) => x.id === msgId);
+    if (!m) return;
+    m.reactions ??= {};
+    const had = m.reactions[emoji]?.includes(me);
+    for (const [k, users] of Object.entries(m.reactions)) {
+      m.reactions[k] = users.filter((u) => u !== me);
+      if (!m.reactions[k].length) delete m.reactions[k];
+    }
+    if (!had) {
+      (m.reactions[emoji] ??= []).push(me);
+      added = true;
+    }
+  });
+  renderMessages();
+  if (added) {
+    navigator.vibrate?.(10);
+    const chip = messagesBox.querySelector(`.bubble-row[data-id="${msgId}"] [data-react-toggle="${emoji}"]`);
+    if (chip) burst(chip);
+  }
+}
+
+// Вспышка из искр вокруг реакции
+function burst(el) {
+  const r = el.getBoundingClientRect();
+  const box = document.createElement('div');
+  box.className = 'burst';
+  box.style.left = `${r.left + 14}px`;
+  box.style.top = `${r.top + r.height / 2}px`;
+  box.innerHTML = Array.from({ length: 8 }, (_, i) => `<span style="--a:${i * 45}deg"></span>`).join('');
+  document.body.append(box);
+  setTimeout(() => box.remove(), 700);
+}
+
+/* ---------------------------------------------------------------------------
+   Долгое нажатие на сообщение: реакции и действия
+   --------------------------------------------------------------------------- */
+const mm = { el: null, scrim: null, clone: null, id: null };
+
+function openMsgMenu(row) {
+  closeMsgMenu();
+  const id = row.dataset.id;
+  const m = chatMessages().find((x) => x.id === id);
+  if (!m) return;
+  navigator.vibrate?.(12);
+  mm.id = id;
+  const mine = m.from === state.acc.user.id;
+  const c = chats.get(open.id);
+  const bubbleEl = row.querySelector('.bubble');
+  const rect = bubbleEl.getBoundingClientRect();
+
+  const scrim = document.createElement('div');
+  scrim.className = 'ctx-scrim';
+  // копия сообщения поверх затемнения, как в iOS
+  const clone = bubbleEl.cloneNode(true);
+  clone.classList.add('msg-clone');
+  clone.style.width = `${rect.width}px`;
+  clone.style.left = `${rect.left}px`;
+  clone.style.top = `${rect.top}px`;
+
+  const wrap = document.createElement('div');
+  wrap.className = `msg-menu ${mine ? 'is-mine' : ''}`;
+  const myReaction = Object.entries(m.reactions ?? {}).find(([, u]) => u.includes(state.acc.user.id))?.[0];
+  const actions = [
+    `<button class="menu-item" type="button" data-mm="reply">${ICON.reply}Reply</button>`,
+    ['text', 'code'].includes(m.kind ?? 'text') && `<button class="menu-item" type="button" data-mm="copy">${ICON.copy}Copy</button>`,
+    mine && (m.kind ?? 'text') === 'text' && `<button class="menu-item" type="button" data-mm="edit">${ICON.edit}Edit</button>`,
+    `<button class="menu-item" type="button" data-mm="pin">${c?.pinned === id ? ICON.unpin : ICON.pin}${c?.pinned === id ? 'Unpin' : 'Pin'}</button>`,
+    `<button class="menu-item danger" type="button" data-mm="delete">${ICON.trash}Delete</button>`,
+  ].filter(Boolean);
+  wrap.innerHTML = `
+    <div class="react-bar glass glass-text" role="group" aria-label="Reactions">
+      ${REACTIONS.map((e, i) => `<button class="react-opt${e === myReaction ? ' is-mine' : ''}" type="button" style="--i:${i}" data-react-pick="${e}" aria-label="${EMOJI[e].label}">${emojiSvg(e)}</button>`).join('')}
+    </div>
+    <div class="menu msg-actions glass glass-text" role="menu">${actions.join('')}</div>`;
+  $('#app').append(scrim, clone, wrap);
+  mm.el = wrap;
+  mm.scrim = scrim;
+  mm.clone = clone;
+
+  // раскладка: реакции над сообщением, действия под ним; всё влезает в экран
+  const barH = 60;
+  const actH = actions.length * 46 + 12;
+  const total = barH + 8 + rect.height + 8 + actH;
+  let top = rect.top - barH - 8;
+  top = Math.max(12, Math.min(top, innerHeight - total - 12));
+  const cloneTop = top + barH + 8;
+  clone.animate([{ transform: 'none' }, { transform: `translateY(${cloneTop - rect.top}px) scale(1.03)` }],
+    { duration: 380, easing: 'cubic-bezier(0.34, 1.4, 0.64, 1)', fill: 'forwards' });
+  const side = mine ? `right:${Math.max(10, innerWidth - rect.right)}px` : `left:${Math.max(10, rect.left)}px`;
+  wrap.style.cssText = `top:${top}px;${side};--gap:${rect.height + 16}px`;
+  scrim.addEventListener('click', closeMsgMenu);
+  refreshRefraction();
+}
+
+function closeMsgMenu() {
+  if (!mm.el) return;
+  const { el, scrim, clone } = mm;
+  el.classList.add('is-closing');
+  scrim.classList.add('is-closing');
+  clone.classList.add('is-closing');
+  setTimeout(() => { el.remove(); scrim.remove(); clone.remove(); }, 170);
+  mm.el = null;
+}
+
+document.addEventListener('click', (e) => {
+  if (!mm.el) return;
+  const pick = e.target.closest('[data-react-pick]');
+  if (pick) {
+    const id = mm.id;
+    closeMsgMenu();
+    toggleReaction(id, pick.dataset.reactPick);
+    return;
+  }
+  const act = e.target.closest('[data-mm]');
+  if (!act) return;
+  const id = mm.id;
+  const m = chatMessages().find((x) => x.id === id);
+  const me = state.acc.user.id;
+  switch (act.dataset.mm) {
+    case 'reply': setCompose({ mode: 'reply', id }); break;
+    case 'copy':
+      navigator.clipboard?.writeText(m.text).then(() => toast('Copied'), () => toast('Could not copy'));
+      break;
+    case 'edit': setCompose({ mode: 'edit', id }); break;
+    case 'pin': {
+      let pinned = false;
+      chats.update(open.id, (c) => {
+        pinned = c.pinned !== id;
+        if (pinned) c.pinned = id;
+        else delete c.pinned;
+      });
+      toast(pinned ? 'Message pinned' : 'Message unpinned');
+      renderMessages();
+      break;
+    }
+    case 'delete': {
+      const name = escapeHtml((db.get(open.otherId)?.name ?? 'them').split(/\s+/)[0]);
+      mm.el.querySelector('.msg-actions').innerHTML = `
+        <p class="ctx-confirm">Delete this message?</p>
+        <button class="menu-item danger" type="button" data-mm="del-me">${ICON.user}Delete for me</button>
+        <button class="menu-item danger" type="button" data-mm="del-all">${ICON.users}Delete for me and ${name}</button>
+        <button class="menu-item" type="button" data-mm="cancel">Cancel</button>`;
+      return;
+    }
+    case 'del-me':
+      chats.update(open.id, (c) => {
+        const x = c.messages.find((y) => y.id === id);
+        if (x) (x.hiddenFor ??= []).push(me);
+      });
+      deleteAnimated(id);
+      break;
+    case 'del-all':
+      chats.update(open.id, (c) => {
+        c.messages = c.messages.filter((y) => y.id !== id);
+        if (c.pinned === id) delete c.pinned;
+      });
+      deleteAnimated(id);
+      break;
+    default:
+  }
+  closeMsgMenu();
+});
+
+function deleteAnimated(id) {
+  const row = messagesBox.querySelector(`.bubble-row[data-id="${id}"]`);
+  if (compose?.id === id) setCompose(null);
+  if (!row) { renderMessages(); renderChatList(); return; }
+  row.classList.add('is-deleting');
+  setTimeout(() => { renderMessages(); renderChatList(); }, 260);
+}
+
+(() => {
+  let timer = null;
+  let start = null;
+  messagesBox.addEventListener('pointerdown', (e) => {
+    const row = e.target.closest('.bubble-row');
+    if (!row || !isDm() || e.button > 0 || e.target.closest('button, video, a')) return;
+    start = { x: e.clientX, y: e.clientY };
+    row.classList.add('is-pressing');
+    timer = setTimeout(() => {
+      row.classList.remove('is-pressing');
+      openMsgMenu(row);
+    }, 420);
+  });
+  const cancel = () => { clearTimeout(timer); $$('.bubble-row.is-pressing', messagesBox).forEach((r) => r.classList.remove('is-pressing')); };
+  messagesBox.addEventListener('pointermove', (e) => { if (start && Math.hypot(e.clientX - start.x, e.clientY - start.y) > 8) cancel(); });
+  messagesBox.addEventListener('pointerup', cancel);
+  messagesBox.addEventListener('pointerleave', cancel);
+  messagesBox.addEventListener('pointercancel', cancel);
+  messagesBox.addEventListener('contextmenu', (e) => {
+    const row = e.target.closest('.bubble-row');
+    if (!row || !isDm()) return;
+    e.preventDefault();
+    cancel();
+    openMsgMenu(row);
+  });
+  // двойной тап — быстрое «сердечко»
+  messagesBox.addEventListener('dblclick', (e) => {
+    const row = e.target.closest('.bubble-row');
+    if (row && isDm() && !e.target.closest('button, video')) toggleReaction(row.dataset.id, 'heart');
+  });
+})();
+
+/* ---------------------------------------------------------------------------
+   Поле ввода: «+» слева, эмодзи, голосовое / отправить справа
    --------------------------------------------------------------------------- */
 const composer = $('#composer');
 const input = $('#composer-input');
 const sendBtn = $('#send-btn');
 const attachMenu = $('#attach-menu');
+const picker = $('#emoji-picker');
 
 function setMode(mode) {
   sendBtn.dataset.mode = mode;
@@ -563,6 +946,7 @@ function resetComposer() {
   input.value = '';
   autosize();
   setMode('voice');
+  setCompose(null);
 }
 
 input.addEventListener('input', () => {
@@ -574,16 +958,57 @@ input.addEventListener('keydown', (e) => {
     e.preventDefault();
     composer.requestSubmit();
   }
+  if (e.key === 'Escape' && compose) { e.stopPropagation(); $('#cb-close').click(); }
 });
 
 composer.addEventListener('submit', (e) => {
   e.preventDefault();
   if (recorder) { stopRecording(true); return; }
   const text = input.value.trim();
+  if (compose?.mode === 'edit') {
+    if (!text) return;
+    const id = compose.id;
+    chats.update(open.id, (c) => {
+      const m = c.messages.find((x) => x.id === id);
+      if (m && m.text !== text) { m.text = text; m.edited = true; }
+    });
+    input.value = '';
+    autosize();
+    setMode('voice');
+    setCompose(null);
+    renderMessages();
+    renderChatList();
+    return;
+  }
   if (!text) { startRecording(); return; }
   send({ text });
-  resetComposer();
+  input.value = '';
+  autosize();
+  setMode('voice');
   input.focus({ preventScroll: true });
+});
+
+/* ---------- Эмодзи ---------- */
+function closePicker() {
+  if (picker.hidden || picker.classList.contains('is-closing')) return;
+  picker.classList.add('is-closing');
+  picker.addEventListener('animationend', () => { picker.hidden = true; picker.classList.remove('is-closing'); }, { once: true });
+}
+
+$('#emoji-btn').addEventListener('click', (e) => {
+  e.stopPropagation();
+  if (!picker.hidden) { closePicker(); return; }
+  closeAttach();
+  picker.innerHTML = EMOJI_IDS.map((id, i) => `
+    <button class="emoji-opt" type="button" style="--i:${i}" data-send-emoji="${id}" aria-label="${EMOJI[id].label}">${emojiSvg(id)}</button>`).join('');
+  picker.hidden = false;
+  refreshRefraction();
+});
+picker.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-send-emoji]');
+  if (!b) return;
+  closePicker();
+  send({ kind: 'emoji', emoji: b.dataset.sendEmoji });
 });
 
 /* ---------- Вложения ---------- */
@@ -597,12 +1022,14 @@ function closeAttach() {
 $('#attach-btn').addEventListener('click', (e) => {
   e.stopPropagation();
   if (!attachMenu.hidden) { closeAttach(); return; }
+  closePicker();
   attachMenu.hidden = false;
   $('#attach-btn').classList.add('is-open');
   refreshRefraction();
 });
 document.addEventListener('click', (e) => {
   if (!attachMenu.hidden && !e.target.closest('#attach-menu, #attach-btn')) closeAttach();
+  if (!picker.hidden && !e.target.closest('#emoji-picker, #emoji-btn')) closePicker();
 });
 
 const MAX_FILE = 50 * 1024 * 1024;
@@ -731,3 +1158,6 @@ function openViewer(src) {
   });
   document.body.append(v);
 }
+
+// для home.js: закрыто ли что-то поверх чата
+export const chatOverlayOpen = () => Boolean(mm.el || ctx.el || overlayOpen());

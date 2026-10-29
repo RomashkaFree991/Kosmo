@@ -51,10 +51,13 @@ const row = (attrs, icon, text, extra = '') => `
     <span class="row-icon">${icon}</span><span class="row-text">${text}</span>${extra}
   </button>`;
 
+// пометка «скрыто от других» на своих плашках
+const hiddenMark = '<span class="tile-hidden"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18M10.6 5.6A9.6 9.6 0 0 1 12 5.5c6 0 9.5 6.5 9.5 6.5a17 17 0 0 1-3 3.8M6.6 6.6C4 8.3 2.5 12 2.5 12S6 18.5 12 18.5c1.8 0 3.3-.5 4.6-1.2"/></svg>hidden</span>';
+
 let sig = '';
 export function renderProfile(force = false) {
   const u = state.acc.user;
-  const next = JSON.stringify([u.name, u.username, u.phone, u.bio, u.role, u.avatar, u.publicId, u.sessions.length]);
+  const next = JSON.stringify([u.name, u.username, u.phone, u.bio, u.role, u.avatar, u.publicId, u.sessions.length, u.privacy]);
   if (next === sig && !force) return;
   sig = next;
   $('#profile').innerHTML = `
@@ -69,10 +72,10 @@ export function renderProfile(force = false) {
     </section>
 
     <section class="tiles" aria-label="Account">
-      ${tile(ICON.at, 'Username', `@${escapeHtml(u.username)}`, 'data-copy="username" aria-label="Copy username"')}
+      ${u.username ? tile(ICON.at, 'Username', `@${escapeHtml(u.username)}`, 'data-copy="username" aria-label="Copy username"') : tile(ICON.at, 'Username', '<span class="tile-muted">Not set</span>', 'data-open-edit aria-label="Set username"')}
       ${tile(ICON.hash, 'ID', escapeHtml(u.publicId), 'data-copy="id" aria-label="Copy ID"')}
-      ${tile(ICON.call, 'Phone', escapeHtml(formatPhone(u.phone)), 'data-open-phone aria-label="Change number"', true)}
-      ${u.bio ? tile(ICON.quote, 'Bio', escapeHtml(u.bio), '', true) : ''}
+      ${tile(ICON.call, `Phone${u.privacy?.hidePhone ? hiddenMark : ''}`, escapeHtml(formatPhone(u.phone)), 'data-open-phone aria-label="Change number"', true)}
+      ${u.bio ? tile(ICON.quote, `Bio${u.privacy?.hideBio ? hiddenMark : ''}`, escapeHtml(u.bio), '', true) : ''}
       ${tile(ICON.calendar, 'Joined', monthYear.format(u.createdAt))}
       ${tile(ICON.devices, 'Sessions', `${u.sessions.length} active`, 'data-open-sessions aria-label="Sessions"')}
     </section>
@@ -120,7 +123,9 @@ const editUsernameField = $('#edit-username-field');
 const editBio = $('#edit-bio');
 const editCounter = $('#edit-counter');
 
+// пустой @username тоже можно
 function usernameOk(v) {
+  if (!v) return true;
   return USERNAME_RE.test(v) && !RESERVED.includes(v) && !db.usernameTaken(v, state.acc.user.id);
 }
 
@@ -137,7 +142,7 @@ function paintEditAvatar() {
 
 function validateEditUsername() {
   const v = editUsername.value;
-  editUsernameField.classList.toggle('is-valid', usernameOk(v));
+  editUsernameField.classList.toggle('is-valid', Boolean(v) && usernameOk(v));
   editUsernameField.classList.toggle('is-invalid', v.length >= 3 && !usernameOk(v));
 }
 
@@ -146,6 +151,8 @@ function openEdit() {
   draft = { avatar: { color: null, text: '', photo: null, ...u.avatar } };
   editName.value = u.name;
   editUsername.value = u.username;
+  $('#priv-phone').checked = !u.privacy?.hidePhone;
+  $('#priv-bio').checked = !u.privacy?.hideBio;
   editBio.value = u.bio ?? '';
   $('#avatar-text').value = draft.avatar.text ?? '';
   editCounter.textContent = 70 - editBio.value.length;
@@ -212,6 +219,7 @@ $('#edit-form').addEventListener('submit', (e) => {
     u.username = username;
     u.bio = editBio.value.trim();
     u.avatar = draft.avatar;
+    u.privacy = { hidePhone: !$('#priv-phone').checked, hideBio: !$('#priv-bio').checked };
   });
   state.reload();
   renderProfile(true);

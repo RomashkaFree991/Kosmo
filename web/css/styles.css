@@ -119,13 +119,27 @@ body {
 button, input, textarea { font: inherit; color: inherit; }
 
 /* Обои: фиксированный слой под всем интерфейсом */
-.wallpaper { pointer-events: none; }
-.wallpaper svg { display: block; width: 100%; height: 100%; }
+.wallpaper { pointer-events: none; overflow: hidden; contain: strict; }
 .wallpaper-page { position: fixed; inset: 0; z-index: 0; }
-.wp-spin { transform-box: view-box; animation: wp-spin 90s linear infinite; }
+/* Обои — только в приложении; на входе и регистрации чёрный фон */
+html:not(.in-app) .wallpaper-page { display: none; }
+html:not(.in-app) { --page-bg: #000 !important; }
+.wp-stage {
+  position: absolute;
+  left: 50%; top: 50%;
+  width: 390px; height: 844px;
+  transform: translate(-50%, -50%) scale(var(--wp-scale, 1));
+}
+.wp-still { position: absolute; inset: 0; display: block; }
+.wp-layer { position: absolute; will-change: transform, opacity; }
+.wp-layer svg { display: block; }
+.wp-spin { animation: wp-spin 90s linear infinite; }
+.wp-star { animation: wp-twinkle 4s ease-in-out infinite; animation-delay: var(--d, 0s); }
+.wp-glow { border-radius: 50%; }
 .wp-drift { animation: wp-drift 18s ease-in-out infinite alternate; }
 .wp-drift-2 { animation-duration: 24s; animation-direction: alternate-reverse; }
 @keyframes wp-spin { to { rotate: 360deg; } }
+@keyframes wp-twinkle { 50% { opacity: 0.25; scale: 0.75; } }
 @keyframes wp-drift { to { translate: -40px 50px; } }
 button { cursor: pointer; }
 
@@ -266,7 +280,6 @@ html[data-theme="material"] .seg-item[aria-checked="true"] .seg-check { display:
   z-index: 10;
   width: 120px; height: 120px;
   margin-bottom: 8px;
-  will-change: transform;
 }
 .planet { position: relative; width: 100%; height: 100%; overflow: visible; animation: float 6s ease-in-out infinite; }
 .stop-a { stop-color: var(--c-planet-a); transition: stop-color 500ms ease; }

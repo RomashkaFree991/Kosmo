@@ -57,55 +57,85 @@ function injectShapes() {
    Обои: рисуются переменными --wp-*, которые считает color.js из палитры
    --------------------------------------------------------------------------- */
 export const WALLPAPERS = { black: 'Black', shapes: 'Cosmos', waves: 'Waves', glow: 'Glow' };
-let wpCount = 0;
+const STAR = 'M0-10C1.4-1.4 1.4-1.4 10 0 1.4 1.4 1.4 1.4 0 10-1.4 1.4-1.4 1.4-10 0-1.4-1.4-1.4-1.4 0-10Z';
+const ORBIT = 'M-40 520C40 380 330 330 430 400';
 
-function wallpaperSvg(kind) {
+// Обои рисуются на «сцене» 390×844 (масштабируется под экран). Неподвижное —
+// одним SVG, а всё, что движется, — отдельными слоями с анимацией transform
+// и opacity: их считает видеокарта, поэтому фон не дёргается и не замирает.
+const layer = (cls, x, y, w, h, inner = '', style = '') =>
+  `<div class="wp-layer ${cls}" style="left:${x}px;top:${y}px;width:${w}px;height:${h}px;${style}">${inner}</div>`;
+
+const starLayer = (x, y, r, color, delay) => layer('wp-star', x - r, y - r, r * 2, r * 2,
+  `<svg viewBox="-10 -10 20 20" width="100%" height="100%"><path d="${STAR}" style="fill:var(${color})"/></svg>`, `--d:${delay}s`);
+
+function wallpaperHtml(kind) {
   if (kind === 'black') return '';
-  const n = ++wpCount;
-  const anim = !reducedMotion.matches;
-  const head = '<svg viewBox="0 0 390 844" preserveAspectRatio="xMidYMid slice" aria-hidden="true"><rect width="390" height="844" style="fill:var(--wp-bg)"/>';
+  const bg = '<rect width="390" height="844" style="fill:var(--wp-bg)"/>';
+  let still = '';
+  let layers = '';
   if (kind === 'shapes') {
     // «Космос» в формах Material 3: планета с кольцом, орбита с луной,
-    // клевер и пилюля, мерцающие звёзды-искры
-    const star = (x, y, r, fill, delay) => `
-      <path transform="translate(${x} ${y}) scale(${r / 10})" d="M0-10C1.4-1.4 1.4-1.4 10 0 1.4 1.4 1.4 1.4 0 10-1.4 1.4-1.4 1.4-10 0-1.4-1.4-1.4-1.4 0-10Z" style="fill:var(${fill})">
-        ${anim ? `<animate attributeName="opacity" values="1;.25;1" dur="4s" begin="${delay}s" repeatCount="indefinite"/>` : ''}
-      </path>`;
-    const orbit = 'M-40 520C40 380 330 330 430 400';
-    return `${head}
+    // клевер, пилюля, «печенька» и мерцающие звёзды
+    still = `${bg}
       <g transform="rotate(-32 70 120)"><rect x="-90" y="70" width="300" height="118" rx="59" style="fill:var(--wp-a)"/></g>
-      <g class="wp-spin" style="transform-origin:318px 250px"><path d="${shapePath('clover', 318, 250, 74)}" style="fill:var(--wp-b)"/></g>
       <path d="${shapePath('cookie7', 74, 610, 40)}" style="fill:var(--wp-b);opacity:.75"/>
-      <path id="wp-orbit-${n}" d="${orbit}" fill="none" stroke-width="2.4" stroke-linecap="round" stroke-dasharray="1 11" style="stroke:var(--wp-line);opacity:.55"/>
-      <circle r="10" style="fill:var(--wp-dot2)" ${anim ? '' : 'cx="190" cy="392"'}>
-        ${anim ? `<animateMotion dur="22s" repeatCount="indefinite" keyPoints="0.15;0.85;0.15" keyTimes="0;0.5;1" calcMode="spline" keySplines=".45 0 .55 1;.45 0 .55 1"><mpath href="#wp-orbit-${n}"/></animateMotion>` : ''}
-      </circle>
+      <path class="wp-orbit" d="${ORBIT}" fill="none" stroke-width="2.4" stroke-linecap="round" stroke-dasharray="1 11" style="stroke:var(--wp-line);opacity:.55"/>
       <g transform="rotate(-16 290 720)"><path d="M120 720A170 34 0 0 1 460 720" fill="none" stroke-width="7" stroke-linecap="round" style="stroke:var(--wp-line);opacity:.4"/></g>
       <circle cx="290" cy="720" r="118" style="fill:var(--wp-a)"/>
       <circle cx="252" cy="680" r="20" style="fill:var(--wp-bg);opacity:.35"/>
       <circle cx="318" cy="752" r="12" style="fill:var(--wp-bg);opacity:.3"/>
-      <g transform="rotate(-16 290 720)"><path d="M120 720A170 34 0 0 0 460 720" fill="none" stroke-width="7" stroke-linecap="round" style="stroke:var(--wp-line);opacity:.65"/></g>
-      ${star(196, 132, 11, '--wp-dot2', 0)}${star(58, 330, 7, '--wp-dot', 1.2)}${star(350, 470, 9, '--wp-dot2', 2.1)}
-      ${star(150, 560, 6, '--wp-dot', 0.6)}${star(250, 40, 6, '--wp-dot', 2.8)}${star(40, 790, 8, '--wp-dot2', 1.7)}
-    </svg>`;
-  }
-  if (kind === 'waves') {
-    return `${head}
+      <g transform="rotate(-16 290 720)"><path d="M120 720A170 34 0 0 0 460 720" fill="none" stroke-width="7" stroke-linecap="round" style="stroke:var(--wp-line);opacity:.65"/></g>`;
+    layers = layer('wp-spin', 244, 176, 148, 148,
+      `<svg viewBox="0 0 148 148" width="100%" height="100%"><path d="${shapePath('clover', 74, 74, 74)}" style="fill:var(--wp-b)"/></svg>`)
+      + layer('wp-moon', 0, 0, 20, 20)
+      + starLayer(196, 132, 11, '--wp-dot2', 0) + starLayer(58, 330, 7, '--wp-dot', 1.2) + starLayer(350, 470, 9, '--wp-dot2', 2.1)
+      + starLayer(150, 560, 6, '--wp-dot', 0.6) + starLayer(250, 40, 6, '--wp-dot', 2.8) + starLayer(40, 790, 8, '--wp-dot2', 1.7);
+  } else if (kind === 'waves') {
+    still = `${bg}
       <path d="M0 610C70 570 140 640 210 600S330 560 390 590V844H0Z" style="fill:var(--wp-a)"/>
       <path d="M0 700C80 660 150 730 230 690S340 660 390 690V844H0Z" style="fill:var(--wp-b);opacity:.9"/>
-      <path d="M0 140C80 180 150 110 230 150S340 190 390 160V0H0Z" style="fill:var(--wp-a);opacity:.7"/>
-      <circle cx="320" cy="300" r="7" style="fill:var(--wp-dot)"/><circle cx="70" cy="420" r="4" style="fill:var(--wp-dot2);opacity:.8"/>
-    </svg>`;
+      <path d="M0 140C80 180 150 110 230 150S340 190 390 160V0H0Z" style="fill:var(--wp-a);opacity:.7"/>`;
+    layers = starLayer(320, 300, 8, '--wp-dot', 0) + starLayer(70, 420, 5, '--wp-dot2', 1.5) + starLayer(200, 250, 5, '--wp-dot2', 2.6);
+  } else {
+    // glow: мягкие пятна света
+    still = bg;
+    layers = layer('wp-glow wp-drift', 60, -80, 520, 520, '', 'background:radial-gradient(closest-side,var(--wp-a),transparent)')
+      + layer('wp-glow wp-drift wp-drift-2', -240, 400, 600, 600, '', 'background:radial-gradient(closest-side,var(--wp-b),transparent)');
   }
-  // glow: мягкие пятна света
-  return `${head}
-    <defs>
-      <radialGradient id="g1-${n}"><stop offset="0" style="stop-color:var(--wp-a)"/><stop offset="1" style="stop-color:var(--wp-a);stop-opacity:0"/></radialGradient>
-      <radialGradient id="g2-${n}"><stop offset="0" style="stop-color:var(--wp-b)"/><stop offset="1" style="stop-color:var(--wp-b);stop-opacity:0"/></radialGradient>
-    </defs>
-    <circle class="wp-drift" cx="320" cy="180" r="260" fill="url(#g1-${n})"/>
-    <circle class="wp-drift wp-drift-2" cx="60" cy="700" r="300" fill="url(#g2-${n})"/>
-  </svg>`;
+  return `<div class="wp-stage"><svg class="wp-still" viewBox="0 0 390 844" width="390" height="844" aria-hidden="true">${still}</svg>${layers}</div>`;
+}
+
+// Сцена 390×844 «покрывает» элемент целиком, как background-size: cover
+const scaleObserver = new ResizeObserver((entries) => {
+  for (const { target, contentRect: r } of entries) {
+    target.style.setProperty('--wp-scale', Math.max(r.width / 390, r.height / 844));
+  }
+});
+
+function animateMoon(el) {
+  const moon = el.querySelector('.wp-moon');
+  const orbit = el.querySelector('.wp-orbit');
+  if (!moon || !orbit) return;
+  const len = orbit.getTotalLength();
+  const at = (t) => {
+    const p = orbit.getPointAtLength(len * t);
+    return { transform: `translate(${p.x - 10}px, ${p.y - 10}px)` };
+  };
+  if (reducedMotion.matches) {
+    Object.assign(moon.style, at(0.5));
+    return;
+  }
+  const frames = Array.from({ length: 25 }, (_, i) => at(0.15 + (0.7 * i) / 24));
+  moon.animate(frames, { duration: 22000, iterations: Infinity, direction: 'alternate', easing: 'ease-in-out' });
+}
+
+function renderWallpaper(el, kind) {
+  if (el.dataset.kind === kind) return;   // уже нарисовано — не трогаем, анимация идёт дальше
+  el.dataset.kind = kind;
+  el.innerHTML = wallpaperHtml(kind);
+  scaleObserver.observe(el);
+  animateMoon(el);
 }
 
 /* ---------------------------------------------------------------------------
@@ -131,9 +161,7 @@ export function applyDesign() {
   root.dataset.wallpaper = s.wallpaper;
   root.style.setProperty('--shape-chat', `url(#shape-${settings.material.chatShape})`);
   root.style.setProperty('--shape-profile', `url(#shape-${settings.material.profileShape})`);
-  $$('.wallpaper').forEach((el) => {
-    el.innerHTML = wallpaperSvg(el.dataset.wp ?? s.wallpaper);
-  });
+  $$('.wallpaper').forEach((el) => renderWallpaper(el, el.dataset.wp ?? s.wallpaper));
 }
 
 /* ---------------------------------------------------------------------------

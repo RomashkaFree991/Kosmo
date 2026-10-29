@@ -29,13 +29,18 @@ async function playIntro() {
   const r = logo.getBoundingClientRect();
   const dx = innerWidth / 2 - (r.left + r.width / 2);
   const dy = innerHeight / 2 - (r.top + r.height / 2);
-  const scale = Math.min(2.4, (Math.min(innerWidth, innerHeight) * 0.6) / r.width);
-  const from = `translate(${dx}px, ${dy}px) scale(${scale})`;
-  logo.style.transform = from;
+  // Планета в центре рисуется в настоящем большом размере (а не растянутой
+  // картинкой через scale), поэтому остаётся чёткой. Отрицательные отступы
+  // сохраняют место в раскладке прежним.
+  const big = Math.round(Math.min(288, Math.min(innerWidth, innerHeight) * 0.6));
+  const m = `${-(big - r.width) / 2}px`;
+  const from = { transform: `translate(${dx}px, ${dy}px)`, width: `${big}px`, height: `${big}px`, margin: `${m} ${m} calc(${m} + 8px)` };
+  const to = { transform: 'none', width: `${r.width}px`, height: `${r.height}px`, margin: '0 0 8px' };
+  Object.assign(logo.style, from);
 
   await wait(1750);   // планета + оба кольца
-  const flight = logo.animate([{ transform: from }, { transform: 'none' }], { duration: 1100, easing: easing.intro });
-  logo.style.removeProperty('transform');
+  const flight = logo.animate([from, to], { duration: 1100, easing: easing.intro });
+  ['transform', 'width', 'height', 'margin'].forEach((p) => logo.style.removeProperty(p));
   await wait(220);
   root.classList.add('is-ready');
   await flight.finished;
@@ -226,7 +231,9 @@ const RESERVED = ['kosmo', 'admin', 'support', 'settings', 'official'];
 // 3–32 английские буквы или цифры, хотя бы одна буква
 const USERNAME_RE = /^(?=.*[a-z])[a-z0-9]{3,32}$/;
 
+// @username можно оставить пустым
 function usernameOk(value) {
+  if (!value) return true;
   return USERNAME_RE.test(value) && !RESERVED.includes(value) && !db.usernameTaken(value, flow.user?.id);
 }
 
@@ -237,7 +244,7 @@ function prepareNameScreen() {
 
 function validateUsername() {
   const v = usernameInput.value;
-  usernameField.classList.toggle('is-valid', usernameOk(v));
+  usernameField.classList.toggle('is-valid', Boolean(v) && usernameOk(v));
   usernameField.classList.toggle('is-invalid', v.length >= 3 && !usernameOk(v));
 }
 
@@ -276,7 +283,7 @@ $('#name-form').addEventListener('submit', (e) => {
   }
   paintAvatar($('#bio-avatar'), name, name);
   $('#bio-name').textContent = name;
-  $('#bio-username').textContent = `@${username}`;
+  $('#bio-username').textContent = username ? `@${username}` : '';
   showScreen('screen-bio', 'forward', () => bioInput.focus({ preventScroll: true }));
 });
 
@@ -311,6 +318,7 @@ $('#bio-form').addEventListener('submit', async (e) => {
     publicId: newPublicId(),
     avatar: { color: null, text: '', photo: null },
     chatPrefs: {},
+    privacy: { hidePhone: false, hideBio: false },
     sessions: [],
     messages: [],
   };

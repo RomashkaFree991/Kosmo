@@ -128,6 +128,21 @@ export function shake(el, cls = 'is-error') {
 /* ---------------------------------------------------------------------------
    Ripple (Material) и «проседание» кнопок
    --------------------------------------------------------------------------- */
+// Без масштабирования страницы (Ctrl + колесо, Ctrl +/−, щипок на iOS)
+// и без копирования текста вне полей ввода
+export function initGuards() {
+  document.addEventListener('wheel', (e) => { if (e.ctrlKey) e.preventDefault(); }, { passive: false });
+  document.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && ['+', '-', '=', '0'].includes(e.key)) e.preventDefault();
+  });
+  ['gesturestart', 'gesturechange', 'gestureend'].forEach((t) => document.addEventListener(t, (e) => e.preventDefault()));
+  document.addEventListener('touchmove', (e) => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
+  ['copy', 'cut'].forEach((t) => document.addEventListener(t, (e) => {
+    if (!e.target.closest?.('input, textarea')) e.preventDefault();
+  }));
+  document.addEventListener('dragstart', (e) => { if (e.target.tagName === 'IMG') e.preventDefault(); });
+}
+
 export function initPress() {
   document.addEventListener('pointerdown', (e) => {
     const host = e.target.closest('.btn, .ripple-host');
@@ -187,7 +202,8 @@ export function userAvatarHtml(user, cls = '') {
   return `<span class="avatar ${cls}${a.photo ? ' has-photo' : ''}" style="${style}" aria-hidden="true">${photo}<span>${text}</span></span>`;
 }
 
-export const newPublicId = () => String(Math.floor(1e9 + Math.random() * 9e9));
+// Публичные ID идут по порядку: 1, 2, 3…
+export const newPublicId = () => String(Object.values(db.all()).reduce((max, u) => Math.max(max, Number(u.publicId) || 0), 0) + 1);
 
 const PERSON_SVG = '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8.5" r="3.8"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/></svg>';
 
@@ -230,9 +246,10 @@ export function cosmicBadge(kind = 'official') {
     <title>${label}</title>
     <g transform="rotate(-24 12 12)"><path d="M0.9 12 A11.1 3.3 0 0 1 23.1 12" fill="none" stroke="url(#cb-ring)" stroke-width="1.3" stroke-linecap="round"/></g>
     <circle cx="12" cy="12" r="8.4" fill="url(#cb-${kind})"/>
+    <circle cx="12" cy="12" r="8.4" fill="url(#cb-shine)"/>
     <g transform="rotate(-24 12 12)"><path d="M0.9 12 A11.1 3.3 0 0 0 23.1 12" fill="none" stroke="url(#cb-ring)" stroke-width="1.3" stroke-linecap="round"/></g>
-    <path d="M8.5 12.1l2.4 2.4 4.6-4.9" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-    <circle cx="20.4" cy="4" r="1.05" fill="#fff"/><circle cx="3.4" cy="19.6" r="0.75" fill="#fff" opacity=".7"/>
+    <path class="cb-check" pathLength="1" d="M8.5 12.1l2.4 2.4 4.6-4.9" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle class="cb-star" cx="20.4" cy="4" r="1.05" fill="#fff"/><circle class="cb-star cb-star-2" cx="3.4" cy="19.6" r="0.75" fill="#fff"/>
   </svg>`;
 }
 
@@ -324,8 +341,14 @@ export const db = {
 (function upgrade() {
   const all = db.all();
   let changed = false;
-  for (const u of Object.values(all)) {
-    if (!u.publicId) { u.publicId = newPublicId(); changed = true; }
+  // старые случайные 10-значные ID → по порядку регистрации, начиная с 1
+  const list = Object.values(all).sort((a, b) => a.createdAt - b.createdAt);
+  if (list.some((u) => !/^\d{1,8}$/.test(u.publicId ?? ''))) {
+    list.forEach((u, i) => { u.publicId = String(i + 1); });
+    changed = true;
+  }
+  for (const u of list) {
+    if (!u.privacy) { u.privacy = { hidePhone: false, hideBio: false }; changed = true; }
     if (!u.avatar) { u.avatar = { color: null, text: '', photo: null }; changed = true; }
     if (!u.chatPrefs) { u.chatPrefs = {}; changed = true; }
   }
