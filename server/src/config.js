@@ -11,13 +11,16 @@ export const config = {
   dataDir: env.DATA_DIR ?? path.join(root, 'data'),
   webDir: env.WEB_DIR ?? path.join(root, 'web'),
   publicUrl: env.PUBLIC_URL ?? 'http://localhost:3000',
-  // SMS: device | phone | smsru | twilio | telegram | log
+  // SMS: tgbot | device | phone | smsru | twilio | telegram | log
   smsProvider: (env.SMS_PROVIDER ?? 'log').toLowerCase(),
   smsruApiId: env.SMSRU_API_ID ?? '',
   twilioSid: env.TWILIO_SID ?? '',
   twilioToken: env.TWILIO_TOKEN ?? '',
   twilioFrom: env.TWILIO_FROM ?? '',
   telegramGatewayToken: env.TG_GATEWAY_TOKEN ?? '',
+  // свой Telegram-бот (@BotFather): коды приходят в Telegram, бесплатно
+  tgBotToken: env.TG_BOT_TOKEN ?? '',
+  tgApi: env.TG_API ?? 'https://api.telegram.org',
   // свой SMS-шлюз: телефон с приложением Kosmo SMS подключается с этим ключом
   gatewayKey: env.GATEWAY_KEY ?? '',
   // сторонний вариант: приложение SMS Gateway for Android (sms-gate.app)

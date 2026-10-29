@@ -2,6 +2,7 @@
 # Kosmo: установка на VPS одной командой (Ubuntu 22.04+/Debian 12+).
 #   curl -fsSL https://raw.githubusercontent.com/RomashkaFree991/Kosmo/ccr-c8594e95-6dq4vq/deploy/install.sh | sudo bash -s -- kosmochat.duckdns.org you@mail.com
 # Коды можно задать сразу, без вопросов:
+#   … | sudo bash -s -- домен почта --tgbot ТОКЕН   (свой Telegram-бот из @BotFather — бесплатно)
 #   … | sudo bash -s -- домен почта --device    (свой Android-телефон с приложением Kosmo SMS — бесплатно)
 #   … --smsru API_ID | --telegram TOKEN | --twilio SID TOKEN FROM | --phone USER PASS (sms-gate.app) | --no-sms
 # Ставит Node 22, pm2, nginx, сертификат Let's Encrypt, coturn (звонки),
@@ -15,6 +16,7 @@ SMS_ARG=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --device)   SMS_ARG="device"; shift ;;
+    --tgbot)    SMS_ARG="tgbot|${2:-}"; shift 2 || shift $# ;;
     --phone)    SMS_ARG="phone|${2:-}|${3:-}"; shift 3 || shift $# ;;
     --smsru)    SMS_ARG="smsru|${2:-}"; shift 2 || shift $# ;;
     --telegram) SMS_ARG="telegram|${2:-}"; shift 2 || shift $# ;;
@@ -89,27 +91,31 @@ new_gateway_key() { openssl rand -base64 96 | tr -dc 'A-HJ-NP-Z2-9' | cut -c1-16
 sms_setup() {
   echo
   echo "Как отправлять коды подтверждения?"
-  echo "  0) Свой телефон  — приложение Kosmo SMS: Android с SIM шлёт коды сам (бесплатно, без сторонних сервисов)"
-  echo "  1) SMS.ru        — SMS на номера РФ/СНГ (платно, нужен api_id из sms.ru)"
-  echo "  2) Telegram      — код приходит в Telegram (Telegram Gateway)"
-  echo "  3) Twilio        — SMS по всему миру (платно)"
-  echo "  4) Пока без SMS  — код пишется в лог: kosmo logs"
-  echo "  5) SMS Gateway for Android (sms-gate.app)"
-  local c; c="$(ask 'Выбор [0-5, Enter = 0]:' 0)"
+  echo "  0) Telegram-бот  — бесплатно: свой бот из @BotFather, коды приходят в Telegram"
+  echo "  1) Свой телефон  — приложение Kosmo SMS: Android с SIM шлёт SMS сам"
+  echo "  2) SMS.ru        — SMS на номера РФ/СНГ (платно)"
+  echo "  3) Telegram Gateway — официальный, платно"
+  echo "  4) Twilio        — SMS по всему миру (платно)"
+  echo "  5) Пока без SMS  — код пишется в лог: kosmo logs"
+  echo "  6) SMS Gateway for Android (sms-gate.app)"
+  local c; c="$(ask 'Выбор [0-6, Enter = 0]:' 0)"
   SMS_PROVIDER=log; SMSRU_API_ID=""; TG_GATEWAY_TOKEN=""; TWILIO_SID=""; TWILIO_TOKEN=""; TWILIO_FROM=""
-  SMSGATE_URL=""; SMSGATE_USER=""; SMSGATE_PASS=""
+  SMSGATE_URL=""; SMSGATE_USER=""; SMSGATE_PASS=""; TG_BOT_TOKEN=""
   case "$c" in
-    0) SMS_PROVIDER=device ;;
-    5) SMS_PROVIDER=phone
+    0) SMS_PROVIDER=tgbot
+       echo "  В Telegram откройте @BotFather → /newbot → придумайте имя → скопируйте токен (123456:ABC…)."
+       TG_BOT_TOKEN="$(ask 'Токен бота:' '')" ;;
+    1) SMS_PROVIDER=device ;;
+    6) SMS_PROVIDER=phone
        echo "  В приложении включите Cloud server и скопируйте Username и Password с главного экрана."
        echo "  Введите их ниже и нажмите Enter после каждого:"
        SMSGATE_USER="$(ask 'Username:' '')"; SMSGATE_PASS="$(ask 'Password:' '')"
        SMSGATE_URL="$(ask 'Адрес API [Enter = облако api.sms-gate.app]:' '')" ;;
-    1) SMS_PROVIDER=smsru;    SMSRU_API_ID="$(ask 'SMS.ru api_id:' '')" ;;
-    2) SMS_PROVIDER=telegram; TG_GATEWAY_TOKEN="$(ask 'Telegram Gateway token:' '')" ;;
-    3) SMS_PROVIDER=twilio;   TWILIO_SID="$(ask 'Twilio Account SID:' '')"; TWILIO_TOKEN="$(ask 'Twilio Auth Token:' '')"; TWILIO_FROM="$(ask 'Номер отправителя (+1…):' '')" ;;
+    2) SMS_PROVIDER=smsru;    SMSRU_API_ID="$(ask 'SMS.ru api_id:' '')" ;;
+    3) SMS_PROVIDER=telegram; TG_GATEWAY_TOKEN="$(ask 'Telegram Gateway token:' '')" ;;
+    4) SMS_PROVIDER=twilio;   TWILIO_SID="$(ask 'Twilio Account SID:' '')"; TWILIO_TOKEN="$(ask 'Twilio Auth Token:' '')"; TWILIO_FROM="$(ask 'Номер отправителя (+1…):' '')" ;;
   esac
-  if [ "$SMS_PROVIDER" != log ] && [ "$SMS_PROVIDER" != device ] && [ -z "$SMSRU_API_ID$TG_GATEWAY_TOKEN$TWILIO_TOKEN$SMSGATE_PASS" ]; then
+  if [ "$SMS_PROVIDER" != log ] && [ "$SMS_PROVIDER" != device ] && [ -z "$SMSRU_API_ID$TG_GATEWAY_TOKEN$TWILIO_TOKEN$SMSGATE_PASS$TG_BOT_TOKEN" ]; then
     warn "Ключ не введён — коды пока будут в логе (позже: kosmo sms)"; SMS_PROVIDER=log
   fi
   echo "Коды: $SMS_PROVIDER — продолжаю установку…"
@@ -128,7 +134,9 @@ WEB_DIR=$APP_DIR/web
 PUBLIC_URL=https://$DOMAIN
 TRUST_PROXY=1
 MAX_UPLOAD_MB=50
-# SMS: device | phone | smsru | telegram | twilio | log
+# свой Telegram-бот (@BotFather): коды приходят в Telegram, бесплатно
+TG_BOT_TOKEN=$TG_BOT_TOKEN
+# SMS: tgbot | device | phone | smsru | telegram | twilio | log
 # device — свой телефон с приложением Kosmo SMS, подключается с этим ключом
 GATEWAY_KEY=$GATEWAY_KEY
 SMS_PROVIDER=$SMS_PROVIDER
@@ -161,8 +169,9 @@ else
   if [ -n "$SMS_ARG" ] || { [ -n "${SMS_PROVIDER:-}" ] && [ "${KOSMO_SMS_SETUP:-0}" != 1 ]; }; then
     if [ -n "$SMS_ARG" ]; then   # провайдер из команды (--phone и т.п.)
       IFS='|' read -r SMS_PROVIDER A1 A2 A3 <<<"$SMS_ARG"
-      SMSRU_API_ID=""; TG_GATEWAY_TOKEN=""; TWILIO_SID=""; TWILIO_TOKEN=""; TWILIO_FROM=""; SMSGATE_USER=""; SMSGATE_PASS=""
+      SMSRU_API_ID=""; TG_GATEWAY_TOKEN=""; TWILIO_SID=""; TWILIO_TOKEN=""; TWILIO_FROM=""; SMSGATE_USER=""; SMSGATE_PASS=""; TG_BOT_TOKEN=""
       case "$SMS_PROVIDER" in
+        tgbot) TG_BOT_TOKEN="$A1" ;;
         phone) SMSGATE_USER="$A1"; SMSGATE_PASS="$A2" ;;
         smsru) SMSRU_API_ID="$A1" ;;
         telegram) TG_GATEWAY_TOKEN="$A1" ;;
@@ -176,6 +185,7 @@ else
   SMSRU_API_ID="${SMSRU_API_ID:-}"; TG_GATEWAY_TOKEN="${TG_GATEWAY_TOKEN:-}"
   TWILIO_SID="${TWILIO_SID:-}"; TWILIO_TOKEN="${TWILIO_TOKEN:-}"; TWILIO_FROM="${TWILIO_FROM:-}"
   SMSGATE_URL="${SMSGATE_URL:-}"; SMSGATE_USER="${SMSGATE_USER:-}"; SMSGATE_PASS="${SMSGATE_PASS:-}"
+  TG_BOT_TOKEN="${TG_BOT_TOKEN:-}"
   TEST_NUMBERS="${TEST_NUMBERS:-1}"
   TURN_SECRET="${TURN_SECRET:-$(openssl rand -hex 24)}"
   GATEWAY_KEY="${GATEWAY_KEY:-$(new_gateway_key)}"
@@ -370,6 +380,15 @@ URL="http://$DOMAIN"; [ -f "$CERT" ] && URL="https://$DOMAIN"
 printf '\n\033[1;32m✓ Kosmo работает: %s\033[0m\n' "$URL"
 echo "  База данных: $DATA_DIR/kosmo.db (SQLite)    Файлы: $DATA_DIR/media"
 echo "  Коды входа: $SMS_PROVIDER$( [ "$SMS_PROVIDER" = log ] && echo ' — смотрите в «kosmo logs»; подключить SMS: kosmo sms')"
+if [ "$SMS_PROVIDER" = tgbot ]; then
+  BOTNAME="$(curl -fsS --max-time 10 "https://api.telegram.org/bot$TG_BOT_TOKEN/getMe" | grep -o '"username":"[^"]*"' | cut -d'"' -f4 || true)"
+  if [ -n "$BOTNAME" ]; then
+    printf '\n\033[1;36m  Коды приходят в Telegram-бота: https://t.me/%s\033[0m\n' "$BOTNAME"
+    echo "  При первом входе человек открывает бота, жмёт «Поделиться номером» — и код приходит туда."
+  else
+    warn "Токен бота не подошёл или Telegram недоступен с сервера. Задать заново: kosmo sms"
+  fi
+fi
 if [ "$SMS_PROVIDER" = device ]; then
   printf '\n\033[1;36m  Телефон для SMS (приложение Kosmo SMS):\033[0m\n'
   echo "  1. Откройте на Android-телефоне с SIM: $URL/kosmo-sms.apk и установите"

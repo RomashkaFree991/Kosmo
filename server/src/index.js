@@ -13,6 +13,7 @@ import {
 } from './auth.js';
 import { smsChannel } from './sms.js';
 import { handleGatewayUpgrade, gatewayStatus } from './gateway.js';
+import { startBot } from './tgbot.js';
 import { snapshot, applyPatches, broadcastUser, housekeeping } from './sync.js';
 import { attachRealtime, kickSession, qrDeliver, sendTo } from './realtime.js';
 
@@ -72,8 +73,8 @@ route('GET', '/api/gateway', () => ({ online: gatewayStatus().phones.length }));
 route('POST', '/api/auth/code', async (req) => {
   const { phone } = await readBody(req);
   const p = normPhone(phone);
-  await startCode(p, 'login', clientIp(req));
-  return { sent: true, channel: smsChannel() };
+  const info = await startCode(p, 'login', clientIp(req));
+  return { sent: true, channel: smsChannel(), ...info };
 });
 
 route('POST', '/api/auth/verify', async (req) => {
@@ -194,13 +195,12 @@ route('POST', '/api/phone/code', async (req) => {
   const s = auth(req);
   const { step, phone, ticket } = await readBody(req);
   const u = users.get(s.userId);
-  if (step === 'old') { await startCode(u.phone, `phone-old:${u.id}`, clientIp(req)); return { sent: true }; }
+  if (step === 'old') return { sent: true, ...(await startCode(u.phone, `phone-old:${u.id}`, clientIp(req))) };
   useTicket(ticket, `phone-old:${u.id}`, false);
   const p = normPhone(phone);
   if (p === u.phone) throw new ApiError(400, 'same_phone', 'This is already your number');
   if (users.byPhone(p)) throw new ApiError(409, 'phone_taken', 'This number is used by another account');
-  await startCode(p, `phone-new:${u.id}`, clientIp(req));
-  return { sent: true };
+  return { sent: true, ...(await startCode(p, `phone-new:${u.id}`, clientIp(req))) };
 });
 
 route('POST', '/api/phone/verify', async (req) => {
@@ -364,6 +364,7 @@ const server = http.createServer(async (req, res) => {
 wss = attachRealtime(server, { onActivity: activity, onGateway: (req, socket, head) => handleGatewayUpgrade(req, socket, head, clientIp(req)) });
 wss.on('connection', (ws) => { ws.connId = crypto.randomBytes(8).toString('hex'); ws.send(JSON.stringify({ t: 'conn', id: ws.connId })); });
 
+if (config.smsProvider === 'tgbot') startBot();
 setInterval(() => { try { housekeeping(); } catch (e) { console.error('housekeeping', e); } }, 5000);
 sql.prepare('DELETE FROM tickets WHERE expires < ?').run(Date.now());
 

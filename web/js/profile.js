@@ -366,9 +366,18 @@ const newOtp = createOtp($('#cp-new-otp'), {
   },
 });
 
+// код через Telegram-бота, а номер ещё не привязан — открыть бота
+function tgNotice(r) {
+  if (r?.bot && r.linked === false) {
+    toast(`Open @${r.bot} in Telegram and share your number`);
+    window.open(`https://t.me/${r.bot}`, '_blank', 'noopener');
+  }
+}
+
 $('#cp-start').addEventListener('click', async () => {
   try {
-    await api('POST', '/api/phone/code', { step: 'old' });
+    const r = await api('POST', '/api/phone/code', { step: 'old' });
+    tgNotice(r);
   } catch (err) { toast(err.message); return; }
   $('#cp-old').textContent = formatPhone(state.acc.user.phone);
   oldOtp.reset();
@@ -387,8 +396,9 @@ $('#cp-new-form').addEventListener('submit', (e) => {
   requestAnimationFrame(() => cpSubmit.classList.add('is-loading'));
   const stop = () => { cpSubmit.classList.remove('is-loading'); cpSubmit.style.removeProperty('width'); };
   api('POST', '/api/phone/code', { step: 'new', phone, ticket: cpTicket })
-    .then(() => {
+    .then((r) => {
       stop();
+      tgNotice(r);
       $('#cp-new').textContent = formatPhone(phone);
       newOtp.reset();
       setStep('new-code');

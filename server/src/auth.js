@@ -34,15 +34,17 @@ export async function startCode(phone, purpose, ip) {
     if (prev && Date.now() - prev.sent_at < 55_000) throw new ApiError(429, 'wait', 'Wait a minute before requesting a new code');
     if (!rateLimit(`phone:${phone}`, 6, 3_600_000)) throw new ApiError(429, 'too_many', 'Too many codes for this number');
   }
+  let info = {};
   const code = isTest(phone) ? '000000' : String(crypto.randomInt(0, 1_000_000)).padStart(6, '0');
   if (!isTest(phone)) {
-    try { await sendCode(phone, code); } catch (e) {
+    try { info = (await sendCode(phone, code)) ?? {}; } catch (e) {
       console.error('[sms]', e.message);
       throw new ApiError(502, 'sms_failed', 'Could not send the code, try later');
     }
   }
   sql.prepare('INSERT OR REPLACE INTO codes (phone, purpose, code_hash, expires, attempts, sent_at) VALUES (?, ?, ?, ?, 0, ?)')
     .run(phone, purpose, sha(`${phone}:${code}`), Date.now() + CODE_TTL, Date.now());
+  return info;
 }
 
 export function checkCode(phone, purpose, code) {

@@ -539,6 +539,8 @@ html[data-theme="material"] .search-tabs [aria-selected="true"] { background: va
 .code-hint { margin: -6px 0 18px; color: var(--c-text-2); font-size: 15px; text-align: center; }
 .code-resend { margin-top: 22px; }
 .code-resend:disabled { color: var(--c-text-3); }
+.code-tg { margin-top: 22px; width: 100%; max-width: 320px; display: inline-flex; align-items: center; justify-content: center; text-decoration: none; }
+.code-tg[hidden] { display: none; }
 .otp.is-checking { opacity: 0.6; pointer-events: none; }
 .otp.is-error .otp-cells { animation: shake 420ms cubic-bezier(0.36, 0.07, 0.19, 0.97); }
 .otp.is-error .otp-cell { border-color: var(--c-error) !important; }

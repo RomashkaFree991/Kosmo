@@ -113,8 +113,7 @@ $('#phone-form').addEventListener('submit', (e) => {
   // код отправляет сервер: SMS, Telegram или (в тестовом режиме) лог
   Promise.all([api('POST', '/api/auth/code', { phone: flow.phone }, { auth: false }), wait(600)])
     .then(([r]) => {
-      $('#code-hint').textContent = r.channel === 'telegram' ? `Code sent to Telegram · ${phoneField.e164}`
-        : r.channel === 'log' ? 'Test mode: the code is in the server log' : `Code sent by SMS to ${phoneField.e164}`;
+      paintHint(r);
       otp.reset();
       resendTimer();
       showScreen('screen-code', 'forward', () => otp.focus());
@@ -132,6 +131,19 @@ $('#qr-btn').addEventListener('click', () => openSheet('qr', {
 /* ---------------------------------------------------------------------------
    2. Код из SMS
    --------------------------------------------------------------------------- */
+// Подсказка, куда пришёл код. Telegram-бот: если номер ещё не привязан —
+// кнопка открыть бота и поделиться номером, код придёт туда же
+function paintHint(r) {
+  const tg = $('#code-tg');
+  tg.hidden = !(r.channel === 'tgbot' && r.bot);
+  if (r.bot) tg.href = `https://t.me/${r.bot}`;
+  tg.textContent = r.bot ? `Open @${r.bot}` : '';
+  $('#code-hint').textContent = r.channel === 'tgbot'
+    ? (r.linked ? `Code sent to Telegram · @${r.bot}` : 'Open our Telegram bot and share your number — the code will arrive there')
+    : r.channel === 'telegram' ? `Code sent to Telegram · ${phoneField.e164}`
+    : r.channel === 'log' ? 'Test mode: the code is in the server log' : `Code sent by SMS to ${phoneField.e164}`;
+}
+
 // «Отправить ещё раз» — через минуту
 const resendBtn = $('#code-resend');
 let resendTick = null;
@@ -150,7 +162,7 @@ function resendTimer() {
 resendBtn.addEventListener('click', async () => {
   resendBtn.disabled = true;
   try {
-    await api('POST', '/api/auth/code', { phone: flow.phone }, { auth: false });
+    paintHint(await api('POST', '/api/auth/code', { phone: flow.phone }, { auth: false }));
     toast('Code sent again');
     resendTimer();
   } catch (err) {
