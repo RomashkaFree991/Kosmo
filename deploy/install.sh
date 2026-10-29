@@ -9,6 +9,7 @@
 # настройки и база сохраняются.
 set -euo pipefail
 
+ORIG_ARGS=("$@")
 POS=()
 SMS_ARG=""
 while [ $# -gt 0 ]; do
@@ -75,6 +76,10 @@ if [ -d "$APP_DIR/.git" ]; then
 else
   rm -rf "$APP_DIR"
   git clone -q --depth 1 --branch "$BRANCH" "$REPO" "$APP_DIR"
+fi
+# скрипт из curl мог быть старым (кеш GitHub) — дальше выполняем свежий из репозитория
+if [ -z "${KOSMO_REEXEC:-}" ] && ! cmp -s "$0" "$APP_DIR/deploy/install.sh" 2>/dev/null; then
+  KOSMO_REEXEC=1 exec bash "$APP_DIR/deploy/install.sh" "${ORIG_ARGS[@]}"
 fi
 (cd "$APP_DIR/server" && npm install --omit=dev --no-audit --no-fund --silent)
 mkdir -p "$DATA_DIR" && chmod 700 "$DATA_DIR"
