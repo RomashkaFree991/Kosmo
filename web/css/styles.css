@@ -92,6 +92,8 @@ html[data-theme="material"] {
 
 *, *::before, *::after { box-sizing: border-box; }
 [hidden] { display: none !important; }
+.has-session .auth { display: none; }   /* вошедший пользователь сразу видит приложение */
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
 html, body { height: 100%; }
 body {
@@ -299,6 +301,18 @@ html[data-theme="material"] .seg-item[aria-checked="true"] .seg-check { display:
 html[data-theme="material"] .brand { font-weight: 600; letter-spacing: 0; }
 
 form { width: 100%; display: flex; flex-direction: column; gap: 12px; }
+
+/* Разделитель «or» между «Continue» и входом по QR */
+.divider-or {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 6px 4px;
+  font-size: 13px;
+  color: var(--c-text-3);
+}
+.divider-or::before, .divider-or::after { content: ""; flex: 1; height: 0.5px; background: var(--c-hairline); }
+html[data-theme="material"] .divider-or::before, html[data-theme="material"] .divider-or::after { height: 1px; }
 
 /* ---------- Поле телефона ---------- */
 .field {
@@ -537,10 +551,9 @@ html[data-theme="material"] .palette { display: flex; }
 .photo-btn svg { width: 20px; height: 20px; }
 
 /* ---------- Экран кода ---------- */
-#screen-code { position: relative; padding-top: 4px; }
 .icon-btn.back-btn { position: fixed; z-index: 6; top: calc(max(16px, env(safe-area-inset-top)) + 60px); left: 16px; }
-.code-title { margin: 0 0 28px; font-size: 28px; line-height: 34px; font-weight: 700; letter-spacing: -0.02em; }
-html[data-theme="material"] .code-title { font-weight: 500; letter-spacing: 0; }
+.screen-title { margin: 0 0 28px; font-size: 28px; line-height: 34px; font-weight: 700; letter-spacing: -0.02em; }
+html[data-theme="material"] .screen-title { font-weight: 500; letter-spacing: 0; }
 
 .otp { position: relative; width: 100%; }
 /* Настоящее поле лежит прозрачным поверх ячеек: так работают вставка,

@@ -9,123 +9,322 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Roboto+Flex:opsz,wght@8..144,400;8..144,500;8..144,600;8..144,700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/styles.css">
-  <!-- Скрываем интерфейс до старта заставки, чтобы не мигал -->
+  <link rel="stylesheet" href="css/app.css">
+  <!-- До первого кадра: тема, вошёл ли пользователь, нужна ли заставка -->
   <script>
-    if (!matchMedia('(prefers-reduced-motion: reduce)').matches) document.documentElement.classList.add('is-intro');
+    (function () {
+      var get = function (k) { try { return localStorage.getItem('kosmo:' + k); } catch (e) { return null; } };
+      var root = document.documentElement;
+      if (get('theme') === 'material') root.dataset.theme = 'material';
+      if (get('session')) root.classList.add('has-session');
+      else if (!matchMedia('(prefers-reduced-motion: reduce)').matches) root.classList.add('is-intro');
+    })();
   </script>
   <script src="js/vendor/refraction.js" defer></script>
   <script src="js/app.js" type="module"></script>
 </head>
 <body>
-  <header class="topbar reveal" style="--d: 4">
-    <div class="seg glass" data-refract="0.8" role="radiogroup" aria-label="Design style">
-      <span class="seg-thumb" aria-hidden="true"></span>
-      <button class="seg-item" type="button" role="radio" data-set-theme="glass" aria-checked="true">
-        <svg class="i seg-check" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
-        Liquid Glass
+  <!-- ======================= Вход и регистрация ======================= -->
+  <div class="auth" id="auth">
+    <header class="topbar reveal" style="--d: 4">
+      <div class="seg glass" data-refract="0.8" role="radiogroup" aria-label="Design style">
+        <span class="seg-thumb" aria-hidden="true"></span>
+        <button class="seg-item" type="button" role="radio" data-set-theme="glass" aria-checked="true">
+          <svg class="i seg-check" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
+          Liquid Glass
+        </button>
+        <button class="seg-item" type="button" role="radio" data-set-theme="material" aria-checked="false">
+          <svg class="i seg-check" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
+          Material You
+        </button>
+      </div>
+    </header>
+
+    <button class="icon-btn glass back-btn" type="button" id="back-btn" aria-label="Back" data-refract="0.6" hidden>
+      <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 6l-6 6 6 6"/></svg>
+    </button>
+
+    <main class="stage">
+      <!-- 1. Номер телефона -->
+      <section class="screen is-active" id="screen-phone" aria-labelledby="phone-title">
+        <div class="logo" id="logo" aria-hidden="true">
+          <span class="logo-glow"></span>
+          <svg class="planet" viewBox="0 0 120 120">
+            <defs>
+              <linearGradient id="planet-fill" x1="0.15" y1="0.1" x2="0.85" y2="0.95">
+                <stop offset="0" class="stop-a"/>
+                <stop offset="1" class="stop-b"/>
+              </linearGradient>
+              <radialGradient id="planet-shade" cx="0.35" cy="0.3" r="0.75">
+                <stop offset="0" stop-color="#fff" stop-opacity="0.55"/>
+                <stop offset="0.45" stop-color="#fff" stop-opacity="0"/>
+                <stop offset="1" stop-color="#000" stop-opacity="0.45"/>
+              </radialGradient>
+              <linearGradient id="ring-fill" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0" class="stop-a"/>
+                <stop offset="1" class="stop-b"/>
+              </linearGradient>
+            </defs>
+            <g transform="rotate(-18 60 60)">
+              <!-- задние половины колец: их перекрывает планета -->
+              <path class="ring ring-outer" pathLength="1" d="M4 60 A56 15 0 0 1 116 60"/>
+              <path class="ring ring-inner" pathLength="1" d="M14 60 A46 11.5 0 0 1 106 60"/>
+            </g>
+            <g class="planet-body">
+              <circle cx="60" cy="60" r="27" fill="url(#planet-fill)"/>
+              <circle cx="60" cy="60" r="27" fill="url(#planet-shade)"/>
+            </g>
+            <g transform="rotate(-18 60 60)">
+              <!-- передние половины колец — поверх планеты -->
+              <path class="ring ring-outer ring-front" pathLength="1" d="M4 60 A56 15 0 0 0 116 60"/>
+              <path class="ring ring-inner ring-front" pathLength="1" d="M14 60 A46 11.5 0 0 0 106 60"/>
+            </g>
+          </svg>
+        </div>
+        <h1 class="brand reveal" id="phone-title" style="--d: 0">Kosmo</h1>
+
+        <form id="phone-form" novalidate>
+          <div class="field glass reveal" id="phone-field" data-refract="0.7" style="--d: 1">
+            <button type="button" class="country-btn" id="country-btn" aria-haspopup="dialog" aria-label="Country: Russia, +7">
+              <img class="flag" id="country-flag" src="https://flagcdn.com/ru.svg" alt="" width="26" height="19">
+              <span class="dial" id="country-dial">+7</span>
+              <svg class="i chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10l5 5 5-5"/></svg>
+            </button>
+            <span class="field-divider" aria-hidden="true"></span>
+            <input id="phone" type="tel" inputmode="tel" autocomplete="tel-national" placeholder="000 000-00-00" aria-label="Phone number">
+            <button type="button" class="clear-btn" id="clear-btn" aria-label="Clear">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" class="clear-bg"/><path class="clear-x" d="M9.2 9.2l5.6 5.6M14.8 9.2l-5.6 5.6"/></svg>
+            </button>
+          </div>
+
+          <button class="btn btn-primary reveal" type="submit" id="submit-btn" style="--d: 2">
+            <span class="btn-label">Continue</span>
+            <span class="spinner" aria-hidden="true"></span>
+          </button>
+
+          <div class="divider-or reveal" aria-hidden="true" style="--d: 3"><span>or</span></div>
+
+          <button class="btn btn-secondary glass reveal" type="button" id="qr-btn" data-refract="0.6" style="--d: 3">
+            <svg class="i" viewBox="0 0 24 24" aria-hidden="true">
+              <rect x="3.5" y="3.5" width="6.5" height="6.5" rx="1.6"/>
+              <rect x="14" y="3.5" width="6.5" height="6.5" rx="1.6"/>
+              <rect x="3.5" y="14" width="6.5" height="6.5" rx="1.6"/>
+              <rect x="14" y="14" width="2.5" height="2.5" rx="0.6"/>
+              <rect x="18" y="18" width="2.5" height="2.5" rx="0.6"/>
+            </svg>
+            Log in with QR code
+          </button>
+        </form>
+
+        <div class="palette reveal" role="radiogroup" aria-label="Dynamic color" style="--d: 4">
+          <div class="palette-row"></div>
+          <label class="photo-btn" for="photo-input" aria-label="Color from photo" title="Color from photo">
+            <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="3.5"/><circle cx="9" cy="10" r="1.8"/><path d="M4 17.5l4.8-4.3 3.4 3 3.3-3.4 4.5 4.2"/></svg>
+          </label>
+        </div>
+      </section>
+
+      <!-- 2. Код из SMS -->
+      <section class="screen" id="screen-code" aria-labelledby="code-title" hidden>
+        <h1 class="screen-title" id="code-title">Enter code</h1>
+        <div class="otp" id="otp">
+          <input id="otp-input" class="otp-input" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" aria-label="6-digit code">
+          <div class="otp-cells" aria-hidden="true">
+            <span class="otp-cell"></span><span class="otp-cell"></span><span class="otp-cell"></span>
+            <span class="otp-cell"></span><span class="otp-cell"></span><span class="otp-cell"></span>
+          </div>
+        </div>
+      </section>
+
+      <!-- 3. Код-пароль: 4 ячейки и клавиатура как на iPhone -->
+      <section class="screen" id="screen-pass" aria-labelledby="pass-title" hidden>
+        <h1 class="screen-title" id="pass-title">Create passcode</h1>
+        <div class="pass-cells" id="pass-cells" role="img" aria-label="0 of 4 digits entered">
+          <span class="pass-cell"></span><span class="pass-cell"></span><span class="pass-cell"></span><span class="pass-cell"></span>
+        </div>
+        <div class="keypad" id="keypad" aria-label="Keypad">
+          <button type="button" class="key" data-key="1"><span class="key-num">1</span><span class="key-sub">&nbsp;</span></button>
+          <button type="button" class="key" data-key="2"><span class="key-num">2</span><span class="key-sub">ABC</span></button>
+          <button type="button" class="key" data-key="3"><span class="key-num">3</span><span class="key-sub">DEF</span></button>
+          <button type="button" class="key" data-key="4"><span class="key-num">4</span><span class="key-sub">GHI</span></button>
+          <button type="button" class="key" data-key="5"><span class="key-num">5</span><span class="key-sub">JKL</span></button>
+          <button type="button" class="key" data-key="6"><span class="key-num">6</span><span class="key-sub">MNO</span></button>
+          <button type="button" class="key" data-key="7"><span class="key-num">7</span><span class="key-sub">PQRS</span></button>
+          <button type="button" class="key" data-key="8"><span class="key-num">8</span><span class="key-sub">TUV</span></button>
+          <button type="button" class="key" data-key="9"><span class="key-num">9</span><span class="key-sub">WXYZ</span></button>
+          <span class="key-spacer" aria-hidden="true"></span>
+          <button type="button" class="key" data-key="0"><span class="key-num">0</span></button>
+          <button type="button" class="key key-del" data-key="del" aria-label="Delete">
+            <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5h10.5A1.5 1.5 0 0 1 21 6.5v11a1.5 1.5 0 0 1-1.5 1.5H9l-6-7z"/><path d="M12.5 9.5l5 5M17.5 9.5l-5 5"/></svg>
+          </button>
+        </div>
+      </section>
+
+      <!-- 4. Имя и @username -->
+      <section class="screen" id="screen-name" aria-label="Your profile" hidden>
+        <div class="avatar avatar-xl" id="setup-avatar" aria-hidden="true"><span></span></div>
+        <form class="setup-form" id="name-form" novalidate>
+          <div class="field glass" data-refract="0.7" id="name-field">
+            <input id="name-input" type="text" autocomplete="given-name" maxlength="40" placeholder="Name" aria-label="Name">
+          </div>
+          <div class="field glass" data-refract="0.7" id="username-field">
+            <span class="at" aria-hidden="true">@</span>
+            <input id="username-input" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="32" placeholder="username" aria-label="Username" aria-describedby="username-rules">
+            <span class="field-status" aria-hidden="true">
+              <svg class="i ok" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
+              <svg class="i bad" viewBox="0 0 24 24"><path d="M7 7l10 10M17 7L7 17"/></svg>
+            </span>
+          </div>
+          <span class="sr-only" id="username-rules">5–32 characters: a–z, 0–9 and underscores, starting with a letter</span>
+          <button class="btn btn-primary" type="submit">Continue</button>
+        </form>
+      </section>
+
+      <!-- 5. Описание -->
+      <section class="screen" id="screen-bio" aria-label="About you" hidden>
+        <div class="avatar avatar-xl" id="bio-avatar" aria-hidden="true"><span></span></div>
+        <p class="bio-name" id="bio-name"></p>
+        <p class="bio-username" id="bio-username"></p>
+        <form class="setup-form" id="bio-form" novalidate>
+          <div class="field field-area glass" data-refract="0.5" id="bio-field">
+            <textarea id="bio-input" rows="3" maxlength="70" placeholder="Bio" aria-label="Bio"></textarea>
+            <span class="counter" id="bio-counter" aria-hidden="true">70</span>
+          </div>
+          <button class="btn btn-primary" type="submit" id="signup-btn">
+            <span class="btn-label">Sign up</span>
+            <span class="spinner" aria-hidden="true"></span>
+          </button>
+        </form>
+      </section>
+    </main>
+  </div>
+
+  <!-- ======================= Приложение ======================= -->
+  <div class="app" id="app" hidden>
+    <div class="views" id="views">
+      <!-- Чаты -->
+      <section class="view is-active" id="view-chats" data-view="chats" aria-label="Chats">
+        <header class="app-header">
+          <button class="circle-btn glass" type="button" id="new-btn" aria-label="New" aria-haspopup="menu" data-refract="0.7">
+            <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+          </button>
+          <div class="title-pill glass" data-refract="0.7"><span>Chats</span></div>
+          <button class="circle-btn glass" type="button" id="search-btn" aria-label="Search" data-refract="0.7">
+            <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="M15.5 15.5L20 20"/></svg>
+          </button>
+        </header>
+        <ul class="chat-list" id="chat-list"></ul>
+      </section>
+
+      <!-- Лента -->
+      <section class="view" id="view-feed" data-view="feed" aria-label="Feed" hidden>
+        <header class="app-header">
+          <span class="circle-spacer" aria-hidden="true"></span>
+          <div class="title-pill glass" data-refract="0.7"><span>Feed</span></div>
+          <span class="circle-spacer" aria-hidden="true"></span>
+        </header>
+        <div class="feed" id="feed"></div>
+      </section>
+
+      <!-- Профиль -->
+      <section class="view" id="view-profile" data-view="profile" aria-label="Profile" hidden>
+        <header class="app-header">
+          <span class="circle-spacer" aria-hidden="true"></span>
+          <div class="title-pill glass" data-refract="0.7"><span>Profile</span></div>
+          <span class="circle-spacer" aria-hidden="true"></span>
+        </header>
+        <div class="profile">
+          <div class="avatar avatar-xl" id="profile-avatar" aria-hidden="true"><span></span></div>
+          <h2 class="profile-name" id="profile-name"></h2>
+          <p class="profile-meta"><span id="profile-username"></span> · <span id="profile-phone"></span></p>
+          <p class="profile-bio" id="profile-bio"></p>
+
+          <div class="group">
+            <div class="group-row group-row-col">
+              <span class="group-label">Design</span>
+              <div class="seg glass" data-refract="0.8" role="radiogroup" aria-label="Design style">
+                <span class="seg-thumb" aria-hidden="true"></span>
+                <button class="seg-item" type="button" role="radio" data-set-theme="glass" aria-checked="true">
+                  <svg class="i seg-check" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
+                  Liquid Glass
+                </button>
+                <button class="seg-item" type="button" role="radio" data-set-theme="material" aria-checked="false">
+                  <svg class="i seg-check" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
+                  Material You
+                </button>
+              </div>
+              <div class="palette palette-inline" role="radiogroup" aria-label="Dynamic color">
+                <div class="palette-row"></div>
+                <label class="photo-btn" for="photo-input" aria-label="Color from photo" title="Color from photo">
+                  <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="3.5"/><circle cx="9" cy="10" r="1.8"/><path d="M4 17.5l4.8-4.3 3.4 3 3.3-3.4 4.5 4.2"/></svg>
+                </label>
+              </div>
+            </div>
+          </div>
+          <div class="group">
+            <button class="group-row group-row-btn danger" type="button" id="logout-btn">
+              <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4M10 8l-4 4 4 4M6 12h10"/></svg>
+              Log out
+            </button>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- Поиск: выезжает справа, чаты и нижняя панель уходят -->
+    <section class="search-panel" id="search-panel" aria-label="Search" aria-hidden="true" inert>
+      <header class="search-header">
+        <button class="circle-btn glass" type="button" id="search-close" aria-label="Close search" data-refract="0.7">
+          <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 6l-6 6 6 6"/></svg>
+        </button>
+        <label class="search-pill glass" data-refract="0.7">
+          <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="M15.5 15.5L20 20"/></svg>
+          <input type="search" id="search-input" placeholder="Search" aria-label="Search chats and people" autocomplete="off">
+        </label>
+      </header>
+      <div class="search-results" id="search-results"></div>
+    </section>
+
+    <!-- Нижняя панель -->
+    <nav class="tabbar glass" id="tabbar" data-refract="0.8" aria-label="Main">
+      <span class="tab-thumb" aria-hidden="true"></span>
+      <button class="tab is-active" type="button" data-tab="chats" aria-current="page">
+        <span class="tab-icon"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11.5a7.5 7 0 0 1-10.9 6.2L4 19l1.4-4A7 7 0 0 1 4.5 11.5 7.5 7 0 0 1 20 11.5z"/></svg></span>
+        <span class="tab-label">Chats</span>
+        <span class="tab-badge" id="chats-badge" hidden></span>
       </button>
-      <button class="seg-item" type="button" role="radio" data-set-theme="material" aria-checked="false">
-        <svg class="i seg-check" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
-        Material You
+      <button class="tab" type="button" data-tab="feed">
+        <span class="tab-icon"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="4"/><path d="M8 9h8M8 12.5h8M8 16h5"/></svg></span>
+        <span class="tab-label">Feed</span>
+      </button>
+      <button class="tab" type="button" data-tab="search">
+        <span class="tab-icon"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="M15.5 15.5L20 20"/></svg></span>
+        <span class="tab-label">Search</span>
+      </button>
+      <button class="tab" type="button" data-tab="profile">
+        <span class="tab-icon"><span class="avatar avatar-tab" id="tab-avatar" aria-hidden="true"><span></span></span></span>
+        <span class="tab-label">Profile</span>
+      </button>
+    </nav>
+
+    <!-- Меню «+» -->
+    <div class="menu glass glass-text" id="new-menu" role="menu" hidden>
+      <button class="menu-item" type="button" role="menuitem" data-new="chat">
+        <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11.5a7.5 7 0 0 1-10.9 6.2L4 19l1.4-4A7 7 0 0 1 4.5 11.5 7.5 7 0 0 1 20 11.5z"/></svg>
+        New chat
+      </button>
+      <button class="menu-item" type="button" role="menuitem" data-new="group">
+        <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="9" r="3.2"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0M15.5 6.2a3 3 0 0 1 0 5.6M17 14.2a5 5 0 0 1 3.5 4.8"/></svg>
+        New group
+      </button>
+      <button class="menu-item" type="button" role="menuitem" data-new="channel">
+        <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10v4a1 1 0 0 0 1 1h2l6 4V5L7 9H5a1 1 0 0 0-1 1zM17 9a4 4 0 0 1 0 6"/></svg>
+        New channel
       </button>
     </div>
-  </header>
+  </div>
 
-  <main class="stage">
-    <!-- Экран 1: номер телефона -->
-    <section class="screen is-active" id="screen-phone" aria-labelledby="phone-title">
-      <div class="logo" id="logo" aria-hidden="true">
-        <span class="logo-glow"></span>
-        <svg class="planet" viewBox="0 0 120 120">
-          <defs>
-            <linearGradient id="planet-fill" x1="0.15" y1="0.1" x2="0.85" y2="0.95">
-              <stop offset="0" class="stop-a"/>
-              <stop offset="1" class="stop-b"/>
-            </linearGradient>
-            <radialGradient id="planet-shade" cx="0.35" cy="0.3" r="0.75">
-              <stop offset="0" stop-color="#fff" stop-opacity="0.55"/>
-              <stop offset="0.45" stop-color="#fff" stop-opacity="0"/>
-              <stop offset="1" stop-color="#000" stop-opacity="0.45"/>
-            </radialGradient>
-            <linearGradient id="ring-fill" x1="0" y1="0" x2="1" y2="0">
-              <stop offset="0" class="stop-a"/>
-              <stop offset="1" class="stop-b"/>
-            </linearGradient>
-          </defs>
-          <g transform="rotate(-18 60 60)">
-            <!-- задние половины колец: их перекрывает планета -->
-            <path class="ring ring-outer" pathLength="1" d="M4 60 A56 15 0 0 1 116 60"/>
-            <path class="ring ring-inner" pathLength="1" d="M14 60 A46 11.5 0 0 1 106 60"/>
-          </g>
-          <g class="planet-body">
-            <circle cx="60" cy="60" r="27" fill="url(#planet-fill)"/>
-            <circle cx="60" cy="60" r="27" fill="url(#planet-shade)"/>
-          </g>
-          <g transform="rotate(-18 60 60)">
-            <!-- передние половины колец — поверх планеты -->
-            <path class="ring ring-outer ring-front" pathLength="1" d="M4 60 A56 15 0 0 0 116 60"/>
-            <path class="ring ring-inner ring-front" pathLength="1" d="M14 60 A46 11.5 0 0 0 106 60"/>
-          </g>
-        </svg>
-      </div>
-      <h1 class="brand reveal" id="phone-title" style="--d: 0">Kosmo</h1>
-
-      <form id="phone-form" novalidate>
-        <div class="field glass reveal" id="phone-field" data-refract="0.7" style="--d: 1">
-          <button type="button" class="country-btn" id="country-btn" aria-haspopup="dialog" aria-label="Country: Russia, +7">
-            <img class="flag" id="country-flag" src="https://flagcdn.com/ru.svg" alt="" width="26" height="19">
-            <span class="dial" id="country-dial">+7</span>
-            <svg class="i chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10l5 5 5-5"/></svg>
-          </button>
-          <span class="field-divider" aria-hidden="true"></span>
-          <input id="phone" type="tel" inputmode="tel" autocomplete="tel-national" placeholder="000 000-00-00" aria-label="Phone number">
-          <button type="button" class="clear-btn" id="clear-btn" aria-label="Clear">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" class="clear-bg"/><path class="clear-x" d="M9.2 9.2l5.6 5.6M14.8 9.2l-5.6 5.6"/></svg>
-          </button>
-        </div>
-
-        <button class="btn btn-primary reveal" type="submit" id="submit-btn" style="--d: 2">
-          <span class="btn-label">Continue</span>
-          <span class="spinner" aria-hidden="true"></span>
-        </button>
-
-        <button class="btn btn-secondary glass reveal" type="button" id="qr-btn" data-refract="0.6" style="--d: 3">
-          <svg class="i" viewBox="0 0 24 24" aria-hidden="true">
-            <rect x="3.5" y="3.5" width="6.5" height="6.5" rx="1.6"/>
-            <rect x="14" y="3.5" width="6.5" height="6.5" rx="1.6"/>
-            <rect x="3.5" y="14" width="6.5" height="6.5" rx="1.6"/>
-            <rect x="14" y="14" width="2.5" height="2.5" rx="0.6"/>
-            <rect x="18" y="18" width="2.5" height="2.5" rx="0.6"/>
-          </svg>
-          Log in with QR code
-        </button>
-      </form>
-
-      <!-- Только в Material You: исходный цвет динамической палитры -->
-      <div class="palette reveal" id="palette" role="radiogroup" aria-label="Dynamic color" style="--d: 4">
-        <div class="palette-row" id="palette-row"></div>
-        <label class="photo-btn" for="photo-input" aria-label="Color from photo" title="Color from photo">
-          <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="3.5"/><circle cx="9" cy="10" r="1.8"/><path d="M4 17.5l4.8-4.3 3.4 3 3.3-3.4 4.5 4.2"/></svg>
-        </label>
-        <input type="file" id="photo-input" accept="image/*" hidden>
-      </div>
-    </section>
-
-    <!-- Экран 2: код -->
-    <section class="screen" id="screen-code" aria-labelledby="code-title" hidden>
-      <button class="icon-btn glass back-btn" type="button" id="back-btn" aria-label="Back" data-refract="0.6">
-        <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 6l-6 6 6 6"/></svg>
-      </button>
-      <h1 class="code-title" id="code-title">Enter code</h1>
-      <div class="otp" id="otp">
-        <input id="otp-input" class="otp-input" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" aria-label="6-digit code">
-        <div class="otp-cells" aria-hidden="true">
-          <span class="otp-cell"></span><span class="otp-cell"></span><span class="otp-cell"></span>
-          <span class="otp-cell"></span><span class="otp-cell"></span><span class="otp-cell"></span>
-        </div>
-      </div>
-    </section>
-  </main>
+  <input type="file" id="photo-input" accept="image/*" hidden>
 
   <!-- Нижняя панель: страна / QR -->
   <div class="scrim" id="scrim" hidden></div>
