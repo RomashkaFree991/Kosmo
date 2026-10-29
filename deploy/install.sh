@@ -30,7 +30,7 @@ APP_DIR=/opt/kosmo
 DATA_DIR=/var/lib/kosmo
 ENV_DIR=/etc/kosmo
 ENV_FILE="$ENV_DIR/kosmo.env"
-PORT=3000
+PORT=3710   # если занят — берётся следующий свободный
 
 say()  { printf '\n\033[1;35m▸ %s\033[0m\n' "$*"; }
 warn() { printf '\033[1;33m! %s\033[0m\n' "$*"; }
@@ -148,6 +148,7 @@ CONF
 if [ -f "$ENV_FILE" ] && [ "${KOSMO_SMS_SETUP:-0}" != 1 ] && [ -z "$SMS_ARG" ]; then
   say "Настройки уже есть: $ENV_FILE (сохраняю)"
   set -a; . "$ENV_FILE"; set +a
+
   sed -i "s/^DOMAIN=.*/DOMAIN=$DOMAIN/; s/^TURN_HOST=.*/TURN_HOST=$DOMAIN/; s#^PUBLIC_URL=.*#PUBLIC_URL=https://$DOMAIN#" "$ENV_FILE"
   grep -q '^GATEWAY_KEY=.' "$ENV_FILE" || { sed -i '/^GATEWAY_KEY=/d' "$ENV_FILE"; echo "GATEWAY_KEY=$(new_gateway_key)" >> "$ENV_FILE"; }
 else
@@ -176,6 +177,17 @@ else
   write_env
 fi
 set -a; . "$ENV_FILE"; set +a
+
+# ---------- Порт: на сервере могут жить другие проекты ----------
+port_busy() { (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null; }
+if pm2 describe kosmo >/dev/null 2>&1; then pm2 delete kosmo >/dev/null; sleep 1; fi
+PORT="${PORT:-3710}"; [ "$PORT" = 3000 ] && PORT=3710   # 3000 часто занят другими проектами
+while port_busy "$PORT"; do
+  warn "Порт $PORT занят другой программой — беру следующий"
+  PORT=$((PORT + 1))
+done
+sed -i "s/^PORT=.*/PORT=$PORT/" "$ENV_FILE"
+echo "Kosmo слушает 127.0.0.1:$PORT"
 
 # ---------- nginx ----------
 say "nginx для $DOMAIN"
@@ -242,7 +254,7 @@ $LOCATIONS
 NGX
   fi
   ln -sf "$SITE" /etc/nginx/sites-enabled/kosmo
-  rm -f /etc/nginx/sites-enabled/default
+  # чужие сайты (в т.ч. default) не трогаем: наш блок выбирается по server_name
   # старые nginx не знают «http2 on»
   if ! nginx -t >/dev/null 2>&1; then
     sed -i 's/^    http2 on;$//; s/listen 443 ssl;/listen 443 ssl http2;/; s/listen \[::\]:443 ssl;/listen [::]:443 ssl http2;/' "$SITE"
@@ -314,7 +326,6 @@ systemctl restart coturn || warn "coturn не запустился — звон�
 
 # ---------- pm2 ----------
 say "Сервер Kosmo через pm2"
-if pm2 describe kosmo >/dev/null 2>&1; then pm2 delete kosmo >/dev/null; fi
 pm2 start "$APP_DIR/deploy/ecosystem.config.cjs" >/dev/null
 pm2 save >/dev/null
 pm2 startup systemd -u root --hp /root >/dev/null 2>&1 || true
