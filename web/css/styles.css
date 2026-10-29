@@ -1,0 +1,837 @@
+/* ==========================================================================
+   Kosmo — экран входа
+   Две темы на одной разметке: html[data-theme="glass"] (Liquid Glass, iOS)
+   и html[data-theme="material"] (Material You, динамический цвет).
+   Компоненты читают только переменные --c-*, темы их переопределяют.
+   ========================================================================== */
+
+:root {
+  color-scheme: dark;
+  --bg: #000;
+  --page-bg: #000;   /* фон страницы: чёрный или основной тон обоев */
+
+  /* Обои (Profile → Designs). color.js пересчитывает тона из палитры */
+  --wpm-bg: #1d1238; --wpm-a: #3b2a6b; --wpm-b: #5a2f4d; --wpm-line: #e9ddff; --wpm-dot: #8f73d8; --wpm-dot2: #fdf7ff;
+  --wpg-bg: #07050f; --wpg-a: #1a1236; --wpg-b: #2a1228; --wpg-line: #9c94b0; --wpg-dot: #5d4a9a; --wpg-dot2: #e6e0f0;
+
+  /* Пружины. JS подменяет их на настоящую пружину через linear(),
+     здесь — запасные кривые для браузеров без linear(). */
+  --spring: cubic-bezier(0.32, 0.72, 0, 1);
+  --spring-dur: 520ms;
+  --spring-bouncy: cubic-bezier(0.34, 1.4, 0.64, 1);
+  --spring-bouncy-dur: 560ms;
+
+  /* Material motion tokens */
+  --md-emphasized: cubic-bezier(0.2, 0, 0, 1);
+  --md-emphasized-decel: cubic-bezier(0.05, 0.7, 0.1, 1);
+  --md-emphasized-accel: cubic-bezier(0.3, 0, 0.8, 0.15);
+
+  /* Базовая тёмная схема M3 (фиолетовый seed) — пока JS не сгенерировал свою */
+  --md-sys-color-primary: #d0bcff;
+  --md-sys-color-on-primary: #381e72;
+  --md-sys-color-primary-container: #4f378b;
+  --md-sys-color-on-primary-container: #eaddff;
+  --md-sys-color-secondary-container: #4a4458;
+  --md-sys-color-on-secondary-container: #e8def8;
+  --md-sys-color-tertiary: #efb8c8;
+  --md-sys-color-on-surface: #e6e0e9;
+  --md-sys-color-on-surface-variant: #cac4d0;
+  --md-sys-color-surface-container-low: #1d1b20;
+  --md-sys-color-surface-container: #211f26;
+  --md-sys-color-surface-container-high: #2b2930;
+  --md-sys-color-surface-container-highest: #36343b;
+  --md-sys-color-outline: #938f99;
+  --md-sys-color-outline-variant: #49454f;
+  --md-sys-color-error: #f2b8b5;
+  --md-sys-color-inverse-surface: #e6e0e9;
+  --md-sys-color-inverse-on-surface: #322f35;
+  --md-btn-bg: #fdf7ff;   /* primary tone 98: почти белый с оттенком */
+  --md-btn-fg: #21005d;   /* primary tone 10 */
+}
+
+/* ---------- Тема: Liquid Glass ---------- */
+html[data-theme="glass"] {
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif;
+  --c-text: #fff;
+  --c-text-2: rgba(235, 235, 245, 0.6);
+  --c-text-3: rgba(235, 235, 245, 0.3);
+  --c-accent: var(--glass-accent, #0a84ff);
+  --c-error: #ff453a;
+  --c-success: #30d158;
+  --c-field-bg: rgba(118, 118, 128, 0.24);
+  --c-field-border: rgba(255, 255, 255, 0.14);
+  --c-cell-bg: #0b0b0c;
+  --c-cell-border: rgba(255, 255, 255, 0.16);
+  --c-cell-border-active: rgba(255, 255, 255, 0.6);
+  --c-btn-bg: #fff;
+  --c-btn-fg: #000;
+  --c-sheet-bg: rgba(28, 28, 30, 0.86);
+  --c-hairline: rgba(84, 84, 88, 0.6);
+  --c-planet-a: #64d2ff;
+  --c-planet-b: #bf5af2;
+  --r-field: 999px;
+}
+
+html[data-theme="glass"] { --wp-bg: var(--wpg-bg); --wp-a: var(--wpg-a); --wp-b: var(--wpg-b); --wp-line: var(--wpg-line); --wp-dot: var(--wpg-dot); --wp-dot2: var(--wpg-dot2); }
+html[data-theme="material"] { --wp-bg: var(--wpm-bg); --wp-a: var(--wpm-a); --wp-b: var(--wpm-b); --wp-line: var(--wpm-line); --wp-dot: var(--wpm-dot); --wp-dot2: var(--wpm-dot2); }
+html[data-wallpaper]:not([data-wallpaper="black"]) { --page-bg: var(--wp-bg); }
+
+/* ---------- Тема: Material You ---------- */
+html[data-theme="material"] {
+  --font: "Roboto Flex", Roboto, system-ui, sans-serif;
+  --c-text: var(--md-sys-color-on-surface);
+  --c-text-2: var(--md-sys-color-on-surface-variant);
+  --c-text-3: var(--md-sys-color-outline);
+  --c-accent: var(--md-sys-color-primary);
+  --c-error: var(--md-sys-color-error);
+  --c-success: var(--md-sys-color-primary);
+  --c-field-bg: var(--md-sys-color-surface-container-high);
+  --c-field-border: var(--md-sys-color-outline-variant);
+  --c-cell-bg: #0b0b0c;
+  --c-cell-border: var(--md-sys-color-outline-variant);
+  --c-cell-border-active: var(--md-sys-color-primary);
+  --c-btn-bg: var(--md-btn-bg);
+  --c-btn-fg: var(--md-btn-fg);
+  --c-sheet-bg: var(--md-sys-color-surface-container-low);
+  --c-hairline: var(--md-sys-color-outline-variant);
+  --c-planet-a: var(--md-sys-color-primary);
+  --c-planet-b: var(--md-sys-color-tertiary);
+  --r-field: 28px;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+[hidden] { display: none !important; }
+.has-session .auth { display: none; }   /* вошедший пользователь сразу видит приложение */
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+html, body { height: 100%; }
+body {
+  margin: 0;
+  background: var(--page-bg);
+  color: var(--c-text);
+  font-family: var(--font);
+  font-size: 17px;
+  line-height: 1.3;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  overflow-x: hidden;
+}
+button, input, textarea { font: inherit; color: inherit; }
+
+/* Обои: фиксированный слой под всем интерфейсом */
+.wallpaper { pointer-events: none; overflow: hidden; contain: strict; }
+.wallpaper-page { position: fixed; inset: 0; z-index: 0; }
+/* Обои — только в приложении; на входе и регистрации чёрный фон */
+html:not(.in-app) .wallpaper-page { display: none; }
+html:not(.in-app) { --page-bg: #000 !important; }
+.wp-stage {
+  position: absolute;
+  left: 50%; top: 50%;
+  width: 390px; height: 844px;
+  transform: translate(-50%, -50%) scale(var(--wp-scale, 1));
+}
+.wp-still { position: absolute; inset: 0; display: block; }
+.wp-layer { position: absolute; will-change: transform, opacity; }
+.wp-layer svg { display: block; }
+.wp-spin { animation: wp-spin 90s linear infinite; }
+.wp-star { animation: wp-twinkle 4s ease-in-out infinite; animation-delay: var(--d, 0s); }
+.wp-glow { border-radius: 50%; }
+.wp-drift { animation: wp-drift 18s ease-in-out infinite alternate; }
+.wp-drift-2 { animation-duration: 24s; animation-direction: alternate-reverse; }
+@keyframes wp-spin { to { rotate: 360deg; } }
+@keyframes wp-twinkle { 50% { opacity: 0.25; scale: 0.75; } }
+@keyframes wp-drift { to { translate: -40px 50px; } }
+button { cursor: pointer; }
+
+/* Иконки: единый контурный набор, толщина 2, скруглённые концы */
+svg.i {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* ---------- Стекло (по мотивам apple-liquid-glass/tokens.css) ---------- */
+html[data-theme="glass"] .glass {
+  background: var(--c-field-bg);
+  -webkit-backdrop-filter: saturate(180%) blur(28px);
+  backdrop-filter: saturate(180%) blur(28px);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14);
+}
+/* Неравномерный ободок: ярче слева сверху и справа снизу — так стекло
+   читается как толстая линза, а не наклейка */
+html[data-theme="glass"] .glass::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(135deg,
+    rgba(255, 255, 255, 0.45) 0%,
+    rgba(255, 255, 255, 0.08) 30%,
+    rgba(255, 255, 255, 0.04) 60%,
+    rgba(255, 255, 255, 0.26) 100%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+html[data-theme="glass"] .glass-text.is-refracting { background: var(--c-sheet-bg); }
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  html[data-theme="glass"] .glass { background: #1c1c1e; }
+}
+@media (prefers-reduced-transparency: reduce) {
+  html[data-theme="glass"] .glass { background: #1c1c1e; backdrop-filter: none; -webkit-backdrop-filter: none; }
+}
+
+/* ---------- Верхняя панель и переключатель стиля ---------- */
+.topbar {
+  position: relative;
+  z-index: 5;
+  display: flex;
+  justify-content: center;
+  padding: max(16px, env(safe-area-inset-top)) 16px 0;
+}
+.seg {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  padding: 3px;
+  border-radius: 999px;
+  min-width: min(320px, 100%);
+}
+.seg-item {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 0 16px;
+  border: 0;
+  background: none;
+  border-radius: 999px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--c-text-2);
+  transition: color 250ms ease;
+}
+.seg-item[aria-checked="true"] { color: var(--c-text); }
+.seg-check { width: 18px; height: 18px; display: none; }
+
+/* Glass: светлый «бегунок» едет под выбранным сегментом на пружине */
+.seg-thumb {
+  position: absolute;
+  top: 3px; bottom: 3px; left: 3px;
+  width: calc(50% - 3px);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.18);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22);
+  transition: transform var(--spring-bouncy-dur) var(--spring-bouncy);
+}
+.seg.is-pressing .seg-thumb { transform: scale(0.94); }
+
+/* Material: сегментированная кнопка M3 с галочкой */
+html[data-theme="material"] .seg { padding: 0; border: 1px solid var(--md-sys-color-outline); }
+html[data-theme="material"] .seg-thumb { display: none; }
+html[data-theme="material"] .seg-item {
+  border-radius: 0;
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0.1px;
+  color: var(--md-sys-color-on-surface);
+  transition: background 250ms var(--md-emphasized), color 250ms var(--md-emphasized);
+}
+html[data-theme="material"] .seg-item:first-of-type { border-radius: 999px 0 0 999px; border-right: 1px solid var(--md-sys-color-outline); }
+html[data-theme="material"] .seg-item:last-of-type { border-radius: 0 999px 999px 0; }
+html[data-theme="material"] .seg-item[aria-checked="true"] {
+  background: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-secondary-container);
+}
+html[data-theme="material"] .seg-item[aria-checked="true"] .seg-check { display: block; animation: check-in 350ms var(--md-emphasized-decel); }
+@keyframes check-in { from { transform: scale(0); opacity: 0; } }
+
+/* ---------- Экраны ---------- */
+.stage {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-height: calc(100dvh - 72px);
+  place-items: center;
+  padding: 24px 16px max(24px, env(safe-area-inset-bottom));
+}
+.screen {
+  grid-area: 1 / 1;
+  width: 100%;
+  max-width: 400px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+/* ---------- Логотип-планета ---------- */
+.logo {
+  position: relative;
+  z-index: 10;
+  width: 120px; height: 120px;
+  margin-bottom: 8px;
+}
+.planet { position: relative; width: 100%; height: 100%; overflow: visible; animation: float 6s ease-in-out infinite; }
+.stop-a { stop-color: var(--c-planet-a); transition: stop-color 500ms ease; }
+.stop-b { stop-color: var(--c-planet-b); transition: stop-color 500ms ease; }
+.planet-body { transform-box: fill-box; transform-origin: center; }
+.ring { fill: none; stroke: url(#ring-fill); stroke-linecap: round; }
+.ring-outer { stroke-width: 3; opacity: 0.95; }
+.ring-inner { stroke-width: 1.6; opacity: 0.5; }
+.logo-glow {
+  position: absolute;
+  inset: 22%;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--c-planet-b), transparent 70%);
+  filter: blur(18px);
+  opacity: 0.35;
+  transition: opacity 600ms ease;
+}
+@keyframes float { 50% { transform: translateY(-5px); } }
+
+/* Заставка: планета в центре экрана, затем рисуются кольца */
+.is-intro .planet { animation: none; }
+.is-intro .logo-glow { animation: glow-in 1400ms ease-out both; }
+.is-intro .planet-body { animation: planet-in 900ms var(--spring-bouncy) both; }
+.is-intro .ring-front { animation: ring-draw 650ms 450ms cubic-bezier(0.65, 0, 0.35, 1) both; }
+.is-intro .ring:not(.ring-front) { animation: ring-draw-back 650ms 1000ms cubic-bezier(0.65, 0, 0.35, 1) both; }
+.is-intro .ring-inner.ring-front { animation-delay: 600ms; }
+.is-intro .ring-inner:not(.ring-front) { animation-delay: 1150ms; }
+@keyframes planet-in {
+  0% { transform: scale(0) rotate(-40deg); opacity: 0; }
+  100% { transform: none; opacity: 1; }
+}
+@keyframes ring-draw { from { stroke-dasharray: 1; stroke-dashoffset: 1; } to { stroke-dasharray: 1; stroke-dashoffset: 0; } }
+@keyframes ring-draw-back { from { stroke-dasharray: 1; stroke-dashoffset: -1; } to { stroke-dasharray: 1; stroke-dashoffset: 0; } }
+@keyframes glow-in { 0% { opacity: 0; transform: scale(0.4); } 60% { opacity: 0.8; transform: scale(1.4); } 100% { opacity: 0.35; transform: none; } }
+
+/* Всё остальное появляется по очереди после заставки */
+.is-intro .reveal { opacity: 0; }
+.is-ready .reveal { animation: reveal-in 800ms var(--spring) both; animation-delay: calc(var(--d, 0) * 70ms); }
+@keyframes reveal-in {
+  from { opacity: 0; transform: translateY(24px) scale(0.97); filter: blur(8px); }
+  to { opacity: 1; transform: none; filter: none; }
+}
+
+.brand {
+  margin: 0 0 32px;
+  font-size: 34px;
+  line-height: 41px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+html[data-theme="material"] .brand { font-weight: 600; letter-spacing: 0; }
+
+form { width: 100%; display: flex; flex-direction: column; gap: 12px; }
+
+/* Разделитель «or» между «Continue» и входом по QR */
+.divider-or {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 6px 4px;
+  font-size: 13px;
+  color: var(--c-text-3);
+}
+.divider-or::before, .divider-or::after { content: ""; flex: 1; height: 0.5px; background: var(--c-hairline); }
+html[data-theme="material"] .divider-or::before, html[data-theme="material"] .divider-or::after { height: 1px; }
+
+/* ---------- Поле телефона ---------- */
+.field {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 58px;
+  padding: 0 8px 0 6px;
+  border-radius: var(--r-field);
+  background: var(--c-field-bg);
+  border: 1px solid var(--c-field-border);
+  transition: border-color 200ms ease, box-shadow 250ms ease, scale var(--spring-dur) var(--spring);
+}
+html[data-theme="glass"] .field { border-color: transparent; }   /* у стекла рамка — ободок ::before */
+html[data-theme="glass"] .field:focus-within {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), 0 0 0 4px rgba(255, 255, 255, 0.08);
+  scale: 1.015;
+}
+html[data-theme="material"] .field:focus-within {
+  border-color: var(--md-sys-color-primary);
+  box-shadow: inset 0 0 0 1px var(--md-sys-color-primary);
+}
+.field.is-error { border-color: var(--c-error) !important; animation: shake 420ms cubic-bezier(0.36, 0.07, 0.19, 0.97); }
+html[data-theme="material"] .field.is-error { box-shadow: inset 0 0 0 1px var(--c-error); }
+@keyframes shake {
+  20%, 60% { translate: -7px 0; }
+  40%, 80% { translate: 7px 0; }
+}
+
+.country-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 44px;
+  padding: 0 6px 0 12px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  font-size: 17px;
+  font-weight: 500;
+  white-space: nowrap;
+  transition: background 200ms ease, scale 300ms var(--spring-bouncy);
+}
+.country-btn:hover { background: rgba(255, 255, 255, 0.06); }
+.country-btn:active { scale: 0.94; }
+.flag {
+  width: 26px; height: 19px;
+  border-radius: 4px;
+  object-fit: cover;
+  box-shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.25);
+  background: #333;
+}
+html[data-theme="material"] .flag { border-radius: 6px; }
+.chev { width: 18px; height: 18px; color: var(--c-text-2); margin-left: -2px; stroke-width: 2.2; }
+
+.field-divider { width: 1px; height: 26px; margin: 0 10px 0 4px; background: var(--c-field-border); }
+html[data-theme="glass"] .field-divider { background: var(--c-hairline); }
+
+.phone-input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  font-size: 19px;
+  font-weight: 500;
+  caret-color: var(--c-accent);
+  font-variant-numeric: tabular-nums;
+}
+.phone-input::placeholder { color: var(--c-text-3); }
+
+.clear-btn {
+  width: 36px; height: 36px;
+  flex: none;
+  display: grid; place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  opacity: 0;
+  scale: 0.4;
+  pointer-events: none;
+  transition: opacity 180ms ease, scale var(--spring-bouncy-dur) var(--spring-bouncy);
+}
+.clear-btn svg { width: 20px; height: 20px; }
+.clear-bg { fill: var(--c-text-3); }
+.clear-x { stroke: var(--bg); stroke-width: 1.8; stroke-linecap: round; fill: none; }
+.field.has-value .clear-btn { opacity: 1; scale: 1; pointer-events: auto; }
+
+/* ---------- Кнопки ---------- */
+.btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  height: 56px;
+  padding: 0 24px;
+  border: 0;
+  border-radius: 999px;
+  font-size: 17px;
+  font-weight: 600;
+  overflow: hidden;
+  isolation: isolate;
+  user-select: none;
+  transition:
+    scale var(--spring-bouncy-dur) var(--spring-bouncy),
+    border-radius 350ms var(--md-emphasized),
+    background 300ms ease,
+    width 450ms var(--md-emphasized);
+}
+.btn svg { width: 22px; height: 22px; }
+.btn-primary { background: var(--c-btn-bg); color: var(--c-btn-fg); }
+.btn-secondary { color: var(--c-text); }
+
+/* Glass: при нажатии кнопка «проседает» и отпрыгивает обратно на пружине */
+html[data-theme="glass"] .btn:active,
+html[data-theme="glass"] .btn.is-pressed { scale: 0.96; transition-duration: 120ms; transition-timing-function: ease-out; }
+
+/* Material Expressive: форма кнопки «морфится» при нажатии */
+html[data-theme="material"] .btn { font-weight: 500; letter-spacing: 0.1px; font-size: 16px; }
+html[data-theme="material"] .btn:active,
+html[data-theme="material"] .btn.is-pressed { border-radius: 16px; }
+html[data-theme="material"] .btn-secondary {
+  background: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-secondary-container);
+}
+html[data-theme="material"] .btn::before {
+  content: "";
+  position: absolute; inset: 0;
+  background: currentColor;
+  opacity: 0;
+  transition: opacity 150ms linear;
+  z-index: -1;
+}
+html[data-theme="material"] .btn:hover::before { opacity: 0.08; }
+
+.ripple {
+  position: absolute;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.14;
+  transform: scale(0);
+  pointer-events: none;
+  z-index: -1;
+  animation: ripple 550ms var(--md-emphasized-decel) forwards;
+}
+.ripple.is-out { animation: ripple 550ms var(--md-emphasized-decel) forwards, ripple-out 300ms linear forwards; }
+@keyframes ripple { to { transform: scale(1); } }
+@keyframes ripple-out { to { opacity: 0; } }
+
+/* Загрузка: подпись уходит, появляется спиннер; в M3 кнопка сжимается в круг */
+.spinner {
+  position: absolute;
+  width: 24px; height: 24px;
+  border-radius: 50%;
+  border: 2.5px solid currentColor;
+  border-right-color: transparent;
+  opacity: 0;
+  transform: scale(0.5);
+  transition: opacity 200ms ease, transform 300ms var(--spring-bouncy);
+}
+.btn-label { transition: opacity 180ms ease, transform 300ms var(--spring); }
+.btn.is-loading .btn-label { opacity: 0; transform: translateY(-8px); }
+.btn.is-loading .spinner { opacity: 1; transform: none; animation: spin 0.8s linear infinite; }
+html[data-theme="material"] .btn-primary.is-loading { width: 56px !important; align-self: center; padding: 0; border-radius: 18px; }
+@keyframes spin { to { rotate: 360deg; } }
+
+.btn:focus-visible, .seg-item:focus-visible, .country-btn:focus-visible, .icon-btn:focus-visible, .photo-btn:focus-within, .swatch:focus-visible {
+  outline: 2px solid var(--c-accent);
+  outline-offset: 3px;
+}
+
+.icon-btn {
+  position: relative;
+  width: 44px; height: 44px;
+  display: grid; place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--c-text);
+  transition: scale var(--spring-bouncy-dur) var(--spring-bouncy), background 200ms ease;
+}
+.icon-btn svg { width: 22px; height: 22px; }
+.icon-btn:active { scale: 0.9; }
+html[data-theme="material"] .icon-btn:hover { background: rgba(255, 255, 255, 0.08); }
+
+/* ---------- Динамический цвет (только Material) ---------- */
+.palette {
+  width: 100%;
+  margin-top: 24px;
+  padding: 12px;
+  border-radius: 999px;
+  background: var(--md-sys-color-surface-container);
+  display: none;
+  align-items: center;
+  gap: 8px;
+}
+html[data-theme="material"] .palette { display: flex; }
+.palette-row { flex: 1; display: flex; gap: 6px; justify-content: space-between; }
+.swatch {
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 36px;
+  aspect-ratio: 1;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--sw);
+  position: relative;
+  transition: border-radius 350ms var(--md-emphasized), scale 300ms var(--spring-bouncy);
+}
+.swatch::after {
+  content: "";
+  position: absolute; inset: -4px;
+  border-radius: inherit;
+  border: 2px solid var(--md-sys-color-on-surface);
+  opacity: 0;
+  scale: 0.85;
+  transition: opacity 200ms ease, scale 300ms var(--md-emphasized);
+}
+.swatch[aria-checked="true"] { border-radius: 11px; }
+.swatch[aria-checked="true"]::after { opacity: 1; scale: 1; border-radius: 14px; }
+.swatch:active { scale: 0.9; }
+.photo-btn {
+  flex: none;
+  width: 40px; height: 40px;
+  display: grid; place-items: center;
+  border-radius: 50%;
+  color: var(--md-sys-color-primary);
+  background: var(--md-sys-color-surface-container-highest);
+  cursor: pointer;
+  transition: scale 300ms var(--spring-bouncy);
+}
+.photo-btn:active { scale: 0.9; }
+.photo-btn svg { width: 20px; height: 20px; }
+
+/* ---------- Экран кода ---------- */
+.icon-btn.back-btn { position: fixed; z-index: 6; top: calc(max(16px, env(safe-area-inset-top)) + 60px); left: 16px; }
+.screen-title { margin: 0 0 28px; font-size: 28px; line-height: 34px; font-weight: 700; letter-spacing: -0.02em; }
+html[data-theme="material"] .screen-title { font-weight: 500; letter-spacing: 0; }
+
+.otp { position: relative; width: 100%; }
+/* Настоящее поле лежит прозрачным поверх ячеек: так работают вставка,
+   автоподстановка кода из SMS и цифровая клавиатура на телефоне */
+.otp-input {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  width: 100%;
+  opacity: 0;
+  border: 0;
+  font-size: 16px;
+  caret-color: transparent;
+  color: transparent;
+  background: transparent;
+  cursor: text;
+}
+.otp-cells { display: flex; gap: 10px; justify-content: center; }
+.otp-cell {
+  position: relative;
+  flex: 1 1 0;
+  max-width: 56px;
+  height: 68px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 18px;
+  background: var(--c-cell-bg);
+  border: 1px solid var(--c-cell-border);
+  font-size: 30px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  transition:
+    border-color 250ms ease,
+    box-shadow 250ms ease,
+    background 400ms ease,
+    scale var(--spring-bouncy-dur) var(--spring-bouncy);
+}
+html[data-theme="material"] .otp-cell { border-radius: 16px; }
+/* цифры и курсор лежат в одной ячейке сетки, чтобы уходящая и новая цифра накладывались */
+.otp-cell > *, .otp-cell::after { grid-area: 1 / 1; }
+
+/* Активная ячейка: светлее рамка и мигающий курсор */
+.otp.is-focused .otp-cell.is-active { border-color: var(--c-cell-border-active); scale: 1.06; }
+html[data-theme="glass"] .otp.is-focused .otp-cell.is-active { box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.07); }
+html[data-theme="material"] .otp.is-focused .otp-cell.is-active { box-shadow: inset 0 0 0 1px var(--c-cell-border-active); }
+.otp.is-focused .otp-cell.is-active:empty::after {
+  content: "";
+  width: 2px; height: 30px;
+  border-radius: 1px;
+  background: var(--c-accent);
+  animation: caret 1s steps(1) infinite;
+}
+@keyframes caret { 50% { opacity: 0; } }
+
+/* Цифра «всплывает» из размытия снизу */
+.digit { display: block; animation: digit-in 420ms var(--spring-bouncy) both; }
+.digit.is-out { animation: digit-out 180ms ease-in both; }
+@keyframes digit-in {
+  from { opacity: 0; transform: translateY(60%) scale(0.6); filter: blur(6px); }
+  to { opacity: 1; transform: none; filter: none; }
+}
+@keyframes digit-out { to { opacity: 0; transform: translateY(-40%) scale(0.7); filter: blur(4px); } }
+.otp-cell.is-filled { border-color: color-mix(in srgb, var(--c-cell-border) 50%, var(--c-cell-border-active)); }
+
+/* Код введён: волна по ячейкам и подсветка */
+.otp.is-done .otp-cell {
+  border-color: var(--c-success);
+  animation: wave 600ms var(--spring-bouncy) both;
+  animation-delay: calc(var(--i) * 55ms);
+}
+html[data-theme="material"] .otp.is-done .otp-cell { background: var(--md-sys-color-primary-container); color: var(--md-sys-color-on-primary-container); }
+@keyframes wave { 40% { transform: translateY(-12px) scale(1.04); } }
+
+/* ---------- Переходы между экранами ---------- */
+.screen.enter-forward  { animation: g-in-fwd  var(--spring-dur) var(--spring) both; }
+.screen.leave-forward  { animation: g-out-fwd 260ms ease-in both; }
+.screen.enter-back     { animation: g-in-back var(--spring-dur) var(--spring) both; }
+.screen.leave-back     { animation: g-out-back 260ms ease-in both; }
+@keyframes g-in-fwd   { from { opacity: 0; transform: translateX(40px) scale(0.98); } }
+@keyframes g-out-fwd  { to   { opacity: 0; transform: translateX(-30px) scale(0.96); filter: blur(6px); } }
+@keyframes g-in-back  { from { opacity: 0; transform: translateX(-40px) scale(0.98); } }
+@keyframes g-out-back { to   { opacity: 0; transform: translateX(30px) scale(0.96); filter: blur(6px); } }
+
+/* Material: shared axis X */
+html[data-theme="material"] .screen.enter-forward { animation: m-in-fwd 450ms var(--md-emphasized-decel) both; }
+html[data-theme="material"] .screen.leave-forward { animation: m-out-fwd 200ms var(--md-emphasized-accel) both; }
+html[data-theme="material"] .screen.enter-back    { animation: m-in-back 450ms var(--md-emphasized-decel) both; }
+html[data-theme="material"] .screen.leave-back    { animation: m-out-back 200ms var(--md-emphasized-accel) both; }
+@keyframes m-in-fwd   { from { opacity: 0; transform: translateX(30px); } }
+@keyframes m-out-fwd  { to   { opacity: 0; transform: translateX(-30px); } }
+@keyframes m-in-back  { from { opacity: 0; transform: translateX(-30px); } }
+@keyframes m-out-back { to   { opacity: 0; transform: translateX(30px); } }
+
+/* ---------- Нижняя панель (страна / QR) ---------- */
+.scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  background: rgba(0, 0, 0, 0.6);
+  opacity: 0;
+  transition: opacity 300ms ease;
+}
+.scrim.is-open { opacity: 1; }
+
+.sheet {
+  position: fixed;
+  z-index: 21;
+  left: 50%;
+  bottom: 0;
+  width: min(480px, 100%);
+  max-height: min(78dvh, 640px);
+  display: flex;
+  flex-direction: column;
+  padding: 8px 0 max(16px, env(safe-area-inset-bottom));
+  border-radius: 34px 34px 0 0;
+  background: var(--c-sheet-bg);
+  transform: translate(-50%, 105%);
+  transition: transform var(--spring-dur) var(--spring);
+}
+.sheet-handle, .sheet-head { touch-action: none; }
+.sheet.is-open { transform: translate(-50%, 0); }
+.sheet.is-dragging { transition: none; }
+/* Glass: панель «парит» над краем экрана, как на iOS 26 */
+html[data-theme="glass"] .sheet { bottom: 8px; width: min(480px, calc(100% - 16px)); border-radius: 34px; }
+html[data-theme="material"] .sheet { border-radius: 28px 28px 0 0; transition: transform 450ms var(--md-emphasized-decel); }
+html[data-theme="material"] .sheet:not(.is-open) { transition: transform 250ms var(--md-emphasized-accel); }
+
+.sheet-handle { width: 36px; height: 5px; margin: 4px auto 6px; border-radius: 3px; background: var(--c-text-3); cursor: grab; }
+html[data-theme="material"] .sheet-handle { width: 32px; height: 4px; margin: 14px auto 8px; background: var(--md-sys-color-on-surface-variant); opacity: 0.4; }
+.sheet-head { display: flex; align-items: center; justify-content: space-between; padding: 4px 12px 8px 24px; }
+.sheet-head h2 { margin: 0; font-size: 20px; font-weight: 600; }
+html[data-theme="material"] .sheet-head h2 { font-size: 22px; font-weight: 400; }
+.sheet-close { background: rgba(255, 255, 255, 0.08); width: 36px; height: 36px; }
+.sheet-close svg { width: 18px; height: 18px; }
+.sheet-body { display: flex; flex-direction: column; min-height: 0; padding: 0 16px; }
+
+.search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 44px;
+  padding: 0 14px;
+  margin: 4px 0 8px;
+  border-radius: 999px;
+  background: rgba(118, 118, 128, 0.24);
+  color: var(--c-text-2);
+}
+html[data-theme="material"] .search { height: 56px; background: var(--md-sys-color-surface-container-high); padding: 0 18px; }
+.search svg { width: 20px; height: 20px; flex: none; }
+.search input { flex: 1; min-width: 0; border: 0; outline: 0; background: none; font-size: 17px; color: var(--c-text); }
+.search input::placeholder { color: var(--c-text-3); }
+.search input::-webkit-search-cancel-button { display: none; }
+
+.country-list { list-style: none; margin: 0; padding: 0 0 8px; overflow-y: auto; overscroll-behavior: contain; }
+.country-item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 52px;
+  padding: 0 12px;
+  border-radius: 16px;
+  cursor: pointer;
+  position: relative;
+  transition: background 150ms ease;
+  animation: item-in 380ms var(--spring) both;
+  animation-delay: calc(var(--i, 0) * 18ms);
+}
+@keyframes item-in { from { opacity: 0; transform: translateY(10px); } }
+.country-item:hover { background: rgba(255, 255, 255, 0.07); }
+html[data-theme="material"] .country-item { border-radius: 999px; }
+html[data-theme="material"] .country-item[aria-selected="true"] { background: var(--md-sys-color-secondary-container); color: var(--md-sys-color-on-secondary-container); }
+html[data-theme="glass"] .country-item + .country-item::before {
+  content: ""; position: absolute; top: 0; left: 52px; right: 12px; height: 0.5px; background: var(--c-hairline);
+}
+.country-item .flag { flex: none; }
+.country-name { flex: 1; }
+.country-dial { color: var(--c-text-2); font-variant-numeric: tabular-nums; }
+.country-check { width: 20px; height: 20px; color: var(--c-accent); }
+html[data-theme="material"] .country-check { color: inherit; }
+.country-empty { padding: 24px; text-align: center; color: var(--c-text-2); }
+
+.qr-box {
+  width: 220px; height: 220px;
+  margin: 8px auto 20px;
+  padding: 14px;
+  border-radius: 28px;
+  background: #fff;
+  color: #000;
+  animation: qr-in 600ms var(--spring-bouncy) both;
+}
+html[data-theme="material"] .qr-box { background: var(--md-btn-bg); color: var(--md-btn-fg); }
+.qr-box svg { width: 100%; height: 100%; display: block; }
+@keyframes qr-in { from { opacity: 0; transform: scale(0.8) rotate(-4deg); } }
+.qr-steps { margin: 0 0 8px; padding: 0 12px 0 36px; color: var(--c-text-2); font-size: 15px; line-height: 26px; }
+.qr-steps li::marker { color: var(--c-accent); font-weight: 600; }
+
+/* ---------- Тост ---------- */
+.toast {
+  position: fixed;
+  z-index: 30;
+  left: 50%;
+  bottom: max(24px, env(safe-area-inset-bottom));
+  max-width: calc(100% - 32px);
+  padding: 14px 20px;
+  border-radius: 999px;
+  background: rgba(44, 44, 46, 0.86);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  backdrop-filter: blur(20px) saturate(180%);
+  color: #fff;
+  font-size: 15px;
+  white-space: nowrap;
+  opacity: 0;
+  transform: translate(-50%, 20px) scale(0.96);
+  pointer-events: none;
+  transition: opacity 250ms ease, transform var(--spring-bouncy-dur) var(--spring-bouncy);
+}
+.toast.is-shown { opacity: 1; transform: translate(-50%, 0); }
+html[data-theme="material"] .toast {
+  border-radius: 8px;
+  background: var(--md-sys-color-inverse-surface);
+  color: var(--md-sys-color-inverse-on-surface);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+/* ---------- Смена темы: круговое раскрытие (View Transitions API) ---------- */
+::view-transition-old(root), ::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
+::view-transition-new(root) { animation: reveal 650ms var(--md-emphasized) both; }
+@keyframes reveal {
+  from { clip-path: circle(0 at var(--vt-x, 50%) var(--vt-y, 0%)); }
+  to   { clip-path: circle(var(--vt-r, 150vmax) at var(--vt-x, 50%) var(--vt-y, 0%)); }
+}
+
+/* ---------- Уменьшенное движение ---------- */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 120ms !important;
+  }
+  ::view-transition-new(root) { animation: none; }
+}
+
+@media (max-width: 380px) {
+  .otp-cells { gap: 7px; }
+  .otp-cell { height: 60px; font-size: 26px; }
+  .seg-item { padding: 0 10px; font-size: 14px; }
+}

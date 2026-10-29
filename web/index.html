@@ -1,0 +1,743 @@
+<!doctype html>
+<html lang="en" data-theme="glass">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#000000">
+  <title>Kosmo</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Roboto+Flex:opsz,wght@8..144,400;8..144,500;8..144,600;8..144,700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css">
+  <link rel="stylesheet" href="css/app.css">
+  <link rel="stylesheet" href="css/chat.css">
+  <link rel="stylesheet" href="css/extras.css">
+  <link rel="stylesheet" href="css/social.css">
+  <link rel="stylesheet" href="css/more.css">
+  <!-- До первого кадра: тема, вошла ли эта вкладка, нужна ли заставка -->
+  <script>
+    (function () {
+      var root = document.documentElement;
+      try { if (localStorage.getItem('kosmo:theme') === 'material') root.dataset.theme = 'material'; } catch (e) {}
+      var signedIn = false;
+      try { signedIn = Boolean(sessionStorage.getItem('kosmo:auth')); } catch (e) {}
+      if (signedIn) root.classList.add('has-session');
+      else if (!matchMedia('(prefers-reduced-motion: reduce)').matches) root.classList.add('is-intro');
+    })();
+  </script>
+  <script src="js/vendor/refraction.js" defer></script>
+  <script src="js/app.js" type="module"></script>
+</head>
+<body>
+  <!-- Общие градиенты для логотипа Kosmo и «космических» галочек.
+       Лежат в видимом (не display:none) SVG, иначе Chrome их не рисует. -->
+  <svg class="sprite" width="0" height="0" aria-hidden="true" focusable="false">
+    <defs>
+      <linearGradient id="k-fill" x1="0.15" y1="0.1" x2="0.85" y2="0.95">
+        <stop offset="0" stop-color="#64d2ff"/><stop offset="1" stop-color="#bf5af2"/>
+      </linearGradient>
+      <radialGradient id="k-shade" cx="0.35" cy="0.3" r="0.75">
+        <stop offset="0" stop-color="#fff" stop-opacity="0.55"/>
+        <stop offset="0.45" stop-color="#fff" stop-opacity="0"/>
+        <stop offset="1" stop-color="#000" stop-opacity="0.45"/>
+      </radialGradient>
+      <linearGradient id="k-ring" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0" stop-color="#64d2ff"/><stop offset="1" stop-color="#bf5af2"/>
+      </linearGradient>
+      <linearGradient id="cb-official" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#5ac8fa"/><stop offset="0.55" stop-color="#7d5cff"/><stop offset="1" stop-color="#bf5af2"/>
+      </linearGradient>
+      <linearGradient id="cb-owner" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#ffe066"/><stop offset="0.5" stop-color="#ff9f0a"/><stop offset="1" stop-color="#ff5e3a"/>
+      </linearGradient>
+      <!-- блик, пробегающий по «космической» галочке -->
+      <linearGradient id="cb-shine" x1="0" y1="0" x2="1" y2="0.4">
+        <stop offset="0.35" stop-color="#fff" stop-opacity="0"/>
+        <stop offset="0.5" stop-color="#fff" stop-opacity="0.65"/>
+        <stop offset="0.65" stop-color="#fff" stop-opacity="0"/>
+        <animateTransform attributeName="gradientTransform" type="translate" values="-1.2 0;-1.2 0;1.2 0" keyTimes="0;0.55;1" dur="4.5s" repeatCount="indefinite"/>
+      </linearGradient>
+      <linearGradient id="cb-ring" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0" stop-color="#fff" stop-opacity="0.95"/><stop offset="1" stop-color="#fff" stop-opacity="0.35"/>
+      </linearGradient>
+    </defs>
+  </svg>
+
+  <!-- Обои: в Material You — в цветах палитры, выбираются в Profile → Designs -->
+  <div class="wallpaper wallpaper-page" aria-hidden="true"></div>
+
+  <!-- ======================= Вход и регистрация ======================= -->
+  <div class="auth" id="auth">
+    <header class="topbar reveal" style="--d: 4">
+      <div class="seg glass" data-refract="0.8" role="radiogroup" aria-label="Design style">
+        <span class="seg-thumb" aria-hidden="true"></span>
+        <button class="seg-item" type="button" role="radio" data-set-theme="glass" aria-checked="true">
+          <svg class="i seg-check" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
+          Liquid Glass
+        </button>
+        <button class="seg-item" type="button" role="radio" data-set-theme="material" aria-checked="false">
+          <svg class="i seg-check" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
+          Material You
+        </button>
+      </div>
+    </header>
+
+    <button class="pill-btn auth-cancel glass" type="button" id="auth-cancel" data-refract="0.6" hidden>
+      <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 6l-6 6 6 6"/></svg>Back to Kosmo
+    </button>
+    <button class="icon-btn glass back-btn" type="button" id="back-btn" aria-label="Back" data-refract="0.6" hidden>
+      <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 6l-6 6 6 6"/></svg>
+    </button>
+
+    <main class="stage">
+      <!-- 1. Номер телефона -->
+      <section class="screen is-active" id="screen-phone" aria-labelledby="phone-title">
+        <div class="logo" id="logo" aria-hidden="true">
+          <span class="logo-glow"></span>
+          <svg class="planet" viewBox="0 0 120 120">
+            <defs>
+              <linearGradient id="planet-fill" x1="0.15" y1="0.1" x2="0.85" y2="0.95">
+                <stop offset="0" class="stop-a"/>
+                <stop offset="1" class="stop-b"/>
+              </linearGradient>
+              <radialGradient id="planet-shade" cx="0.35" cy="0.3" r="0.75">
+                <stop offset="0" stop-color="#fff" stop-opacity="0.55"/>
+                <stop offset="0.45" stop-color="#fff" stop-opacity="0"/>
+                <stop offset="1" stop-color="#000" stop-opacity="0.45"/>
+              </radialGradient>
+              <linearGradient id="ring-fill" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0" class="stop-a"/>
+                <stop offset="1" class="stop-b"/>
+              </linearGradient>
+            </defs>
+            <g transform="rotate(-18 60 60)">
+              <!-- задние половины колец: их перекрывает планета -->
+              <path class="ring ring-outer" pathLength="1" d="M4 60 A56 15 0 0 1 116 60"/>
+              <path class="ring ring-inner" pathLength="1" d="M14 60 A46 11.5 0 0 1 106 60"/>
+            </g>
+            <g class="planet-body">
+              <circle cx="60" cy="60" r="27" fill="url(#planet-fill)"/>
+              <circle cx="60" cy="60" r="27" fill="url(#planet-shade)"/>
+            </g>
+            <g transform="rotate(-18 60 60)">
+              <!-- передние половины колец — поверх планеты -->
+              <path class="ring ring-outer ring-front" pathLength="1" d="M4 60 A56 15 0 0 0 116 60"/>
+              <path class="ring ring-inner ring-front" pathLength="1" d="M14 60 A46 11.5 0 0 0 106 60"/>
+            </g>
+          </svg>
+        </div>
+        <h1 class="brand reveal" id="phone-title" style="--d: 0">Kosmo</h1>
+
+        <form id="phone-form" novalidate>
+          <div class="field glass reveal" id="phone-field" data-refract="0.7" style="--d: 1"></div>
+
+          <button class="btn btn-primary reveal" type="submit" id="submit-btn" style="--d: 2">
+            <span class="btn-label">Continue</span>
+            <span class="spinner" aria-hidden="true"></span>
+          </button>
+
+          <div class="divider-or reveal" aria-hidden="true" style="--d: 3"><span>or</span></div>
+
+          <button class="btn btn-secondary glass reveal" type="button" id="qr-btn" data-refract="0.6" style="--d: 3">
+            <svg class="i" viewBox="0 0 24 24" aria-hidden="true">
+              <rect x="3.5" y="3.5" width="6.5" height="6.5" rx="1.6"/>
+              <rect x="14" y="3.5" width="6.5" height="6.5" rx="1.6"/>
+              <rect x="3.5" y="14" width="6.5" height="6.5" rx="1.6"/>
+              <rect x="14" y="14" width="2.5" height="2.5" rx="0.6"/>
+              <rect x="18" y="18" width="2.5" height="2.5" rx="0.6"/>
+            </svg>
+            Log in with QR code
+          </button>
+        </form>
+
+        <div class="palette reveal" role="radiogroup" aria-label="Dynamic color" style="--d: 4">
+          <div class="palette-row"></div>
+          <label class="photo-btn" for="photo-input" aria-label="Color from photo" title="Color from photo">
+            <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="3.5"/><circle cx="9" cy="10" r="1.8"/><path d="M4 17.5l4.8-4.3 3.4 3 3.3-3.4 4.5 4.2"/></svg>
+          </label>
+        </div>
+      </section>
+
+      <!-- 2. Код из SMS -->
+      <section class="screen" id="screen-code" aria-labelledby="code-title" hidden>
+        <h1 class="screen-title" id="code-title">Enter code</h1>
+        <p class="code-hint" id="code-hint"></p>
+        <div class="otp" id="otp"></div>
+        <button class="link-btn code-resend" type="button" id="code-resend" disabled>Send again</button>
+      </section>
+
+      <!-- 3. Код-пароль: 4 ячейки и клавиатура как на iPhone -->
+      <section class="screen" id="screen-pass" aria-labelledby="pass-title" hidden>
+        <h1 class="screen-title" id="pass-title">Create passcode</h1>
+        <div class="pass-cells" id="pass-cells" role="img" aria-label="0 of 4 digits entered">
+          <span class="pass-cell"></span><span class="pass-cell"></span><span class="pass-cell"></span><span class="pass-cell"></span>
+        </div>
+        <div class="keypad" id="keypad" aria-label="Keypad">
+          <button type="button" class="key" data-key="1"><span class="key-num">1</span><span class="key-sub">&nbsp;</span></button>
+          <button type="button" class="key" data-key="2"><span class="key-num">2</span><span class="key-sub">ABC</span></button>
+          <button type="button" class="key" data-key="3"><span class="key-num">3</span><span class="key-sub">DEF</span></button>
+          <button type="button" class="key" data-key="4"><span class="key-num">4</span><span class="key-sub">GHI</span></button>
+          <button type="button" class="key" data-key="5"><span class="key-num">5</span><span class="key-sub">JKL</span></button>
+          <button type="button" class="key" data-key="6"><span class="key-num">6</span><span class="key-sub">MNO</span></button>
+          <button type="button" class="key" data-key="7"><span class="key-num">7</span><span class="key-sub">PQRS</span></button>
+          <button type="button" class="key" data-key="8"><span class="key-num">8</span><span class="key-sub">TUV</span></button>
+          <button type="button" class="key" data-key="9"><span class="key-num">9</span><span class="key-sub">WXYZ</span></button>
+          <span class="key-spacer" aria-hidden="true"></span>
+          <button type="button" class="key" data-key="0"><span class="key-num">0</span></button>
+          <button type="button" class="key key-del" data-key="del" aria-label="Delete">
+            <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5h10.5A1.5 1.5 0 0 1 21 6.5v11a1.5 1.5 0 0 1-1.5 1.5H9l-6-7z"/><path d="M12.5 9.5l5 5M17.5 9.5l-5 5"/></svg>
+          </button>
+        </div>
+      </section>
+
+      <!-- 4. Имя и @username -->
+      <section class="screen" id="screen-name" aria-label="Your profile" hidden>
+        <div class="avatar avatar-xl" id="setup-avatar" aria-hidden="true"><span></span></div>
+        <form class="setup-form" id="name-form" novalidate>
+          <div class="field glass" data-refract="0.7" id="name-field">
+            <input id="name-input" type="text" autocomplete="given-name" maxlength="40" placeholder="Name" aria-label="Name">
+          </div>
+          <div class="field glass" data-refract="0.7" id="username-field">
+            <span class="at" aria-hidden="true">@</span>
+            <input id="username-input" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="32" placeholder="username (optional)" aria-label="Username" aria-describedby="username-rules">
+            <span class="field-status" aria-hidden="true">
+              <svg class="i ok" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
+              <svg class="i bad" viewBox="0 0 24 24"><path d="M7 7l10 10M17 7L7 17"/></svg>
+            </span>
+          </div>
+          <span class="sr-only" id="username-rules">3 to 32 English letters or digits, with at least one letter</span>
+          <button class="btn btn-primary" type="submit">Continue</button>
+        </form>
+      </section>
+
+      <!-- 5. Описание -->
+      <section class="screen" id="screen-bio" aria-label="About you" hidden>
+        <div class="avatar avatar-xl" id="bio-avatar" aria-hidden="true"><span></span></div>
+        <p class="bio-name" id="bio-name"></p>
+        <p class="bio-username" id="bio-username"></p>
+        <form class="setup-form" id="bio-form" novalidate>
+          <div class="field field-area glass" data-refract="0.5" id="bio-field">
+            <textarea id="bio-input" rows="3" maxlength="70" placeholder="Bio" aria-label="Bio"></textarea>
+            <span class="counter" id="bio-counter" aria-hidden="true">70</span>
+          </div>
+          <button class="btn btn-primary" type="submit" id="signup-btn">
+            <span class="btn-label">Sign up</span>
+            <span class="spinner" aria-hidden="true"></span>
+          </button>
+        </form>
+      </section>
+    </main>
+  </div>
+
+  <!-- ======================= Приложение ======================= -->
+  <div class="app" id="app" hidden>
+    <div class="views" id="views">
+      <!-- Чаты -->
+      <section class="view is-active" id="view-chats" data-view="chats" aria-label="Chats">
+        <header class="app-header">
+          <button class="circle-btn glass" type="button" id="new-btn" aria-label="New" aria-haspopup="menu" data-refract="0.7">
+            <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+          </button>
+          <button class="circle-btn glass" type="button" id="archive-back" aria-label="Back to chats" data-refract="0.7" hidden>
+            <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 6l-6 6 6 6"/></svg>
+          </button>
+          <div class="title-pill glass" data-refract="0.7"><span id="chats-title">Chats</span></div>
+          <button class="circle-btn glass" type="button" id="search-btn" aria-label="Search" data-refract="0.7">
+            <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="M15.5 15.5L20 20"/></svg>
+          </button>
+        </header>
+        <div class="folders" id="folders" role="tablist" aria-label="Folders"></div>
+        <ul class="chat-list" id="chat-list"></ul>
+      </section>
+
+      <!-- Лента -->
+      <section class="view" id="view-feed" data-view="feed" aria-label="Feed" hidden>
+        <header class="app-header">
+          <span class="circle-spacer" aria-hidden="true"></span>
+          <div class="title-pill glass" data-refract="0.7"><span>Feed</span></div>
+          <button class="circle-btn glass" type="button" id="new-post-btn" aria-label="New post" data-refract="0.7">
+            <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></svg>
+          </button>
+        </header>
+        <div class="stories" id="stories" aria-label="Stories"></div>
+        <div class="feed" id="feed"></div>
+      </section>
+
+      <!-- Профиль -->
+      <section class="view" id="view-profile" data-view="profile" aria-label="Profile" hidden>
+        <header class="app-header">
+          <span class="circle-spacer" aria-hidden="true"></span>
+          <div class="title-pill glass" data-refract="0.7"><span>Profile</span></div>
+          <span class="circle-spacer" aria-hidden="true"></span>
+        </header>
+        <div class="profile" id="profile"></div>
+      </section>
+    </div>
+
+    <!-- Боковые панели: выезжают справа, основной экран и нижняя панель уходят -->
+    <section class="panel" id="panel-search" aria-label="Search" aria-hidden="true" inert>
+      <header class="panel-header">
+        <button class="circle-btn glass" type="button" data-close-panel aria-label="Close search" data-refract="0.7">
+          <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 6l-6 6 6 6"/></svg>
+        </button>
+        <label class="search-pill glass" data-refract="0.7">
+          <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="M15.5 15.5L20 20"/></svg>
+          <input type="search" id="search-input" placeholder="Search" aria-label="Search chats and people" autocomplete="off">
+        </label>
+      </header>
+      <div class="search-tabs" id="search-tabs" role="tablist">
+        <button type="button" role="tab" data-stab="all" aria-selected="true">Chats</button>
+        <button type="button" role="tab" data-stab="messages" aria-selected="false">Messages</button>
+        <button type="button" role="tab" data-stab="media" aria-selected="false">Media</button>
+      </div>
+      <div class="panel-body" id="search-results"></div>
+    </section>
+
+    <section class="panel panel-chat" id="panel-chat" aria-label="Chat" aria-hidden="true" inert>
+      <div class="wallpaper chat-wallpaper" aria-hidden="true"></div>
+      <!-- Прокручивается только эта часть; поле ввода и фон — обычные слои панели,
+           без position: fixed внутри сдвигаемой панели (из-за этого они появлялись с задержкой) -->
+      <div class="chat-scroll" id="chat-scroll">
+      <header class="panel-header">
+        <button class="circle-btn glass" type="button" data-close-panel aria-label="Back" data-refract="0.7">
+          <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 6l-6 6 6 6"/></svg>
+        </button>
+        <button class="title-pill title-pill-2 glass" type="button" data-open-user data-refract="0.7">
+          <span class="pill-title" id="chat-title"></span>
+          <span class="pill-sub" id="chat-sub"></span>
+        </button>
+        <button class="circle-btn glass chat-more" type="button" id="chat-more" aria-label="Chat options" aria-haspopup="menu" data-refract="0.7">
+          <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5.5" r="1.6" fill="currentColor"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/><circle cx="12" cy="18.5" r="1.6" fill="currentColor"/></svg>
+        </button>
+        <button class="chat-head-avatar" type="button" id="chat-head-avatar" data-open-user aria-label="Profile"></button>
+      </header>
+      <div class="chat-search glass" id="chat-search" data-refract="0.6" hidden>
+        <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="M15.5 15.5L20 20"/></svg>
+        <input type="search" id="chat-search-input" placeholder="Search in this chat" aria-label="Search in this chat">
+        <span class="cs-count" id="cs-count"></span>
+        <button class="icon-btn" type="button" id="cs-up" aria-label="Previous result"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 14.5l6-6 6 6"/></svg></button>
+        <button class="icon-btn" type="button" id="cs-down" aria-label="Next result"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9.5l6 6 6-6"/></svg></button>
+        <button class="icon-btn" type="button" id="cs-close" aria-label="Close search"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17"/></svg></button>
+      </div>
+      <div class="pinned-bar glass" id="pinned-bar" data-refract="0.6" hidden>
+        <button class="pinned-main" type="button" id="pinned-jump">
+          <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4h6l-1 6 3 3v1H7v-1l3-3zM12 14v6"/></svg>
+          <span class="pinned-text"><b>Pinned message</b><span id="pinned-preview"></span></span>
+        </button>
+        <button class="pinned-close" type="button" id="pinned-close" aria-label="Unpin">
+          <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17"/></svg>
+        </button>
+      </div>
+      <button class="sched-bar glass" type="button" id="sched-bar" data-refract="0.6" hidden>
+        <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>
+        <span id="sched-text"></span>
+      </button>
+      <div class="messages" id="messages"></div>
+      </div>
+
+      <!-- Нижняя часть: вступить, «писать нельзя» или поле ввода (выбирает data-composer) -->
+      <div class="chat-join" id="chat-join">
+        <button class="btn btn-primary" type="button" id="join-btn">Join</button>
+      </div>
+      <div class="composer-ro glass" data-refract="0.6">
+        <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10.5" width="14" height="9.5" rx="2.5"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"/></svg>
+        <span id="composer-ro-text">Only Kosmo can send messages here</span>
+      </div>
+
+      <!-- Ответ / редактирование: полоска над полем ввода -->
+      <div class="compose-bar glass glass-text" id="compose-bar" hidden>
+        <span class="cb-icon" id="cb-icon" aria-hidden="true"></span>
+        <span class="cb-text"><b id="cb-title"></b><span id="cb-preview"></span></span>
+        <button class="cb-close" type="button" id="cb-close" aria-label="Cancel">
+          <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17"/></svg>
+        </button>
+      </div>
+
+      <!-- Прикреплённое: фото, видео, код — лента над полем ввода -->
+      <div class="attach-tray glass" id="attach-tray" data-refract="0.6" hidden></div>
+
+      <!-- Личные чаты: «+» слева, поле, голосовое / отправить справа -->
+      <form class="composer" id="composer" novalidate>
+        <button class="circle-btn glass attach-btn" type="button" id="attach-btn" aria-label="Attach" aria-haspopup="menu" data-refract="0.7">
+          <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+        </button>
+        <div class="composer-field glass" data-refract="0.6">
+          <textarea id="composer-input" rows="1" placeholder="Message" aria-label="Message"></textarea>
+          <button class="emoji-btn" type="button" id="emoji-btn" aria-label="Emoji" aria-haspopup="dialog">
+            <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M8.5 14a4.5 4.5 0 0 0 7 0M9 9.5h.01M15 9.5h.01" stroke-width="2.4"/></svg>
+          </button>
+          <div class="rec-strip" aria-live="polite">
+            <span class="rec-dot" aria-hidden="true"></span>
+            <span class="rec-time" id="rec-time">0:00</span>
+            <span class="rec-label">Recording…</span>
+            <button class="rec-cancel" type="button" id="rec-cancel">Cancel</button>
+          </div>
+        </div>
+        <button class="circle-btn send-btn" type="submit" id="send-btn" data-mode="voice" aria-label="Record voice message">
+          <svg class="i ic-mic" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg>
+          <svg class="i ic-send" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M5.5 11.5L12 5l6.5 6.5"/></svg>
+          <svg class="i ic-round" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="3.5"/></svg>
+        </button>
+      </form>
+      <div class="menu attach-menu glass glass-text" id="attach-menu" role="menu" hidden>
+        <button class="menu-item" type="button" role="menuitem" data-attach="photo">
+          <span class="menu-ic ic-photo"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="3.5"/><circle cx="9" cy="10" r="1.8"/><path d="M4 17.5l4.8-4.3 3.4 3 3.3-3.4 4.5 4.2"/></svg></span>Photo
+        </button>
+        <button class="menu-item" type="button" role="menuitem" data-attach="video">
+          <span class="menu-ic ic-video"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="13" height="12" rx="3"/><path d="M16 10.5l5-3v9l-5-3z"/></svg></span>Video
+        </button>
+        <button class="menu-item" type="button" role="menuitem" data-attach="code">
+          <span class="menu-ic ic-code"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M8.5 7.5L4 12l4.5 4.5M15.5 7.5L20 12l-4.5 4.5M13.5 5l-3 14"/></svg></span>Code
+        </button>
+        <button class="menu-item" type="button" role="menuitem" data-attach="round">
+          <span class="menu-ic ic-round"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="3.5"/></svg></span>Video message
+        </button>
+        <button class="menu-item" type="button" role="menuitem" data-attach="poll" data-rooms-only>
+          <span class="menu-ic ic-poll"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20V10M12 20V4M19 20v-7"/></svg></span>Poll or quiz
+        </button>
+        <button class="menu-item" type="button" role="menuitem" data-attach="audio">
+          <span class="menu-ic ic-music"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18V6l11-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="17.5" cy="16" r="2.5"/></svg></span>Music
+        </button>
+      </div>
+      <div class="menu emoji-picker glass glass-text" id="emoji-picker" role="dialog" aria-label="Emoji" hidden></div>
+      <input type="file" id="pick-photo" accept="image/*" multiple hidden>
+      <input type="file" id="pick-video" accept="video/*" multiple hidden>
+      <input type="file" id="pick-audio" accept="audio/*" hidden>
+    </section>
+
+    <!-- Профиль собеседника: открывается поверх чата -->
+    <section class="panel panel-overlay" id="panel-user" aria-label="Profile" aria-hidden="true" inert>
+      <header class="panel-header">
+        <button class="circle-btn glass" type="button" data-close-overlay aria-label="Back" data-refract="0.7">
+          <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 6l-6 6 6 6"/></svg>
+        </button>
+        <div class="title-pill glass" data-refract="0.7"><span>Profile</span></div>
+        <span class="circle-spacer" aria-hidden="true"></span>
+      </header>
+      <div class="panel-body profile" id="user-profile"></div>
+    </section>
+
+    <section class="panel" id="panel-edit" aria-label="Edit profile" aria-hidden="true" inert>
+      <header class="panel-header">
+        <button class="circle-btn glass" type="button" data-close-panel aria-label="Back" data-refract="0.7">
+          <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 6l-6 6 6 6"/></svg>
+        </button>
+        <div class="title-pill glass" data-refract="0.7"><span>Edit profile</span></div>
+        <span class="circle-spacer" aria-hidden="true"></span>
+      </header>
+      <div class="panel-body edit">
+        <div class="edit-avatar" id="edit-avatar"></div>
+        <div class="edit-avatar-actions">
+          <label class="chip-btn" for="avatar-input">
+            <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8.5A2.5 2.5 0 0 1 6.5 6h1.8l1.5-2h4.4l1.5 2h1.8A2.5 2.5 0 0 1 20 8.5v8a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 16.5z"/><circle cx="12" cy="12.5" r="3.5"/></svg>
+            Upload photo
+          </label>
+          <button class="chip-btn danger" type="button" id="avatar-remove" hidden>Remove photo</button>
+        </div>
+        <input type="file" id="avatar-input" accept="image/*" hidden>
+        <section class="group group-pad">
+          <span class="group-label">Color</span>
+          <div class="color-row" id="avatar-colors" role="radiogroup" aria-label="Avatar color"></div>
+          <span class="group-label">Letters</span>
+          <div class="field glass" data-refract="0.6"><input id="avatar-text" type="text" maxlength="4" aria-label="Avatar letters" autocomplete="off"></div>
+        </section>
+        <form class="setup-form edit-form" id="edit-form" novalidate>
+          <div class="field glass" data-refract="0.7" id="edit-name-field">
+            <input id="edit-name" type="text" maxlength="40" placeholder="Name" aria-label="Name">
+          </div>
+          <div class="field glass" data-refract="0.7" id="edit-username-field">
+            <span class="at" aria-hidden="true">@</span>
+            <input id="edit-username" type="text" autocapitalize="none" spellcheck="false" maxlength="32" placeholder="username (optional)" aria-label="Username">
+            <span class="field-status" aria-hidden="true">
+              <svg class="i ok" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
+              <svg class="i bad" viewBox="0 0 24 24"><path d="M7 7l10 10M17 7L7 17"/></svg>
+            </span>
+          </div>
+          <div class="field field-area glass" data-refract="0.5">
+            <textarea id="edit-bio" rows="3" maxlength="70" placeholder="Bio" aria-label="Bio"></textarea>
+            <span class="counter" id="edit-counter" aria-hidden="true">70</span>
+          </div>
+          <button class="btn btn-primary" type="submit">Save</button>
+        </form>
+      </div>
+    </section>
+
+    <section class="panel" id="panel-design" aria-label="Designs" aria-hidden="true" inert>
+      <header class="panel-header">
+        <button class="circle-btn glass" type="button" data-close-panel aria-label="Back" data-refract="0.7">
+          <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 6l-6 6 6 6"/></svg>
+        </button>
+        <div class="title-pill glass" data-refract="0.7"><span>Designs</span></div>
+        <span class="circle-spacer" aria-hidden="true"></span>
+      </header>
+      <div class="panel-body design" id="design"></div>
+    </section>
+
+    <section class="panel" id="panel-sessions" aria-label="Sessions" aria-hidden="true" inert>
+      <header class="panel-header">
+        <button class="circle-btn glass" type="button" data-close-panel aria-label="Back" data-refract="0.7">
+          <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 6l-6 6 6 6"/></svg>
+        </button>
+        <div class="title-pill glass" data-refract="0.7"><span>Sessions</span></div>
+        <span class="circle-spacer" aria-hidden="true"></span>
+      </header>
+      <div class="panel-body" id="sessions"></div>
+    </section>
+
+    <section class="panel" id="panel-phone" aria-label="Change number" aria-hidden="true" inert>
+      <header class="panel-header">
+        <button class="circle-btn glass" type="button" data-close-panel aria-label="Back" data-refract="0.7">
+          <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 6l-6 6 6 6"/></svg>
+        </button>
+        <div class="title-pill glass" data-refract="0.7"><span>Change number</span></div>
+        <span class="circle-spacer" aria-hidden="true"></span>
+      </header>
+      <div class="panel-body steps" id="phone-steps">
+        <div class="step" data-step="intro">
+          <div class="step-icon" aria-hidden="true">
+            <svg class="i" viewBox="0 0 24 24"><rect x="6.5" y="2.5" width="11" height="19" rx="2.8"/><path d="M10.5 18.5h3"/></svg>
+          </div>
+          <p class="step-value" id="cp-current"></p>
+          <p class="step-text">To confirm it's you, we'll send a code to your current number. Then you'll enter the new number and confirm it too.</p>
+          <button class="btn btn-primary" type="button" id="cp-start">Change number</button>
+        </div>
+        <div class="step" data-step="old-code" hidden>
+          <h2 class="step-title">Code sent to</h2>
+          <p class="step-value" id="cp-old"></p>
+          <div class="otp" id="cp-old-otp"></div>
+        </div>
+        <form class="step" data-step="new-phone" id="cp-new-form" novalidate hidden>
+          <h2 class="step-title">New number</h2>
+          <div class="field glass" id="cp-phone-field" data-refract="0.7"></div>
+          <button class="btn btn-primary" type="submit" id="cp-new-submit">
+            <span class="btn-label">Send code</span>
+            <span class="spinner" aria-hidden="true"></span>
+          </button>
+        </form>
+        <div class="step" data-step="new-code" hidden>
+          <h2 class="step-title">Code sent to</h2>
+          <p class="step-value" id="cp-new"></p>
+          <div class="otp" id="cp-new-otp"></div>
+        </div>
+        <div class="step" data-step="done" hidden>
+          <div class="step-icon step-icon-ok" aria-hidden="true">
+            <svg class="i" viewBox="0 0 24 24"><path class="draw" pathLength="1" d="M5 12.5l4.5 4.5L19 7.5"/></svg>
+          </div>
+          <h2 class="step-title">Number changed</h2>
+          <p class="step-value" id="cp-done"></p>
+          <button class="btn btn-primary" type="button" data-close-panel>Done</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" id="panel-create" aria-label="New group" aria-hidden="true" inert>
+      <header class="panel-header">
+        <button class="circle-btn glass" type="button" data-close-panel aria-label="Back" data-refract="0.7"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 6l-6 6 6 6"/></svg></button>
+        <div class="title-pill glass" data-refract="0.7"><span id="create-title">New group</span></div>
+        <span class="circle-spacer" aria-hidden="true"></span>
+      </header>
+      <div class="panel-body" id="create-body"></div>
+    </section>
+
+    <section class="panel panel-overlay" id="panel-room" aria-label="Info" aria-hidden="true" inert>
+      <header class="panel-header">
+        <button class="circle-btn glass" type="button" data-close-overlay aria-label="Back" data-refract="0.7"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 6l-6 6 6 6"/></svg></button>
+        <div class="title-pill glass" data-refract="0.7"><span id="room-title">Info</span></div>
+        <span class="circle-spacer" aria-hidden="true"></span>
+      </header>
+      <div class="panel-body profile" id="room-body"></div>
+    </section>
+
+    <section class="panel panel-overlay" id="panel-thread" aria-label="Comments" aria-hidden="true" inert>
+      <header class="panel-header">
+        <button class="circle-btn glass" type="button" data-close-overlay aria-label="Back" data-refract="0.7"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 6l-6 6 6 6"/></svg></button>
+        <div class="title-pill glass" data-refract="0.7"><span id="thread-title">Comments</span></div>
+        <span class="circle-spacer" aria-hidden="true"></span>
+      </header>
+      <div class="panel-body thread" id="thread-body"></div>
+      <form class="mini-composer glass" id="thread-form" data-refract="0.6" novalidate>
+        <textarea rows="1" placeholder="Write a comment" aria-label="Comment" id="thread-input"></textarea>
+        <button class="circle-btn send-btn" type="submit" aria-label="Send" data-mode="send"><svg class="i ic-send" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M5.5 11.5L12 5l6.5 6.5"/></svg></button>
+      </form>
+    </section>
+
+    <section class="panel panel-overlay" id="panel-post" aria-label="Post" aria-hidden="true" inert>
+      <header class="panel-header">
+        <button class="circle-btn glass" type="button" data-close-overlay aria-label="Back" data-refract="0.7"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 6l-6 6 6 6"/></svg></button>
+        <div class="title-pill glass" data-refract="0.7"><span id="post-title">Post</span></div>
+        <span class="circle-spacer" aria-hidden="true"></span>
+      </header>
+      <div class="panel-body thread" id="post-body"></div>
+      <form class="mini-composer glass" id="post-comment-form" data-refract="0.6" novalidate>
+        <textarea rows="1" placeholder="Write a comment" aria-label="Comment" id="post-comment-input"></textarea>
+        <button class="circle-btn send-btn" type="submit" aria-label="Send" data-mode="send"><svg class="i ic-send" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M5.5 11.5L12 5l6.5 6.5"/></svg></button>
+      </form>
+    </section>
+
+    <section class="panel" id="panel-compose" aria-label="New post" aria-hidden="true" inert>
+      <header class="panel-header">
+        <button class="circle-btn glass" type="button" data-close-panel aria-label="Back" data-refract="0.7"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 6l-6 6 6 6"/></svg></button>
+        <div class="title-pill glass" data-refract="0.7"><span id="compose-title">New post</span></div>
+        <span class="circle-spacer" aria-hidden="true"></span>
+      </header>
+      <div class="panel-body" id="compose-body"></div>
+    </section>
+
+    <section class="panel" id="panel-privacy" aria-label="Privacy" aria-hidden="true" inert>
+      <header class="panel-header">
+        <button class="circle-btn glass" type="button" data-close-panel aria-label="Back" data-refract="0.7"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 6l-6 6 6 6"/></svg></button>
+        <div class="title-pill glass" data-refract="0.7"><span id="privacy-title">Privacy</span></div>
+        <span class="circle-spacer" aria-hidden="true"></span>
+      </header>
+      <div class="panel-body" id="privacy-body"></div>
+    </section>
+
+    <section class="panel" id="panel-security" aria-label="Security" aria-hidden="true" inert>
+      <header class="panel-header">
+        <button class="circle-btn glass" type="button" data-close-panel aria-label="Back" data-refract="0.7"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 6l-6 6 6 6"/></svg></button>
+        <div class="title-pill glass" data-refract="0.7"><span id="security-title">Security</span></div>
+        <span class="circle-spacer" aria-hidden="true"></span>
+      </header>
+      <div class="panel-body" id="security-body"></div>
+    </section>
+
+    <section class="panel" id="panel-notifications" aria-label="Notifications" aria-hidden="true" inert>
+      <header class="panel-header">
+        <button class="circle-btn glass" type="button" data-close-panel aria-label="Back" data-refract="0.7"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 6l-6 6 6 6"/></svg></button>
+        <div class="title-pill glass" data-refract="0.7"><span id="notifications-title">Notifications</span></div>
+        <span class="circle-spacer" aria-hidden="true"></span>
+      </header>
+      <div class="panel-body" id="notifications-body"></div>
+    </section>
+
+    <section class="panel" id="panel-storage" aria-label="Data and storage" aria-hidden="true" inert>
+      <header class="panel-header">
+        <button class="circle-btn glass" type="button" data-close-panel aria-label="Back" data-refract="0.7"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 6l-6 6 6 6"/></svg></button>
+        <div class="title-pill glass" data-refract="0.7"><span id="storage-title">Data and storage</span></div>
+        <span class="circle-spacer" aria-hidden="true"></span>
+      </header>
+      <div class="panel-body" id="storage-body"></div>
+    </section>
+
+    <section class="panel" id="panel-about" aria-label="About" aria-hidden="true" inert>
+      <header class="panel-header">
+        <button class="circle-btn glass" type="button" data-close-panel aria-label="Back" data-refract="0.7"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 6l-6 6 6 6"/></svg></button>
+        <div class="title-pill glass" data-refract="0.7"><span id="about-title">About</span></div>
+        <span class="circle-spacer" aria-hidden="true"></span>
+      </header>
+      <div class="panel-body" id="about-body"></div>
+    </section>
+
+    <section class="panel panel-overlay" id="panel-passcode" aria-label="Passcode" aria-hidden="true" inert>
+      <header class="panel-header">
+        <button class="circle-btn glass" type="button" data-close-overlay aria-label="Back" data-refract="0.7"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 6l-6 6 6 6"/></svg></button>
+        <div class="title-pill glass" data-refract="0.7"><span id="passcode-title">Passcode</span></div>
+        <span class="circle-spacer" aria-hidden="true"></span>
+      </header>
+      <div class="panel-body passcode-body" id="passcode-body"></div>
+    </section>
+
+    <!-- Нижняя панель -->
+    <nav class="tabbar glass" id="tabbar" data-refract="0.8" aria-label="Main">
+      <span class="tab-thumb" aria-hidden="true"></span>
+      <button class="tab is-active" type="button" data-tab="chats" aria-current="page">
+        <span class="tab-icon"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11.5a7.5 7 0 0 1-10.9 6.2L4 19l1.4-4A7 7 0 0 1 4.5 11.5 7.5 7 0 0 1 20 11.5z"/></svg></span>
+        <span class="tab-label">Chats</span>
+        <span class="tab-badge" id="chats-badge" hidden></span>
+      </button>
+      <button class="tab" type="button" data-tab="feed">
+        <span class="tab-icon"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="4"/><path d="M8 9h8M8 12.5h8M8 16h5"/></svg></span>
+        <span class="tab-label">Feed</span>
+      </button>
+      <button class="tab" type="button" data-tab="search">
+        <span class="tab-icon"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="M15.5 15.5L20 20"/></svg></span>
+        <span class="tab-label">Search</span>
+      </button>
+      <button class="tab" type="button" data-tab="profile">
+        <span class="tab-icon"><span class="avatar avatar-tab" id="tab-avatar" aria-hidden="true"><span></span></span></span>
+        <span class="tab-label">Profile</span>
+      </button>
+    </nav>
+
+    <!-- Меню «+» -->
+    <div class="menu glass glass-text" id="new-menu" role="menu" hidden>
+      <button class="menu-item" type="button" role="menuitem" data-new="chat">
+        <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11.5a7.5 7 0 0 1-10.9 6.2L4 19l1.4-4A7 7 0 0 1 4.5 11.5 7.5 7 0 0 1 20 11.5z"/></svg>
+        New chat
+      </button>
+      <button class="menu-item" type="button" role="menuitem" data-new="group">
+        <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="9" r="3.2"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0M15.5 6.2a3 3 0 0 1 0 5.6M17 14.2a5 5 0 0 1 3.5 4.8"/></svg>
+        New group
+      </button>
+      <button class="menu-item" type="button" role="menuitem" data-new="channel">
+        <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10v4a1 1 0 0 0 1 1h2l6 4V5L7 9H5a1 1 0 0 0-1 1zM17 9a4 4 0 0 1 0 6"/></svg>
+        New channel
+      </button>
+    </div>
+  </div>
+
+  <input type="file" id="photo-input" accept="image/*" hidden>
+  <input type="file" id="post-media-input" accept="image/*,video/*" multiple hidden>
+  <input type="file" id="room-avatar-input" accept="image/*" hidden>
+  <input type="file" id="story-input" accept="image/*,video/*" hidden>
+
+  <!-- Нижняя панель: страна / QR -->
+  <div class="scrim" id="scrim" hidden></div>
+  <div class="sheet glass glass-text" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title" hidden>
+    <div class="sheet-handle" aria-hidden="true"></div>
+    <div class="sheet-head">
+      <h2 id="sheet-title">Choose country</h2>
+      <button class="icon-btn sheet-close" type="button" id="sheet-close" aria-label="Close">
+        <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17"/></svg>
+      </button>
+    </div>
+    <div class="sheet-body" id="sheet-country">
+      <div class="search">
+        <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="M15.5 15.5L20 20"/></svg>
+        <input type="search" id="country-search" placeholder="Search" aria-label="Search country or code">
+      </div>
+      <ul class="country-list" id="country-list" role="listbox" aria-label="Countries"></ul>
+    </div>
+    <form class="sheet-body" id="sheet-code" novalidate hidden>
+      <div class="lang-row" role="radiogroup" aria-label="Language" id="code-langs"></div>
+      <div class="code-field caption-field">
+        <textarea id="code-caption" rows="1" maxlength="1000" placeholder="Add a caption (optional)" aria-label="Caption"></textarea>
+      </div>
+      <div class="code-field">
+        <textarea id="code-input" rows="8" spellcheck="false" placeholder="Paste or write code" aria-label="Code"></textarea>
+      </div>
+      <button class="btn btn-primary" type="submit">Send code</button>
+    </form>
+    <form class="sheet-body" id="sheet-media" novalidate hidden>
+      <div class="media-preview" id="media-preview"></div>
+      <div class="code-field caption-field">
+        <textarea id="media-caption" rows="2" maxlength="1000" placeholder="Add a caption" aria-label="Caption"></textarea>
+      </div>
+      <button class="btn btn-primary" type="submit" id="media-send">Send</button>
+    </form>
+    <div class="sheet-body" id="sheet-forward" hidden>
+      <ul class="chat-list forward-list" id="forward-list"></ul>
+    </div>
+    <div class="sheet-body" id="sheet-qr" hidden>
+      <div class="qr-box" id="qr-box"></div>
+      <p class="qr-code" id="qr-code" aria-live="polite"></p>
+      <ol class="qr-steps">
+        <li>Open Kosmo on a device where you are signed in</li>
+        <li>Profile → Sessions → Link a device</li>
+        <li>Scan this QR code or type the code above</li>
+      </ol>
+    </div>
+  </div>
+
+  <div class="lock" id="lock" hidden>
+    <div class="lock-inner">
+      <div class="lock-logo" id="lock-avatar" aria-hidden="true"></div>
+      <h1 class="screen-title" id="lock-title">Enter passcode</h1>
+      <div id="lock-pad"></div>
+      <button class="link-btn" type="button" id="lock-logout">Log out</button>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+</body>
+</html>

@@ -1,0 +1,15 @@
+{
+  "name": "kosmo-server",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Сервер мессенджера Kosmo: API, WebSocket, SQLite",
+  "main": "src/index.js",
+  "engines": { "node": ">=22.13" },
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}
