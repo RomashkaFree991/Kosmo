@@ -306,7 +306,7 @@ export const KosmoTikTok: React.FC = () => {
   } else {
     sc = 0.55 + 0.45 * inDesign; op = Math.min(1, inDesign * 2); rot = (1 - inDesign) * 8;
     tx = -toCalls * 215; sc *= 1 - toCalls * 0.2; rot += -toCalls * 6;
-    ty = outCta * 1200; rot += outCta * -8;
+    ty = outCta * 1700; rot += outCta * -8; op *= 1 - ease(t, T.cta + 0.2, T.cta + 0.5);
   }
   const mainScreens: Screen[] = [
     { src: 'chat-react-fly', at: 0 },
@@ -434,7 +434,7 @@ export const KosmoTikTok: React.FC = () => {
                 <span style={{ fontFamily: TEXT, fontWeight: 700, fontSize: 44, color: 'rgba(255,255,255,0.85)' }}>Telegram-канал</span>
               </div>
               <div style={{
-                fontFamily: DISPLAY, fontWeight: 800, fontSize: 76, color: '#fff', letterSpacing: '-0.02em', marginBottom: 18,
+                fontFamily: DISPLAY, fontWeight: 800, fontSize: 62, color: '#fff', letterSpacing: '-0.02em', marginBottom: 18, whiteSpace: 'nowrap',
                 opacity: handle, transform: `translateY(${(1 - handle) * 30}px)`,
               }}>@KosmoMessenger</div>
               <div style={{ fontFamily: TEXT, fontWeight: 500, fontSize: 38, color: 'rgba(255,255,255,0.75)', textAlign: 'center' }}>
