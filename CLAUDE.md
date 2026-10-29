@@ -30,4 +30,12 @@
 - `gsap-core` — GSAP. Скилл склонен навязывать GSAP: выбирать библиотеку осознанно.
 - `ui-ux-pro-max` — база стилей, палитр, шрифтов и UX-правил.
 
+### Motion design и видео (промо-ролики, обзоры, TikTok) — 2026-10-29
+- `remotion-best-practices` (Remotion, официальный) — видео на React: создание проекта, рендер, субтитры (`remotion-captions` внутри).
+- `motion-designer` — покадровый сценарий ролика: сцены, тайминг, звук, SFX.
+- `remotion-animation` — пружины, интерполяции, easing и тайминги для Remotion.
+- `motion-design-principles` (LottieFiles) — принципы motion: тайминг, easing, хореография.
+- `motion-design-promo` (Howseen) — пайплайн промо-роликов: бриф → бит-карта → рендер → музыка/SFX → QA. Пути и имена из примеров автора (`~/Desktop/Howseen AI/...`, Raphaël) — игнорировать.
+- Готовый ролик для TikTok — в `video/` (Remotion), см. `video/README.md`.
+
 Широкие Compose-скиллы пересекаются: при конфликте приоритет у `compose-expert` (код/анимации) и `material-3` (дизайн-система).

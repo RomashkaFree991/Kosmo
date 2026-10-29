@@ -1,0 +1,466 @@
+{
+ "words": [
+  {
+   "text": "Твой",
+   "start": 0.31,
+   "end": 0.676,
+   "scene": "hook"
+  },
+  {
+   "text": "мессенджер",
+   "start": 0.676,
+   "end": 1.301,
+   "scene": "hook"
+  },
+  {
+   "text": "так",
+   "start": 1.301,
+   "end": 1.501,
+   "scene": "hook"
+  },
+  {
+   "text": "умеет?",
+   "start": 1.501,
+   "end": 2.02,
+   "scene": "hook"
+  },
+  {
+   "text": "Это",
+   "start": 2.55,
+   "end": 2.904,
+   "scene": "intro"
+  },
+  {
+   "text": "Kosmo.",
+   "start": 2.904,
+   "end": 3.411,
+   "scene": "intro"
+  },
+  {
+   "text": "Мессенджер,",
+   "start": 4.233,
+   "end": 4.976,
+   "scene": "intro"
+  },
+  {
+   "text": "который",
+   "start": 5.189,
+   "end": 5.554,
+   "scene": "intro"
+  },
+  {
+   "text": "выглядит",
+   "start": 5.554,
+   "end": 6.002,
+   "scene": "intro"
+  },
+  {
+   "text": "как",
+   "start": 6.002,
+   "end": 6.191,
+   "scene": "intro"
+  },
+  {
+   "text": "будущее.",
+   "start": 6.191,
+   "end": 6.875,
+   "scene": "intro"
+  },
+  {
+   "text": "Два",
+   "start": 7.355,
+   "end": 7.744,
+   "scene": "design"
+  },
+  {
+   "text": "дизайна:",
+   "start": 7.744,
+   "end": 8.169,
+   "scene": "design"
+  },
+  {
+   "text": "Liquid",
+   "start": 8.487,
+   "end": 8.853,
+   "scene": "design"
+  },
+  {
+   "text": "Glass,",
+   "start": 8.853,
+   "end": 9.265,
+   "scene": "design"
+  },
+  {
+   "text": "как",
+   "start": 9.383,
+   "end": 9.595,
+   "scene": "design"
+  },
+  {
+   "text": "на",
+   "start": 9.595,
+   "end": 9.678,
+   "scene": "design"
+  },
+  {
+   "text": "iPhone,",
+   "start": 9.678,
+   "end": 10.126,
+   "scene": "design"
+  },
+  {
+   "text": "и",
+   "start": 10.338,
+   "end": 10.456,
+   "scene": "design"
+  },
+  {
+   "text": "Material",
+   "start": 10.456,
+   "end": 10.916,
+   "scene": "design"
+  },
+  {
+   "text": "You",
+   "start": 10.916,
+   "end": 11.14,
+   "scene": "design"
+  },
+  {
+   "text": "с",
+   "start": 11.329,
+   "end": 11.388,
+   "scene": "design"
+  },
+  {
+   "text": "цветами",
+   "start": 11.388,
+   "end": 11.895,
+   "scene": "design"
+  },
+  {
+   "text": "под",
+   "start": 11.895,
+   "end": 12.036,
+   "scene": "design"
+  },
+  {
+   "text": "тебя.",
+   "start": 12.036,
+   "end": 12.414,
+   "scene": "design"
+  },
+  {
+   "text": "Альбомы,",
+   "start": 12.944,
+   "end": 13.581,
+   "scene": "chat"
+  },
+  {
+   "text": "кружки,",
+   "start": 13.699,
+   "end": 14.17,
+   "scene": "chat"
+  },
+  {
+   "text": "голосовые",
+   "start": 14.441,
+   "end": 14.925,
+   "scene": "chat"
+  },
+  {
+   "text": "с",
+   "start": 14.925,
+   "end": 14.984,
+   "scene": "chat"
+  },
+  {
+   "text": "настоящей",
+   "start": 14.984,
+   "end": 15.526,
+   "scene": "chat"
+  },
+  {
+   "text": "волной,",
+   "start": 15.526,
+   "end": 15.951,
+   "scene": "chat"
+  },
+  {
+   "text": "стикеры",
+   "start": 16.151,
+   "end": 16.682,
+   "scene": "chat"
+  },
+  {
+   "text": "и",
+   "start": 16.682,
+   "end": 16.824,
+   "scene": "chat"
+  },
+  {
+   "text": "реакции.",
+   "start": 16.824,
+   "end": 17.519,
+   "scene": "chat"
+  },
+  {
+   "text": "Голосовые",
+   "start": 17.999,
+   "end": 18.837,
+   "scene": "calls"
+  },
+  {
+   "text": "и",
+   "start": 18.837,
+   "end": 18.943,
+   "scene": "calls"
+  },
+  {
+   "text": "видеозвонки.",
+   "start": 18.943,
+   "end": 19.768,
+   "scene": "calls"
+  },
+  {
+   "text": "Каналы,",
+   "start": 20.248,
+   "end": 20.767,
+   "scene": "rooms"
+  },
+  {
+   "text": "группы",
+   "start": 20.909,
+   "end": 21.31,
+   "scene": "rooms"
+  },
+  {
+   "text": "с",
+   "start": 21.31,
+   "end": 21.368,
+   "scene": "rooms"
+  },
+  {
+   "text": "комментариями,",
+   "start": 21.368,
+   "end": 22.1,
+   "scene": "rooms"
+  },
+  {
+   "text": "опросы",
+   "start": 22.3,
+   "end": 22.913,
+   "scene": "rooms"
+  },
+  {
+   "text": "и",
+   "start": 22.913,
+   "end": 23.031,
+   "scene": "rooms"
+  },
+  {
+   "text": "викторины.",
+   "start": 23.031,
+   "end": 23.656,
+   "scene": "rooms"
+  },
+  {
+   "text": "Общая",
+   "start": 24.136,
+   "end": 24.573,
+   "scene": "feed"
+  },
+  {
+   "text": "лента",
+   "start": 24.573,
+   "end": 25.068,
+   "scene": "feed"
+  },
+  {
+   "text": "и",
+   "start": 25.068,
+   "end": 25.174,
+   "scene": "feed"
+  },
+  {
+   "text": "истории",
+   "start": 25.174,
+   "end": 25.634,
+   "scene": "feed"
+  },
+  {
+   "text": "на",
+   "start": 25.634,
+   "end": 25.752,
+   "scene": "feed"
+  },
+  {
+   "text": "сутки.",
+   "start": 25.752,
+   "end": 26.247,
+   "scene": "feed"
+  },
+  {
+   "text": "Секретные",
+   "start": 26.727,
+   "end": 27.399,
+   "scene": "privacy"
+  },
+  {
+   "text": "чаты,",
+   "start": 27.399,
+   "end": 27.765,
+   "scene": "privacy"
+  },
+  {
+   "text": "исчезающие",
+   "start": 28.001,
+   "end": 28.696,
+   "scene": "privacy"
+  },
+  {
+   "text": "сообщения",
+   "start": 28.696,
+   "end": 29.345,
+   "scene": "privacy"
+  },
+  {
+   "text": "и",
+   "start": 29.345,
+   "end": 29.451,
+   "scene": "privacy"
+  },
+  {
+   "text": "вход",
+   "start": 29.451,
+   "end": 29.758,
+   "scene": "privacy"
+  },
+  {
+   "text": "по",
+   "start": 29.758,
+   "end": 29.864,
+   "scene": "privacy"
+  },
+  {
+   "text": "коду.",
+   "start": 29.864,
+   "end": 30.253,
+   "scene": "privacy"
+  },
+  {
+   "text": "Скоро",
+   "start": 30.883,
+   "end": 31.449,
+   "scene": "cta"
+  },
+  {
+   "text": "приложение",
+   "start": 31.697,
+   "end": 32.31,
+   "scene": "cta"
+  },
+  {
+   "text": "для",
+   "start": 32.31,
+   "end": 32.475,
+   "scene": "cta"
+  },
+  {
+   "text": "Android.",
+   "start": 32.475,
+   "end": 32.994,
+   "scene": "cta"
+  },
+  {
+   "text": "Подписывайся",
+   "start": 33.828,
+   "end": 34.548,
+   "scene": "cta"
+  },
+  {
+   "text": "на",
+   "start": 34.548,
+   "end": 34.63,
+   "scene": "cta"
+  },
+  {
+   "text": "канал",
+   "start": 34.63,
+   "end": 34.984,
+   "scene": "cta"
+  },
+  {
+   "text": "Kosmo",
+   "start": 34.984,
+   "end": 35.361,
+   "scene": "cta"
+  },
+  {
+   "text": "Messenger",
+   "start": 35.361,
+   "end": 35.963,
+   "scene": "cta"
+  },
+  {
+   "text": "в",
+   "start": 35.963,
+   "end": 36.033,
+   "scene": "cta"
+  },
+  {
+   "text": "Telegram!",
+   "start": 36.033,
+   "end": 36.694,
+   "scene": "cta"
+  }
+ ],
+ "scenes": [
+  {
+   "id": "hook",
+   "start": 0.25,
+   "voEnd": 2.14
+  },
+  {
+   "id": "intro",
+   "start": 2.49,
+   "voEnd": 6.995
+  },
+  {
+   "id": "design",
+   "start": 7.295,
+   "voEnd": 12.534
+  },
+  {
+   "id": "chat",
+   "start": 12.884,
+   "voEnd": 17.639
+  },
+  {
+   "id": "calls",
+   "start": 17.939,
+   "voEnd": 19.888
+  },
+  {
+   "id": "rooms",
+   "start": 20.188,
+   "voEnd": 23.776
+  },
+  {
+   "id": "feed",
+   "start": 24.076,
+   "voEnd": 26.367
+  },
+  {
+   "id": "privacy",
+   "start": 26.667,
+   "voEnd": 30.373
+  },
+  {
+   "id": "cta",
+   "start": 30.823,
+   "voEnd": 36.814
+  }
+ ],
+ "voEnd": 36.814
+}

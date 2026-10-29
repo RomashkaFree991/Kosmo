@@ -1,4 +1,4 @@
-# Источники скиллов (скопировано 2026-10-28)
+# Источники скиллов (скопировано 2026-10-28; видео-скиллы — 2026-10-29)
 
 | Скилл | Репозиторий | Путь | Лицензия |
 |---|---|---|---|
@@ -17,5 +17,10 @@
 | ui-ux-pro-max | github.com/nextlevelbuilder/ui-ux-pro-max-skill | .claude/skills/ui-ux-pro-max | MIT |
 | motion | github.com/secondsky/claude-skills | plugins/motion/skills/motion | MIT |
 | gsap-core | github.com/greensock/gsap-skills | skills/gsap-core | MIT |
+| remotion-best-practices | github.com/remotion-dev/skills @30d4553 | skills/remotion-best-practices (вместе с подскиллами create, render, captions, markup и др.) | Remotion License (бесплатно для частных лиц и команд до 3 человек) |
+| motion-designer | github.com/ncklrs/startup-os-skills @9162596 | skills/motion-designer | MIT |
+| remotion-animation | github.com/ncklrs/startup-os-skills @9162596 | skills/remotion-animation | MIT |
+| motion-design-principles | github.com/LottieFiles/motion-design-skill @f9a8a04 | skills/motion-design (переименован: было `motion-design`) | MIT |
+| motion-design-promo | github.com/howseen-ai/claude-motion-design @3d90d34 | skill/motion-design (переименован: было `motion-design`) | MIT |
 
 Чтобы обновить скилл — заново скопировать папку из исходного репозитория.
