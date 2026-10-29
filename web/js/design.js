@@ -56,7 +56,7 @@ function injectShapes() {
 /* ---------------------------------------------------------------------------
    Обои: рисуются переменными --wp-*, которые считает color.js из палитры
    --------------------------------------------------------------------------- */
-export const WALLPAPERS = { black: 'Black', shapes: 'Shapes', waves: 'Waves', glow: 'Glow' };
+export const WALLPAPERS = { black: 'Black', shapes: 'Cosmos', waves: 'Waves', glow: 'Glow' };
 let wpCount = 0;
 
 function wallpaperSvg(kind) {
@@ -65,15 +65,28 @@ function wallpaperSvg(kind) {
   const anim = !reducedMotion.matches;
   const head = '<svg viewBox="0 0 390 844" preserveAspectRatio="xMidYMid slice" aria-hidden="true"><rect width="390" height="844" style="fill:var(--wp-bg)"/>';
   if (kind === 'shapes') {
-    const line = 'M48 294C92 298 142 316 132 338S82 352 106 392 168 438 160 470 236 482 330 486 330 522 320 542 382 602 370 632 330 642 342 672 392 722 400 744';
+    // «Космос» в формах Material 3: планета с кольцом, орбита с луной,
+    // клевер и пилюля, мерцающие звёзды-искры
+    const star = (x, y, r, fill, delay) => `
+      <path transform="translate(${x} ${y}) scale(${r / 10})" d="M0-10C1.4-1.4 1.4-1.4 10 0 1.4 1.4 1.4 1.4 0 10-1.4 1.4-1.4 1.4-10 0-1.4-1.4-1.4-1.4 0-10Z" style="fill:var(${fill})">
+        ${anim ? `<animate attributeName="opacity" values="1;.25;1" dur="4s" begin="${delay}s" repeatCount="indefinite"/>` : ''}
+      </path>`;
+    const orbit = 'M-40 520C40 380 330 330 430 400';
     return `${head}
-      <g class="wp-spin" style="transform-origin:290px 232px"><path d="${shapePath('cookie12', 290, 232, 128)}" style="fill:var(--wp-a)"/></g>
-      <circle cx="122" cy="676" r="156" style="fill:var(--wp-b)"/>
-      <path id="wp-line-${n}" d="${line}" fill="none" stroke-width="3.2" stroke-linecap="round" style="stroke:var(--wp-line);opacity:.75"/>
-      <circle cx="48" cy="294" r="11" style="fill:var(--wp-dot)"/>
-      <circle r="17" style="fill:var(--wp-dot2)" ${anim ? '' : 'cx="195" cy="443"'}>
-        ${anim ? `<animateMotion dur="18s" repeatCount="indefinite" keyPoints="0.3;0.7;0.3" keyTimes="0;0.5;1" calcMode="spline" keySplines=".45 0 .55 1;.45 0 .55 1"><mpath href="#wp-line-${n}"/></animateMotion>` : ''}
+      <g transform="rotate(-32 70 120)"><rect x="-90" y="70" width="300" height="118" rx="59" style="fill:var(--wp-a)"/></g>
+      <g class="wp-spin" style="transform-origin:318px 250px"><path d="${shapePath('clover', 318, 250, 74)}" style="fill:var(--wp-b)"/></g>
+      <path d="${shapePath('cookie7', 74, 610, 40)}" style="fill:var(--wp-b);opacity:.75"/>
+      <path id="wp-orbit-${n}" d="${orbit}" fill="none" stroke-width="2.4" stroke-linecap="round" stroke-dasharray="1 11" style="stroke:var(--wp-line);opacity:.55"/>
+      <circle r="10" style="fill:var(--wp-dot2)" ${anim ? '' : 'cx="190" cy="392"'}>
+        ${anim ? `<animateMotion dur="22s" repeatCount="indefinite" keyPoints="0.15;0.85;0.15" keyTimes="0;0.5;1" calcMode="spline" keySplines=".45 0 .55 1;.45 0 .55 1"><mpath href="#wp-orbit-${n}"/></animateMotion>` : ''}
       </circle>
+      <g transform="rotate(-16 290 720)"><path d="M120 720A170 34 0 0 1 460 720" fill="none" stroke-width="7" stroke-linecap="round" style="stroke:var(--wp-line);opacity:.4"/></g>
+      <circle cx="290" cy="720" r="118" style="fill:var(--wp-a)"/>
+      <circle cx="252" cy="680" r="20" style="fill:var(--wp-bg);opacity:.35"/>
+      <circle cx="318" cy="752" r="12" style="fill:var(--wp-bg);opacity:.3"/>
+      <g transform="rotate(-16 290 720)"><path d="M120 720A170 34 0 0 0 460 720" fill="none" stroke-width="7" stroke-linecap="round" style="stroke:var(--wp-line);opacity:.65"/></g>
+      ${star(196, 132, 11, '--wp-dot2', 0)}${star(58, 330, 7, '--wp-dot', 1.2)}${star(350, 470, 9, '--wp-dot2', 2.1)}
+      ${star(150, 560, 6, '--wp-dot', 0.6)}${star(250, 40, 6, '--wp-dot', 2.8)}${star(40, 790, 8, '--wp-dot2', 1.7)}
     </svg>`;
   }
   if (kind === 'waves') {
