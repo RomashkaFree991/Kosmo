@@ -12,6 +12,7 @@ import {
   sessionsOf, updateSession, deleteSession, kosmoMessage, newId,
 } from './auth.js';
 import { smsChannel } from './sms.js';
+import { handleGatewayUpgrade, gatewayStatus } from './gateway.js';
 import { snapshot, applyPatches, broadcastUser, housekeeping } from './sync.js';
 import { attachRealtime, kickSession, qrDeliver, sendTo } from './realtime.js';
 
@@ -19,6 +20,7 @@ const MIME = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
   '.json': 'application/json', '.png': 'image/png', '.jpg': 'image/jpeg', '.svg': 'image/svg+xml', '.webp': 'image/webp',
   '.woff2': 'font/woff2', '.ico': 'image/x-icon', '.mp4': 'video/mp4', '.webmanifest': 'application/manifest+json',
+  '.apk': 'application/vnd.android.package-archive',
 };
 
 /* ---------- Вспомогательное ---------- */
@@ -65,6 +67,7 @@ const routes = [];
 const route = (method, pattern, fn) => routes.push({ method, re: new RegExp(`^${pattern.replace(/:(\w+)/g, '(?<$1>[^/]+)')}$`), fn });
 
 route('GET', '/api/config', () => ({ channel: smsChannel(), testNumbers: config.testNumbers }));
+route('GET', '/api/gateway', () => ({ online: gatewayStatus().phones.length }));
 
 route('POST', '/api/auth/code', async (req) => {
   const { phone } = await readBody(req);
@@ -358,7 +361,7 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-wss = attachRealtime(server, { onActivity: activity });
+wss = attachRealtime(server, { onActivity: activity, onGateway: (req, socket, head) => handleGatewayUpgrade(req, socket, head, clientIp(req)) });
 wss.on('connection', (ws) => { ws.connId = crypto.randomBytes(8).toString('hex'); ws.send(JSON.stringify({ t: 'conn', id: ws.connId })); });
 
 setInterval(() => { try { housekeeping(); } catch (e) { console.error('housekeeping', e); } }, 5000);

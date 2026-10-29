@@ -20,16 +20,17 @@ curl -fsSL https://raw.githubusercontent.com/RomashkaFree991/Kosmo/ccr-c8594e95-
 Данные можно передать прямо в команде установки, тогда скрипт ничего не спрашивает:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/RomashkaFree991/Kosmo/ccr-c8594e95-6dq4vq/deploy/install.sh | sudo bash -s -- kosmochat.duckdns.org you@mail.com --phone USERNAME PASSWORD
+curl -fsSL https://raw.githubusercontent.com/RomashkaFree991/Kosmo/ccr-c8594e95-6dq4vq/deploy/install.sh | sudo bash -s -- kosmochat.duckdns.org you@mail.com --device
 ```
 
-Другие варианты: `--smsru API_ID`, `--telegram TOKEN`, `--twilio SID TOKEN FROM`, `--no-sms`.
+Другие варианты: `--phone USER PASS` (sms-gate.app), `--smsru API_ID`, `--telegram TOKEN`, `--twilio SID TOKEN FROM`, `--no-sms`.
 
 Во время установки скрипт спрашивает, как отправлять коды. Поменять позже можно командой `kosmo sms`.
 
 | Вариант | Где взять ключ | Настройка |
 |---|---|---|
-| Свой телефон (бесплатно, по тарифу SIM) | Android + приложение SMS Gateway for Android (sms-gate.app), включить Cloud server, взять Username/Password | `SMS_PROVIDER=phone`, `SMSGATE_USER`, `SMSGATE_PASS` |
+| **Свой телефон — Kosmo SMS** (бесплатно, без сторонних сервисов) | Android с SIM: открыть `https://ваш-домен/kosmo-sms.apk`, установить, ввести домен и ключ из `kosmo sms-key` | `SMS_PROVIDER=device`, `GATEWAY_KEY` |
+| SMS Gateway for Android | приложение sms-gate.app, Cloud server, Username/Password | `SMS_PROVIDER=phone`, `SMSGATE_USER`, `SMSGATE_PASS` |
 | SMS.ru (РФ/СНГ) | sms.ru → «Программистам» → api_id; пополнить баланс | `SMS_PROVIDER=smsru`, `SMSRU_API_ID` |
 | Telegram Gateway | gateway.telegram.org → токен; код приходит в Telegram | `SMS_PROVIDER=telegram`, `TG_GATEWAY_TOKEN` |
 | Twilio (весь мир) | twilio.com → Account SID, Auth Token, номер | `SMS_PROVIDER=twilio`, `TWILIO_SID`, `TWILIO_TOKEN`, `TWILIO_FROM` |
@@ -41,6 +42,7 @@ curl -fsSL https://raw.githubusercontent.com/RomashkaFree991/Kosmo/ccr-c8594e95-
 ```
 kosmo update    обновить код с GitHub
 kosmo sms       настроить отправку кодов
+kosmo sms-key   ключ и ссылка на приложение Kosmo SMS
 kosmo logs      логи сервера
 kosmo restart   перезапуск
 kosmo status    состояние

@@ -2,8 +2,8 @@
 # Kosmo: установка на VPS одной командой (Ubuntu 22.04+/Debian 12+).
 #   curl -fsSL https://raw.githubusercontent.com/RomashkaFree991/Kosmo/ccr-c8594e95-6dq4vq/deploy/install.sh | sudo bash -s -- kosmochat.duckdns.org you@mail.com
 # Коды можно задать сразу, без вопросов:
-#   … | sudo bash -s -- домен почта --phone USERNAME PASSWORD   (свой Android-телефон, SMS Gateway for Android)
-#   … --smsru API_ID | --telegram TOKEN | --twilio SID TOKEN FROM | --no-sms
+#   … | sudo bash -s -- домен почта --device    (свой Android-телефон с приложением Kosmo SMS — бесплатно)
+#   … --smsru API_ID | --telegram TOKEN | --twilio SID TOKEN FROM | --phone USER PASS (sms-gate.app) | --no-sms
 # Ставит Node 22, pm2, nginx, сертификат Let's Encrypt, coturn (звонки),
 # сервер Kosmo с базой SQLite в /var/lib/kosmo. Повторный запуск обновляет код,
 # настройки и база сохраняются.
@@ -13,6 +13,7 @@ POS=()
 SMS_ARG=""
 while [ $# -gt 0 ]; do
   case "$1" in
+    --device)   SMS_ARG="device"; shift ;;
     --phone)    SMS_ARG="phone|${2:-}|${3:-}"; shift 3 || shift $# ;;
     --smsru)    SMS_ARG="smsru|${2:-}"; shift 2 || shift $# ;;
     --telegram) SMS_ARG="telegram|${2:-}"; shift 2 || shift $# ;;
@@ -79,19 +80,22 @@ fi
 mkdir -p "$DATA_DIR" && chmod 700 "$DATA_DIR"
 
 # ---------- Настройки (SMS и прочее) ----------
+new_gateway_key() { openssl rand -base64 96 | tr -dc 'A-HJ-NP-Z2-9' | cut -c1-16 | sed 's/.\{4\}/&-/g; s/-$//'; }
 sms_setup() {
   echo
   echo "Как отправлять коды подтверждения?"
-  echo "  0) Свой телефон  — Android с SIM шлёт SMS сам (приложение SMS Gateway for Android)"
-  echo "  1) SMS.ru        — SMS на номера РФ/СНГ (нужен api_id из sms.ru)"
-  echo "  2) Telegram      — код приходит в Telegram (Telegram Gateway, gateway.telegram.org)"
-  echo "  3) Twilio        — SMS по всему миру (Account SID, Auth Token, номер отправителя)"
-  echo "  4) Пока без SMS  — код пишется в лог: pm2 logs kosmo"
-  local c; c="$(ask 'Выбор [0-4, Enter = 4]:' 4)"
+  echo "  0) Свой телефон  — приложение Kosmo SMS: Android с SIM шлёт коды сам (бесплатно, без сторонних сервисов)"
+  echo "  1) SMS.ru        — SMS на номера РФ/СНГ (платно, нужен api_id из sms.ru)"
+  echo "  2) Telegram      — код приходит в Telegram (Telegram Gateway)"
+  echo "  3) Twilio        — SMS по всему миру (платно)"
+  echo "  4) Пока без SMS  — код пишется в лог: kosmo logs"
+  echo "  5) SMS Gateway for Android (sms-gate.app)"
+  local c; c="$(ask 'Выбор [0-5, Enter = 0]:' 0)"
   SMS_PROVIDER=log; SMSRU_API_ID=""; TG_GATEWAY_TOKEN=""; TWILIO_SID=""; TWILIO_TOKEN=""; TWILIO_FROM=""
   SMSGATE_URL=""; SMSGATE_USER=""; SMSGATE_PASS=""
   case "$c" in
-    0) SMS_PROVIDER=phone
+    0) SMS_PROVIDER=device ;;
+    5) SMS_PROVIDER=phone
        echo "  В приложении включите Cloud server и скопируйте Username и Password с главного экрана."
        echo "  Введите их ниже и нажмите Enter после каждого:"
        SMSGATE_USER="$(ask 'Username:' '')"; SMSGATE_PASS="$(ask 'Password:' '')"
@@ -100,7 +104,7 @@ sms_setup() {
     2) SMS_PROVIDER=telegram; TG_GATEWAY_TOKEN="$(ask 'Telegram Gateway token:' '')" ;;
     3) SMS_PROVIDER=twilio;   TWILIO_SID="$(ask 'Twilio Account SID:' '')"; TWILIO_TOKEN="$(ask 'Twilio Auth Token:' '')"; TWILIO_FROM="$(ask 'Номер отправителя (+1…):' '')" ;;
   esac
-  if [ "$SMS_PROVIDER" != log ] && [ -z "$SMSRU_API_ID$TG_GATEWAY_TOKEN$TWILIO_TOKEN$SMSGATE_PASS" ]; then
+  if [ "$SMS_PROVIDER" != log ] && [ "$SMS_PROVIDER" != device ] && [ -z "$SMSRU_API_ID$TG_GATEWAY_TOKEN$TWILIO_TOKEN$SMSGATE_PASS" ]; then
     warn "Ключ не введён — коды пока будут в логе (позже: kosmo sms)"; SMS_PROVIDER=log
   fi
   echo "Коды: $SMS_PROVIDER — продолжаю установку…"
@@ -119,7 +123,9 @@ WEB_DIR=$APP_DIR/web
 PUBLIC_URL=https://$DOMAIN
 TRUST_PROXY=1
 MAX_UPLOAD_MB=50
-# SMS: phone | smsru | telegram | twilio | log
+# SMS: device | phone | smsru | telegram | twilio | log
+# device — свой телефон с приложением Kosmo SMS, подключается с этим ключом
+GATEWAY_KEY=$GATEWAY_KEY
 SMS_PROVIDER=$SMS_PROVIDER
 SMSRU_API_ID=$SMSRU_API_ID
 TG_GATEWAY_TOKEN=$TG_GATEWAY_TOKEN
@@ -143,6 +149,7 @@ if [ -f "$ENV_FILE" ] && [ "${KOSMO_SMS_SETUP:-0}" != 1 ] && [ -z "$SMS_ARG" ]; 
   say "Настройки уже есть: $ENV_FILE (сохраняю)"
   set -a; . "$ENV_FILE"; set +a
   sed -i "s/^DOMAIN=.*/DOMAIN=$DOMAIN/; s/^TURN_HOST=.*/TURN_HOST=$DOMAIN/; s#^PUBLIC_URL=.*#PUBLIC_URL=https://$DOMAIN#" "$ENV_FILE"
+  grep -q '^GATEWAY_KEY=.' "$ENV_FILE" || { sed -i '/^GATEWAY_KEY=/d' "$ENV_FILE"; echo "GATEWAY_KEY=$(new_gateway_key)" >> "$ENV_FILE"; }
 else
   [ -f "$ENV_FILE" ] && { set -a; . "$ENV_FILE"; set +a; }
   if [ -n "$SMS_ARG" ] || { [ -n "${SMS_PROVIDER:-}" ] && [ "${KOSMO_SMS_SETUP:-0}" != 1 ]; }; then
@@ -165,6 +172,7 @@ else
   SMSGATE_URL="${SMSGATE_URL:-}"; SMSGATE_USER="${SMSGATE_USER:-}"; SMSGATE_PASS="${SMSGATE_PASS:-}"
   TEST_NUMBERS="${TEST_NUMBERS:-1}"
   TURN_SECRET="${TURN_SECRET:-$(openssl rand -hex 24)}"
+  GATEWAY_KEY="${GATEWAY_KEY:-$(new_gateway_key)}"
   write_env
 fi
 set -a; . "$ENV_FILE"; set +a
@@ -319,11 +327,14 @@ cat > /usr/local/bin/kosmo <<KOS
 case "\${1:-}" in
   update)  exec bash $APP_DIR/deploy/install.sh "$DOMAIN" "$EMAIL" ;;
   sms)     KOSMO_SMS_SETUP=1 exec bash $APP_DIR/deploy/install.sh "$DOMAIN" "$EMAIL" ;;
+  sms-key) . $ENV_FILE; echo "Приложение: https://$DOMAIN/kosmo-sms.apk"; echo "Сервер: $DOMAIN"; echo "Ключ:   \$GATEWAY_KEY"
+           echo "Телефонов в сети: \$(curl -fsS http://127.0.0.1:$PORT/api/gateway | grep -o '[0-9]*')" ;;
   logs)    exec pm2 logs kosmo ;;
   restart) exec pm2 restart kosmo --update-env ;;
   status)  pm2 status kosmo; curl -fsS http://127.0.0.1:$PORT/api/config; echo ;;
   *) echo "kosmo update   — обновить код с GitHub (база и настройки сохранятся)"
-     echo "kosmo sms      — настроить отправку кодов (SMS.ru / Telegram / Twilio)"
+     echo "kosmo sms      — настроить отправку кодов"
+     echo "kosmo sms-key  — ключ и ссылка на приложение Kosmo SMS для телефона"
      echo "kosmo logs     — логи сервера (здесь коды, если SMS не настроены)"
      echo "kosmo restart  — перезапустить сервер"
      echo "kosmo status   — состояние" ;;
@@ -343,4 +354,12 @@ URL="http://$DOMAIN"; [ -f "$CERT" ] && URL="https://$DOMAIN"
 printf '\n\033[1;32m✓ Kosmo работает: %s\033[0m\n' "$URL"
 echo "  База данных: $DATA_DIR/kosmo.db (SQLite)    Файлы: $DATA_DIR/media"
 echo "  Коды входа: $SMS_PROVIDER$( [ "$SMS_PROVIDER" = log ] && echo ' — смотрите в «kosmo logs»; подключить SMS: kosmo sms')"
+if [ "$SMS_PROVIDER" = device ]; then
+  printf '\n\033[1;36m  Телефон для SMS (приложение Kosmo SMS):\033[0m\n'
+  echo "  1. Откройте на Android-телефоне с SIM: $URL/kosmo-sms.apk и установите"
+  echo "  2. В приложении: Сервер = $DOMAIN"
+  echo "                   Ключ   = $GATEWAY_KEY"
+  echo "  3. Нажмите «Включить шлюз» и разрешите отправку SMS"
+  echo "  Показать ещё раз: kosmo sms-key"
+fi
 echo "  Обновить код: kosmo update   ·   Помощь: kosmo"

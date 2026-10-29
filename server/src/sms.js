@@ -2,10 +2,12 @@
 //   smsru    — SMS.ru (номера России и СНГ), SMSRU_API_ID
 //   twilio   — Twilio (весь мир), TWILIO_SID / TWILIO_TOKEN / TWILIO_FROM
 //   telegram — Telegram Gateway (код приходит в Telegram), TG_GATEWAY_TOKEN
+//   device   — свой телефон с приложением Kosmo SMS (бесплатно, без сторонних сервисов), GATEWAY_KEY
 //   phone    — свой Android-телефон с SIM (SMS Gateway for Android), SMSGATE_USER / SMSGATE_PASS
 //   log      — без отправки: код пишется в логи сервера (pm2 logs kosmo)
 
 import { config } from './config.js';
+import { sendViaGateway } from './gateway.js';
 
 const text = (code) => `Kosmo: ваш код ${code}. Никому его не сообщайте.`;
 
@@ -60,6 +62,7 @@ async function telegram(phone, code) {
 
 export async function sendCode(phone, code) {
   switch (config.smsProvider) {
+    case 'device': return sendViaGateway(phone, text(code));
     case 'phone': return phoneGateway(phone, code);
     case 'smsru': return smsru(phone, code);
     case 'twilio': return twilio(phone, code);

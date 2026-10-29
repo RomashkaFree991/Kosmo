@@ -33,9 +33,16 @@ export function qrDeliver(code, payload) {
   return true;
 }
 
-export function attachRealtime(server, { onActivity }) {
+export function attachRealtime(server, { onActivity, onGateway }) {
   onActive = onActivity;
-  const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 512 * 1024 });
+  const wss = new WebSocketServer({ noServer: true, maxPayload: 512 * 1024 });
+  // один обработчик upgrade: /ws — приложение, /ws/gateway — телефон-шлюз SMS
+  server.on('upgrade', (req, socket, head) => {
+    const { pathname } = new URL(req.url, 'http://x');
+    if (pathname === '/ws') wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, req));
+    else if (pathname === '/ws/gateway') onGateway(req, socket, head);
+    else socket.destroy();
+  });
   wss.on('connection', (ws, req) => {
     const url = new URL(req.url, 'http://x');
     const s = sessionByToken(url.searchParams.get('token'));
