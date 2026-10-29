@@ -1,7 +1,7 @@
-// Kosmo: точка входа. Если пользователь уже вошёл — сразу приложение,
+// Kosmo: точка входа. Если эта вкладка уже вошла — сразу приложение,
 // иначе заставка и вход/регистрация.
 
-import { $, initTheme, initPress, users, store } from './core.js';
+import { $, initTheme, initPress, tab } from './core.js';
 import { initColor } from './color.js';
 import { initAuth, showAuth } from './auth.js';
 import { initHome, showApp } from './home.js';
@@ -11,14 +11,13 @@ initPress();
 initColor();
 
 initHome({ logout: showAuth });
-initAuth({ signedIn: (user) => showApp(user) });
+initAuth({ signedIn: () => showApp() });
 
-const current = users.current();
-if (current) {
+if (tab.get()) {
   $('#auth').hidden = true;
-  showApp(current);
-} else if (store.get('session')) {
-  // сессия указывает на удалённый аккаунт — начинаем заново
-  store.remove('session');
-  showAuth();
+  // сессию могли завершить с другого устройства, пока вкладка была закрыта
+  if (!showApp()) {
+    tab.clear();
+    showAuth();
+  }
 }

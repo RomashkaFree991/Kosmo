@@ -371,7 +371,7 @@ html[data-theme="material"] .flag { border-radius: 6px; }
 .field-divider { width: 1px; height: 26px; margin: 0 10px 0 4px; background: var(--c-field-border); }
 html[data-theme="glass"] .field-divider { background: var(--c-hairline); }
 
-#phone {
+.phone-input {
   flex: 1;
   min-width: 0;
   height: 100%;
@@ -383,7 +383,7 @@ html[data-theme="glass"] .field-divider { background: var(--c-hairline); }
   caret-color: var(--c-accent);
   font-variant-numeric: tabular-nums;
 }
-#phone::placeholder { color: var(--c-text-3); }
+.phone-input::placeholder { color: var(--c-text-3); }
 
 .clear-btn {
   width: 36px; height: 36px;

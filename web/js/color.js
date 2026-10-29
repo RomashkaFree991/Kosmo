@@ -58,11 +58,20 @@ function hueOf(hex) {
 }
 
 // Палитра есть и на экране входа, и в профиле — рисуем во все
+let lastExtra = null;
 function renderSwatches(extra) {
+  lastExtra = extra;
   const seeds = extra && !SEEDS.includes(extra) ? [extra, ...SEEDS.slice(0, -1)] : SEEDS;
   const html = seeds.map((s) => `
     <button class="swatch" type="button" role="radio" data-seed="${s}" style="--sw:${s}" aria-label="Color ${s}" aria-checked="false"></button>`).join('');
   $$('.palette-row').forEach((row) => { row.innerHTML = html; });
+}
+
+// Перерисовать палитру (например, после того как профиль собрали заново)
+export function paintSwatches() {
+  renderSwatches(lastExtra);
+  const seed = store.get('seed') ?? SEEDS[0];
+  $$('.swatch').forEach((s) => s.setAttribute('aria-checked', String(s.dataset.seed === seed)));
 }
 
 export function initColor() {

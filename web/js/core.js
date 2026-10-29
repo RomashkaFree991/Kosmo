@@ -1,10 +1,12 @@
-// Общие помощники: DOM, хранилище, пружины, тема, тост, ripple, аватары.
+// Общие помощники: DOM, хранилище, пружины, тема, тост, ripple, аватары,
+// аккаунты и сессии (демо: всё хранится в браузере), «космические» галочки.
 
 export const $ = (sel, root = document) => root.querySelector(sel);
 export const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 export const root = document.documentElement;
 export const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 export const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+export const uid = () => (crypto.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`);
 
 export const store = {
   get(key) { try { return localStorage.getItem(`kosmo:${key}`); } catch { return null; } },
@@ -92,15 +94,14 @@ export function initTheme() {
     const r = btn.getBoundingClientRect();
     withTransition(() => applyTheme(btn.dataset.setTheme), r.left + r.width / 2, r.top + r.height / 2);
   });
-  $$('.seg').forEach((seg) => {
-    seg.addEventListener('pointerdown', () => seg.classList.add('is-pressing'));
-    ['pointerup', 'pointerleave', 'pointercancel'].forEach((e) => seg.addEventListener(e, () => seg.classList.remove('is-pressing')));
-    seg.addEventListener('keydown', (e) => {
-      if (!['ArrowLeft', 'ArrowRight'].includes(e.key)) return;
-      const next = $(`[data-set-theme="${root.dataset.theme === 'glass' ? 'material' : 'glass'}"]`, seg);
-      next.focus();
-      next.click();
-    });
+  document.addEventListener('pointerdown', (e) => e.target.closest('.seg')?.classList.add('is-pressing'));
+  document.addEventListener('pointerup', () => $$('.seg.is-pressing').forEach((s) => s.classList.remove('is-pressing')));
+  document.addEventListener('keydown', (e) => {
+    const seg = e.target.closest?.('.seg');
+    if (!seg || !['ArrowLeft', 'ArrowRight'].includes(e.key)) return;
+    const next = $(`[data-set-theme="${root.dataset.theme === 'glass' ? 'material' : 'glass'}"]`, seg);
+    next.focus();
+    next.click();
   });
 }
 
@@ -113,7 +114,14 @@ export function toast(text) {
   el.textContent = text;
   el.classList.add('is-shown');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => el.classList.remove('is-shown'), 2400);
+  toastTimer = setTimeout(() => el.classList.remove('is-shown'), 2600);
+}
+
+export function shake(el, cls = 'is-error') {
+  el.classList.remove(cls);
+  void el.offsetWidth; // перезапуск анимации тряски
+  el.classList.add(cls);
+  navigator.vibrate?.(30);
 }
 
 /* ---------------------------------------------------------------------------
@@ -188,34 +196,183 @@ export function paintAvatar(el, name, seed = name, animate = false) {
   }
 }
 
+// Аватар официального аккаунта: планета Kosmo на звёздном небе
+export function kosmoAvatar(cls = '') {
+  return `<span class="avatar avatar-kosmo ${cls}" aria-hidden="true">
+    <svg viewBox="0 0 120 120">
+      <circle cx="22" cy="28" r="1.6" fill="#fff" opacity=".8"/><circle cx="96" cy="22" r="1.2" fill="#fff" opacity=".6"/>
+      <circle cx="100" cy="94" r="1.8" fill="#fff" opacity=".7"/><circle cx="18" cy="90" r="1.1" fill="#fff" opacity=".5"/>
+      <g transform="rotate(-18 60 60)"><path d="M10 60 A50 13 0 0 1 110 60" fill="none" stroke="url(#k-ring)" stroke-width="5" stroke-linecap="round"/></g>
+      <circle cx="60" cy="60" r="27" fill="url(#k-fill)"/><circle cx="60" cy="60" r="27" fill="url(#k-shade)"/>
+      <g transform="rotate(-18 60 60)"><path d="M10 60 A50 13 0 0 0 110 60" fill="none" stroke="url(#k-ring)" stroke-width="5" stroke-linecap="round"/></g>
+    </svg>
+  </span>`;
+}
+
+// «Космическая» галочка: планета с кольцом и галочкой.
+// official — официальные аккаунты (фиолетовая), owner — владелец (золотая)
+export function cosmicBadge(kind = 'official') {
+  const label = kind === 'owner' ? 'Owner' : 'Official';
+  return `<svg class="cosmic-badge cosmic-${kind}" viewBox="0 0 24 24" role="img" aria-label="${label}">
+    <title>${label}</title>
+    <g transform="rotate(-24 12 12)"><path d="M0.9 12 A11.1 3.3 0 0 1 23.1 12" fill="none" stroke="url(#cb-ring)" stroke-width="1.3" stroke-linecap="round"/></g>
+    <circle cx="12" cy="12" r="8.4" fill="url(#cb-${kind})"/>
+    <g transform="rotate(-24 12 12)"><path d="M0.9 12 A11.1 3.3 0 0 0 23.1 12" fill="none" stroke="url(#cb-ring)" stroke-width="1.3" stroke-linecap="round"/></g>
+    <path d="M8.5 12.1l2.4 2.4 4.6-4.9" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="20.4" cy="4" r="1.05" fill="#fff"/><circle cx="3.4" cy="19.6" r="0.75" fill="#fff" opacity=".7"/>
+  </svg>`;
+}
+
 export function escapeHtml(s) {
-  return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
 /* ---------------------------------------------------------------------------
-   Пользователи (демо: хранятся в localStorage этого браузера)
+   Устройство, IP и местоположение
    --------------------------------------------------------------------------- */
-export const users = {
-  all() { return store.getJSON('users', {}); },
-  get(phone) { return this.all()[phone] ?? null; },
+export function deviceInfo(ua = navigator.userAgent) {
+  const os = /Windows/.test(ua) ? 'Windows'
+    : /Android/.test(ua) ? 'Android'
+    : /iPhone/.test(ua) ? 'iPhone'
+    : /iPad/.test(ua) ? 'iPad'
+    : /Mac OS X/.test(ua) ? 'macOS'
+    : /CrOS/.test(ua) ? 'ChromeOS'
+    : /Linux/.test(ua) ? 'Linux' : 'Unknown OS';
+  const browser = /YaBrowser/.test(ua) ? 'Yandex Browser'
+    : /Edg\//.test(ua) ? 'Edge'
+    : /OPR\//.test(ua) ? 'Opera'
+    : /Firefox\//.test(ua) ? 'Firefox'
+    : /Chrome\//.test(ua) ? 'Chrome'
+    : /Safari\//.test(ua) ? 'Safari' : 'Browser';
+  const type = /iPhone|Android.+Mobile/.test(ua) ? 'phone' : /iPad|Android/.test(ua) ? 'tablet' : 'desktop';
+  return { browser, os, type, name: `${browser} on ${os}` };
+}
+
+// IP и город узнаём у ipwho.is (без ключа); если не вышло — «Unknown»
+let networkPromise = null;
+export function networkInfo() {
+  networkPromise ??= (async () => {
+    try {
+      const res = await fetch('https://ipwho.is/', { signal: AbortSignal.timeout(4000) });
+      const j = await res.json();
+      if (j.success === false || !j.ip) throw new Error('lookup failed');
+      return { ip: j.ip, location: [j.city, j.country].filter(Boolean).join(', ') || 'Unknown' };
+    } catch {
+      try {
+        const res = await fetch('https://api.ipify.org?format=json', { signal: AbortSignal.timeout(3000) });
+        return { ip: (await res.json()).ip, location: 'Unknown' };
+      } catch {
+        return { ip: 'Unknown', location: 'Unknown' };
+      }
+    }
+  })();
+  return networkPromise;
+}
+
+/* ---------------------------------------------------------------------------
+   Аккаунты и сессии (демо: localStorage этого браузера)
+   Каждая вкладка — отдельная сессия (sessionStorage), как отдельное устройство.
+   --------------------------------------------------------------------------- */
+export const db = {
+  all() { return store.getJSON('accounts', {}); },
+  get(id) { return this.all()[id] ?? null; },
+  byPhone(phone) { return Object.values(this.all()).find((u) => u.phone === phone) ?? null; },
   save(user) {
     const all = this.all();
-    all[user.phone] = user;
-    store.setJSON('users', all);
+    all[user.id] = user;
+    store.setJSON('accounts', all);
+    return user;
   },
-  usernameTaken(username, exceptPhone) {
-    return Object.values(this.all()).some((u) => u.username === username && u.phone !== exceptPhone);
+  update(id, fn) {
+    const user = this.get(id);
+    if (!user) return null;
+    fn(user);
+    return this.save(user);
   },
-  current() {
-    const phone = store.get('session');
-    return phone ? this.get(phone) : null;
+  usernameTaken(username, exceptId) {
+    return Object.values(this.all()).some((u) => u.username === username && u.id !== exceptId);
   },
+  isEmpty() { return Object.keys(this.all()).length === 0; },
 };
 
+// Аккаунты из прошлой версии (ключ — номер телефона, без сессий)
+(function migrate() {
+  const old = store.getJSON('users', null);
+  if (!old) return;
+  for (const u of Object.values(old)) {
+    if (db.byPhone(u.phone)) continue;
+    db.save({ ...u, id: uid(), passSalt: u.phone, sessions: [], messages: [], role: db.isEmpty() ? 'owner' : 'user' });
+  }
+  store.remove('users');
+  store.remove('session');
+})();
+
+export const tab = {
+  get() { try { return JSON.parse(sessionStorage.getItem('kosmo:auth')); } catch { return null; } },
+  set(value) { try { sessionStorage.setItem('kosmo:auth', JSON.stringify(value)); } catch { /* приватный режим */ } },
+  clear() { try { sessionStorage.removeItem('kosmo:auth'); } catch { /* приватный режим */ } },
+};
+
+// Текущий вошедший аккаунт этой вкладки, если его сессия ещё жива
+export function current() {
+  const t = tab.get();
+  if (!t) return null;
+  const user = db.get(t.uid);
+  const session = user?.sessions.find((s) => s.id === t.sid);
+  return session ? { user, session } : null;
+}
+
+// Новая сессия: при регистрации — «Welcome», при входе — «New login» в чате Kosmo
+export async function startSession(user, { isNew }) {
+  const net = await networkInfo();
+  const dev = deviceInfo();
+  const now = Date.now();
+  const session = {
+    id: uid(),
+    ...dev,
+    ip: net.ip,
+    location: net.location,
+    createdAt: now,
+    lastActive: now,
+    first: isNew,
+    // владелец при создании аккаунта сразу доверенный; если доверенных не осталось — тоже
+    trusted: isNew || !user.sessions.some((s) => s.trusted),
+  };
+  user.sessions.push(session);
+  user.messages.push({
+    id: uid(),
+    kind: isNew ? 'welcome' : 'login',
+    at: now,
+    sid: session.id,
+    device: session.name,
+    type: session.type,
+    ip: session.ip,
+    location: session.location,
+  });
+  db.save(user);
+  tab.set({ uid: user.id, sid: session.id });
+  return session;
+}
+
 // Код-пароль храним только в виде SHA-256 (где доступен WebCrypto)
-export async function hashPasscode(phone, code) {
+export async function hashPasscode(salt, code) {
   if (!crypto.subtle) return `plain:${code}`;
-  const data = new TextEncoder().encode(`kosmo:${phone}:${code}`);
+  const data = new TextEncoder().encode(`kosmo:${salt}:${code}`);
   const buf = await crypto.subtle.digest('SHA-256', data);
   return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+/* ---------------------------------------------------------------------------
+   Даты
+   --------------------------------------------------------------------------- */
+const dateFmt = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+const timeFmt = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit' });
+export const formatDate = (t) => dateFmt.format(t);
+export const formatTime = (t) => timeFmt.format(t);
+export function timeAgo(t) {
+  const s = Math.round((Date.now() - t) / 1000);
+  if (s < 60) return 'just now';
+  if (s < 3600) return `${Math.floor(s / 60)} min ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)} h ago`;
+  return formatDate(t);
 }

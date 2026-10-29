@@ -10,13 +10,14 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Roboto+Flex:opsz,wght@8..144,400;8..144,500;8..144,600;8..144,700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/styles.css">
   <link rel="stylesheet" href="css/app.css">
-  <!-- До первого кадра: тема, вошёл ли пользователь, нужна ли заставка -->
+  <!-- До первого кадра: тема, вошла ли эта вкладка, нужна ли заставка -->
   <script>
     (function () {
-      var get = function (k) { try { return localStorage.getItem('kosmo:' + k); } catch (e) { return null; } };
       var root = document.documentElement;
-      if (get('theme') === 'material') root.dataset.theme = 'material';
-      if (get('session')) root.classList.add('has-session');
+      try { if (localStorage.getItem('kosmo:theme') === 'material') root.dataset.theme = 'material'; } catch (e) {}
+      var signedIn = false;
+      try { signedIn = Boolean(sessionStorage.getItem('kosmo:auth')); } catch (e) {}
+      if (signedIn) root.classList.add('has-session');
       else if (!matchMedia('(prefers-reduced-motion: reduce)').matches) root.classList.add('is-intro');
     })();
   </script>
@@ -24,6 +25,33 @@
   <script src="js/app.js" type="module"></script>
 </head>
 <body>
+  <!-- Общие градиенты для логотипа Kosmo и «космических» галочек.
+       Лежат в видимом (не display:none) SVG, иначе Chrome их не рисует. -->
+  <svg class="sprite" width="0" height="0" aria-hidden="true" focusable="false">
+    <defs>
+      <linearGradient id="k-fill" x1="0.15" y1="0.1" x2="0.85" y2="0.95">
+        <stop offset="0" stop-color="#64d2ff"/><stop offset="1" stop-color="#bf5af2"/>
+      </linearGradient>
+      <radialGradient id="k-shade" cx="0.35" cy="0.3" r="0.75">
+        <stop offset="0" stop-color="#fff" stop-opacity="0.55"/>
+        <stop offset="0.45" stop-color="#fff" stop-opacity="0"/>
+        <stop offset="1" stop-color="#000" stop-opacity="0.45"/>
+      </radialGradient>
+      <linearGradient id="k-ring" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0" stop-color="#64d2ff"/><stop offset="1" stop-color="#bf5af2"/>
+      </linearGradient>
+      <linearGradient id="cb-official" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#5ac8fa"/><stop offset="0.55" stop-color="#7d5cff"/><stop offset="1" stop-color="#bf5af2"/>
+      </linearGradient>
+      <linearGradient id="cb-owner" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#ffe066"/><stop offset="0.5" stop-color="#ff9f0a"/><stop offset="1" stop-color="#ff5e3a"/>
+      </linearGradient>
+      <linearGradient id="cb-ring" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0" stop-color="#fff" stop-opacity="0.95"/><stop offset="1" stop-color="#fff" stop-opacity="0.35"/>
+      </linearGradient>
+    </defs>
+  </svg>
+
   <!-- ======================= Вход и регистрация ======================= -->
   <div class="auth" id="auth">
     <header class="topbar reveal" style="--d: 4">
@@ -84,18 +112,7 @@
         <h1 class="brand reveal" id="phone-title" style="--d: 0">Kosmo</h1>
 
         <form id="phone-form" novalidate>
-          <div class="field glass reveal" id="phone-field" data-refract="0.7" style="--d: 1">
-            <button type="button" class="country-btn" id="country-btn" aria-haspopup="dialog" aria-label="Country: Russia, +7">
-              <img class="flag" id="country-flag" src="https://flagcdn.com/ru.svg" alt="" width="26" height="19">
-              <span class="dial" id="country-dial">+7</span>
-              <svg class="i chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10l5 5 5-5"/></svg>
-            </button>
-            <span class="field-divider" aria-hidden="true"></span>
-            <input id="phone" type="tel" inputmode="tel" autocomplete="tel-national" placeholder="000 000-00-00" aria-label="Phone number">
-            <button type="button" class="clear-btn" id="clear-btn" aria-label="Clear">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" class="clear-bg"/><path class="clear-x" d="M9.2 9.2l5.6 5.6M14.8 9.2l-5.6 5.6"/></svg>
-            </button>
-          </div>
+          <div class="field glass reveal" id="phone-field" data-refract="0.7" style="--d: 1"></div>
 
           <button class="btn btn-primary reveal" type="submit" id="submit-btn" style="--d: 2">
             <span class="btn-label">Continue</span>
@@ -127,13 +144,7 @@
       <!-- 2. Код из SMS -->
       <section class="screen" id="screen-code" aria-labelledby="code-title" hidden>
         <h1 class="screen-title" id="code-title">Enter code</h1>
-        <div class="otp" id="otp">
-          <input id="otp-input" class="otp-input" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" aria-label="6-digit code">
-          <div class="otp-cells" aria-hidden="true">
-            <span class="otp-cell"></span><span class="otp-cell"></span><span class="otp-cell"></span>
-            <span class="otp-cell"></span><span class="otp-cell"></span><span class="otp-cell"></span>
-          </div>
-        </div>
+        <div class="otp" id="otp"></div>
       </section>
 
       <!-- 3. Код-пароль: 4 ячейки и клавиатура как на iPhone -->
@@ -175,7 +186,7 @@
               <svg class="i bad" viewBox="0 0 24 24"><path d="M7 7l10 10M17 7L7 17"/></svg>
             </span>
           </div>
-          <span class="sr-only" id="username-rules">5–32 characters: a–z, 0–9 and underscores, starting with a letter</span>
+          <span class="sr-only" id="username-rules">3 to 32 English letters or digits, with at least one letter</span>
           <button class="btn btn-primary" type="submit">Continue</button>
         </form>
       </section>
@@ -233,48 +244,14 @@
           <div class="title-pill glass" data-refract="0.7"><span>Profile</span></div>
           <span class="circle-spacer" aria-hidden="true"></span>
         </header>
-        <div class="profile">
-          <div class="avatar avatar-xl" id="profile-avatar" aria-hidden="true"><span></span></div>
-          <h2 class="profile-name" id="profile-name"></h2>
-          <p class="profile-meta"><span id="profile-username"></span> · <span id="profile-phone"></span></p>
-          <p class="profile-bio" id="profile-bio"></p>
-
-          <div class="group">
-            <div class="group-row group-row-col">
-              <span class="group-label">Design</span>
-              <div class="seg glass" data-refract="0.8" role="radiogroup" aria-label="Design style">
-                <span class="seg-thumb" aria-hidden="true"></span>
-                <button class="seg-item" type="button" role="radio" data-set-theme="glass" aria-checked="true">
-                  <svg class="i seg-check" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
-                  Liquid Glass
-                </button>
-                <button class="seg-item" type="button" role="radio" data-set-theme="material" aria-checked="false">
-                  <svg class="i seg-check" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
-                  Material You
-                </button>
-              </div>
-              <div class="palette palette-inline" role="radiogroup" aria-label="Dynamic color">
-                <div class="palette-row"></div>
-                <label class="photo-btn" for="photo-input" aria-label="Color from photo" title="Color from photo">
-                  <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="3.5"/><circle cx="9" cy="10" r="1.8"/><path d="M4 17.5l4.8-4.3 3.4 3 3.3-3.4 4.5 4.2"/></svg>
-                </label>
-              </div>
-            </div>
-          </div>
-          <div class="group">
-            <button class="group-row group-row-btn danger" type="button" id="logout-btn">
-              <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4M10 8l-4 4 4 4M6 12h10"/></svg>
-              Log out
-            </button>
-          </div>
-        </div>
+        <div class="profile" id="profile"></div>
       </section>
     </div>
 
-    <!-- Поиск: выезжает справа, чаты и нижняя панель уходят -->
-    <section class="search-panel" id="search-panel" aria-label="Search" aria-hidden="true" inert>
-      <header class="search-header">
-        <button class="circle-btn glass" type="button" id="search-close" aria-label="Close search" data-refract="0.7">
+    <!-- Боковые панели: выезжают справа, основной экран и нижняя панель уходят -->
+    <section class="panel" id="panel-search" aria-label="Search" aria-hidden="true" inert>
+      <header class="panel-header">
+        <button class="circle-btn glass" type="button" data-close-panel aria-label="Close search" data-refract="0.7">
           <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 6l-6 6 6 6"/></svg>
         </button>
         <label class="search-pill glass" data-refract="0.7">
@@ -282,7 +259,82 @@
           <input type="search" id="search-input" placeholder="Search" aria-label="Search chats and people" autocomplete="off">
         </label>
       </header>
-      <div class="search-results" id="search-results"></div>
+      <div class="panel-body" id="search-results"></div>
+    </section>
+
+    <section class="panel" id="panel-chat" aria-label="Kosmo" aria-hidden="true" inert>
+      <header class="panel-header">
+        <button class="circle-btn glass" type="button" data-close-panel aria-label="Back" data-refract="0.7">
+          <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 6l-6 6 6 6"/></svg>
+        </button>
+        <div class="title-pill title-pill-2 glass" data-refract="0.7">
+          <span class="pill-title" id="chat-title"></span>
+          <span class="pill-sub">official account</span>
+        </div>
+        <span class="chat-head-avatar" id="chat-head-avatar"></span>
+      </header>
+      <div class="messages" id="messages"></div>
+      <div class="composer glass" data-refract="0.6">
+        <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10.5" width="14" height="9.5" rx="2.5"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"/></svg>
+        <span>Only Kosmo can send messages here</span>
+      </div>
+    </section>
+
+    <section class="panel" id="panel-sessions" aria-label="Sessions" aria-hidden="true" inert>
+      <header class="panel-header">
+        <button class="circle-btn glass" type="button" data-close-panel aria-label="Back" data-refract="0.7">
+          <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 6l-6 6 6 6"/></svg>
+        </button>
+        <div class="title-pill glass" data-refract="0.7"><span>Sessions</span></div>
+        <span class="circle-spacer" aria-hidden="true"></span>
+      </header>
+      <div class="panel-body" id="sessions"></div>
+    </section>
+
+    <section class="panel" id="panel-phone" aria-label="Change number" aria-hidden="true" inert>
+      <header class="panel-header">
+        <button class="circle-btn glass" type="button" data-close-panel aria-label="Back" data-refract="0.7">
+          <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 6l-6 6 6 6"/></svg>
+        </button>
+        <div class="title-pill glass" data-refract="0.7"><span>Change number</span></div>
+        <span class="circle-spacer" aria-hidden="true"></span>
+      </header>
+      <div class="panel-body steps" id="phone-steps">
+        <div class="step" data-step="intro">
+          <div class="step-icon" aria-hidden="true">
+            <svg class="i" viewBox="0 0 24 24"><rect x="6.5" y="2.5" width="11" height="19" rx="2.8"/><path d="M10.5 18.5h3"/></svg>
+          </div>
+          <p class="step-value" id="cp-current"></p>
+          <p class="step-text">To confirm it's you, we'll send a code to your current number. Then you'll enter the new number and confirm it too.</p>
+          <button class="btn btn-primary" type="button" id="cp-start">Change number</button>
+        </div>
+        <div class="step" data-step="old-code" hidden>
+          <h2 class="step-title">Code sent to</h2>
+          <p class="step-value" id="cp-old"></p>
+          <div class="otp" id="cp-old-otp"></div>
+        </div>
+        <form class="step" data-step="new-phone" id="cp-new-form" novalidate hidden>
+          <h2 class="step-title">New number</h2>
+          <div class="field glass" id="cp-phone-field" data-refract="0.7"></div>
+          <button class="btn btn-primary" type="submit" id="cp-new-submit">
+            <span class="btn-label">Send code</span>
+            <span class="spinner" aria-hidden="true"></span>
+          </button>
+        </form>
+        <div class="step" data-step="new-code" hidden>
+          <h2 class="step-title">Code sent to</h2>
+          <p class="step-value" id="cp-new"></p>
+          <div class="otp" id="cp-new-otp"></div>
+        </div>
+        <div class="step" data-step="done" hidden>
+          <div class="step-icon step-icon-ok" aria-hidden="true">
+            <svg class="i" viewBox="0 0 24 24"><path class="draw" pathLength="1" d="M5 12.5l4.5 4.5L19 7.5"/></svg>
+          </div>
+          <h2 class="step-title">Number changed</h2>
+          <p class="step-value" id="cp-done"></p>
+          <button class="btn btn-primary" type="button" data-close-panel>Done</button>
+        </div>
+      </div>
     </section>
 
     <!-- Нижняя панель -->
