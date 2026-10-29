@@ -21,6 +21,7 @@ curl -fsSL https://raw.githubusercontent.com/RomashkaFree991/Kosmo/ccr-c8594e95-
 
 | Вариант | Где взять ключ | Настройка |
 |---|---|---|
+| Свой телефон (бесплатно, по тарифу SIM) | Android + приложение SMS Gateway for Android (sms-gate.app), включить Cloud server, взять Username/Password | `SMS_PROVIDER=phone`, `SMSGATE_USER`, `SMSGATE_PASS` |
 | SMS.ru (РФ/СНГ) | sms.ru → «Программистам» → api_id; пополнить баланс | `SMS_PROVIDER=smsru`, `SMSRU_API_ID` |
 | Telegram Gateway | gateway.telegram.org → токен; код приходит в Telegram | `SMS_PROVIDER=telegram`, `TG_GATEWAY_TOKEN` |
 | Twilio (весь мир) | twilio.com → Account SID, Auth Token, номер | `SMS_PROVIDER=twilio`, `TWILIO_SID`, `TWILIO_TOKEN`, `TWILIO_FROM` |

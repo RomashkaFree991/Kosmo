@@ -11,13 +11,17 @@ export const config = {
   dataDir: env.DATA_DIR ?? path.join(root, 'data'),
   webDir: env.WEB_DIR ?? path.join(root, 'web'),
   publicUrl: env.PUBLIC_URL ?? 'http://localhost:3000',
-  // SMS: smsru | twilio | telegram | log
+  // SMS: phone | smsru | twilio | telegram | log
   smsProvider: (env.SMS_PROVIDER ?? 'log').toLowerCase(),
   smsruApiId: env.SMSRU_API_ID ?? '',
   twilioSid: env.TWILIO_SID ?? '',
   twilioToken: env.TWILIO_TOKEN ?? '',
   twilioFrom: env.TWILIO_FROM ?? '',
   telegramGatewayToken: env.TG_GATEWAY_TOKEN ?? '',
+  // свой Android-телефон с SIM как SMS-шлюз (приложение SMS Gateway for Android)
+  smsgateUrl: env.SMSGATE_URL || 'https://api.sms-gate.app/3rdparty/v1/message',
+  smsgateUser: env.SMSGATE_USER ?? '',
+  smsgatePass: env.SMSGATE_PASS ?? '',
   // номера +000… для тестов: код всегда 000000
   testNumbers: (env.TEST_NUMBERS ?? '1') === '1',
   // звонки: STUN Google + свой TURN (coturn) с общим секретом

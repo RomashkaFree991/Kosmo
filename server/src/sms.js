@@ -2,6 +2,7 @@
 //   smsru    — SMS.ru (номера России и СНГ), SMSRU_API_ID
 //   twilio   — Twilio (весь мир), TWILIO_SID / TWILIO_TOKEN / TWILIO_FROM
 //   telegram — Telegram Gateway (код приходит в Telegram), TG_GATEWAY_TOKEN
+//   phone    — свой Android-телефон с SIM (SMS Gateway for Android), SMSGATE_USER / SMSGATE_PASS
 //   log      — без отправки: код пишется в логи сервера (pm2 logs kosmo)
 
 import { config } from './config.js';
@@ -18,6 +19,21 @@ async function smsru(phone, code) {
   const j = await r.json();
   const s = j.sms?.[phone.replace(/\D/g, '')];
   if (j.status !== 'OK' || s?.status !== 'OK') throw new Error(`sms.ru: ${s?.status_text ?? j.status_text ?? 'error'}`);
+}
+
+// Телефон отправляет SMS со своей SIM-карты: сервер шлёт запрос в приложение
+// (облачный режим через api.sms-gate.app или напрямую http://телефон:8080/message)
+async function phoneGateway(phone, code) {
+  const r = await fetch(config.smsgateUrl, {
+    method: 'POST',
+    headers: {
+      Authorization: `Basic ${Buffer.from(`${config.smsgateUser}:${config.smsgatePass}`).toString('base64')}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ textMessage: { text: text(code) }, phoneNumbers: [phone], ttl: 300 }),
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!r.ok) throw new Error(`sms gateway: ${r.status} ${(await r.text().catch(() => '')).slice(0, 200)}`);
 }
 
 async function twilio(phone, code) {
@@ -44,6 +60,7 @@ async function telegram(phone, code) {
 
 export async function sendCode(phone, code) {
   switch (config.smsProvider) {
+    case 'phone': return phoneGateway(phone, code);
     case 'smsru': return smsru(phone, code);
     case 'twilio': return twilio(phone, code);
     case 'telegram': return telegram(phone, code);

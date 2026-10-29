@@ -61,18 +61,24 @@ mkdir -p "$DATA_DIR" && chmod 700 "$DATA_DIR"
 sms_setup() {
   echo
   echo "Как отправлять коды подтверждения?"
+  echo "  0) Свой телефон  — Android с SIM шлёт SMS сам (приложение SMS Gateway for Android)"
   echo "  1) SMS.ru        — SMS на номера РФ/СНГ (нужен api_id из sms.ru)"
   echo "  2) Telegram      — код приходит в Telegram (Telegram Gateway, gateway.telegram.org)"
   echo "  3) Twilio        — SMS по всему миру (Account SID, Auth Token, номер отправителя)"
   echo "  4) Пока без SMS  — код пишется в лог: pm2 logs kosmo"
-  local c; c="$(ask 'Выбор [1-4, Enter = 4]:' 4)"
+  local c; c="$(ask 'Выбор [0-4, Enter = 4]:' 4)"
   SMS_PROVIDER=log; SMSRU_API_ID=""; TG_GATEWAY_TOKEN=""; TWILIO_SID=""; TWILIO_TOKEN=""; TWILIO_FROM=""
+  SMSGATE_URL=""; SMSGATE_USER=""; SMSGATE_PASS=""
   case "$c" in
+    0) SMS_PROVIDER=phone
+       echo "  В приложении включите Cloud server и скопируйте Username и Password с главного экрана."
+       SMSGATE_USER="$(ask 'Username:' '')"; SMSGATE_PASS="$(ask 'Password:' '')"
+       SMSGATE_URL="$(ask 'Адрес API [Enter = облако api.sms-gate.app]:' '')" ;;
     1) SMS_PROVIDER=smsru;    SMSRU_API_ID="$(ask 'SMS.ru api_id:' '')" ;;
     2) SMS_PROVIDER=telegram; TG_GATEWAY_TOKEN="$(ask 'Telegram Gateway token:' '')" ;;
     3) SMS_PROVIDER=twilio;   TWILIO_SID="$(ask 'Twilio Account SID:' '')"; TWILIO_TOKEN="$(ask 'Twilio Auth Token:' '')"; TWILIO_FROM="$(ask 'Номер отправителя (+1…):' '')" ;;
   esac
-  if [ "$SMS_PROVIDER" != log ] && [ -z "$SMSRU_API_ID$TG_GATEWAY_TOKEN$TWILIO_TOKEN" ]; then
+  if [ "$SMS_PROVIDER" != log ] && [ -z "$SMSRU_API_ID$TG_GATEWAY_TOKEN$TWILIO_TOKEN$SMSGATE_PASS" ]; then
     warn "Ключ не введён — коды пока будут в логе"; SMS_PROVIDER=log
   fi
 }
@@ -90,13 +96,17 @@ WEB_DIR=$APP_DIR/web
 PUBLIC_URL=https://$DOMAIN
 TRUST_PROXY=1
 MAX_UPLOAD_MB=50
-# SMS: smsru | telegram | twilio | log
+# SMS: phone | smsru | telegram | twilio | log
 SMS_PROVIDER=$SMS_PROVIDER
 SMSRU_API_ID=$SMSRU_API_ID
 TG_GATEWAY_TOKEN=$TG_GATEWAY_TOKEN
 TWILIO_SID=$TWILIO_SID
 TWILIO_TOKEN=$TWILIO_TOKEN
 TWILIO_FROM=$TWILIO_FROM
+# свой телефон (SMS Gateway for Android); пустой адрес = облако api.sms-gate.app
+SMSGATE_URL=$SMSGATE_URL
+SMSGATE_USER=$SMSGATE_USER
+SMSGATE_PASS=$SMSGATE_PASS
 # номера +000… входят с кодом 000000 (для проверки); 0 — выключить
 TEST_NUMBERS=$TEST_NUMBERS
 # звонки: свой TURN (coturn)
@@ -119,6 +129,7 @@ else
   fi
   SMSRU_API_ID="${SMSRU_API_ID:-}"; TG_GATEWAY_TOKEN="${TG_GATEWAY_TOKEN:-}"
   TWILIO_SID="${TWILIO_SID:-}"; TWILIO_TOKEN="${TWILIO_TOKEN:-}"; TWILIO_FROM="${TWILIO_FROM:-}"
+  SMSGATE_URL="${SMSGATE_URL:-}"; SMSGATE_USER="${SMSGATE_USER:-}"; SMSGATE_PASS="${SMSGATE_PASS:-}"
   TEST_NUMBERS="${TEST_NUMBERS:-1}"
   TURN_SECRET="${TURN_SECRET:-$(openssl rand -hex 24)}"
   write_env
