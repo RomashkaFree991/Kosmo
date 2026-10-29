@@ -1,13 +1,28 @@
 #!/usr/bin/env bash
 # Kosmo: установка на VPS одной командой (Ubuntu 22.04+/Debian 12+).
 #   curl -fsSL https://raw.githubusercontent.com/RomashkaFree991/Kosmo/ccr-c8594e95-6dq4vq/deploy/install.sh | sudo bash -s -- kosmochat.duckdns.org you@mail.com
+# Коды можно задать сразу, без вопросов:
+#   … | sudo bash -s -- домен почта --phone USERNAME PASSWORD   (свой Android-телефон, SMS Gateway for Android)
+#   … --smsru API_ID | --telegram TOKEN | --twilio SID TOKEN FROM | --no-sms
 # Ставит Node 22, pm2, nginx, сертификат Let's Encrypt, coturn (звонки),
 # сервер Kosmo с базой SQLite в /var/lib/kosmo. Повторный запуск обновляет код,
 # настройки и база сохраняются.
 set -euo pipefail
 
-DOMAIN="${1:-${DOMAIN:-}}"
-EMAIL="${2:-${EMAIL:-}}"
+POS=()
+SMS_ARG=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --phone)    SMS_ARG="phone|${2:-}|${3:-}"; shift 3 || shift $# ;;
+    --smsru)    SMS_ARG="smsru|${2:-}"; shift 2 || shift $# ;;
+    --telegram) SMS_ARG="telegram|${2:-}"; shift 2 || shift $# ;;
+    --twilio)   SMS_ARG="twilio|${2:-}|${3:-}|${4:-}"; shift 4 || shift $# ;;
+    --no-sms)   SMS_ARG="log"; shift ;;
+    *) POS+=("$1"); shift ;;
+  esac
+done
+DOMAIN="${POS[0]:-${DOMAIN:-}}"
+EMAIL="${POS[1]:-${EMAIL:-}}"
 REPO="${REPO:-https://github.com/RomashkaFree991/Kosmo.git}"
 BRANCH="${BRANCH:-ccr-c8594e95-6dq4vq}"
 APP_DIR=/opt/kosmo
@@ -19,9 +34,15 @@ PORT=3000
 say()  { printf '\n\033[1;35m▸ %s\033[0m\n' "$*"; }
 warn() { printf '\033[1;33m! %s\033[0m\n' "$*"; }
 die()  { printf '\033[1;31m✗ %s\033[0m\n' "$*" >&2; exit 1; }
-ask()  { # ask "Вопрос" default → ответ (из терминала, даже при curl | bash)
+ask()  { # ask "Вопрос" default → ответ (из терминала, даже при curl | bash; ждём до 5 минут)
   local a=""
-  if [ -r /dev/tty ]; then read -r -p "$1 " a </dev/tty || true; fi
+  if { exec 3<>/dev/tty; } 2>/dev/null; then
+    printf '\033[1;36m? %s\033[0m ' "$1" >&3
+    IFS= read -r -t 300 a <&3 || printf '\n' >&3
+    exec 3>&-
+  fi
+  a="${a//$'\r'/}"
+  a="${a#"${a%%[![:space:]]*}"}"; a="${a%"${a##*[![:space:]]}"}"
   printf '%s' "${a:-$2}"
 }
 
@@ -72,6 +93,7 @@ sms_setup() {
   case "$c" in
     0) SMS_PROVIDER=phone
        echo "  В приложении включите Cloud server и скопируйте Username и Password с главного экрана."
+       echo "  Введите их ниже и нажмите Enter после каждого:"
        SMSGATE_USER="$(ask 'Username:' '')"; SMSGATE_PASS="$(ask 'Password:' '')"
        SMSGATE_URL="$(ask 'Адрес API [Enter = облако api.sms-gate.app]:' '')" ;;
     1) SMS_PROVIDER=smsru;    SMSRU_API_ID="$(ask 'SMS.ru api_id:' '')" ;;
@@ -79,8 +101,9 @@ sms_setup() {
     3) SMS_PROVIDER=twilio;   TWILIO_SID="$(ask 'Twilio Account SID:' '')"; TWILIO_TOKEN="$(ask 'Twilio Auth Token:' '')"; TWILIO_FROM="$(ask 'Номер отправителя (+1…):' '')" ;;
   esac
   if [ "$SMS_PROVIDER" != log ] && [ -z "$SMSRU_API_ID$TG_GATEWAY_TOKEN$TWILIO_TOKEN$SMSGATE_PASS" ]; then
-    warn "Ключ не введён — коды пока будут в логе"; SMS_PROVIDER=log
+    warn "Ключ не введён — коды пока будут в логе (позже: kosmo sms)"; SMS_PROVIDER=log
   fi
+  echo "Коды: $SMS_PROVIDER — продолжаю установку…"
 }
 
 write_env() {
@@ -116,14 +139,24 @@ CONF
   umask 022
 }
 
-if [ -f "$ENV_FILE" ] && [ "${KOSMO_SMS_SETUP:-0}" != 1 ]; then
+if [ -f "$ENV_FILE" ] && [ "${KOSMO_SMS_SETUP:-0}" != 1 ] && [ -z "$SMS_ARG" ]; then
   say "Настройки уже есть: $ENV_FILE (сохраняю)"
   set -a; . "$ENV_FILE"; set +a
   sed -i "s/^DOMAIN=.*/DOMAIN=$DOMAIN/; s/^TURN_HOST=.*/TURN_HOST=$DOMAIN/; s#^PUBLIC_URL=.*#PUBLIC_URL=https://$DOMAIN#" "$ENV_FILE"
 else
   [ -f "$ENV_FILE" ] && { set -a; . "$ENV_FILE"; set +a; }
-  if [ -n "${SMS_PROVIDER:-}" ] && [ "${KOSMO_SMS_SETUP:-0}" != 1 ]; then
-    : # провайдер передан переменными окружения
+  if [ -n "$SMS_ARG" ] || { [ -n "${SMS_PROVIDER:-}" ] && [ "${KOSMO_SMS_SETUP:-0}" != 1 ]; }; then
+    if [ -n "$SMS_ARG" ]; then   # провайдер из команды (--phone и т.п.)
+      IFS='|' read -r SMS_PROVIDER A1 A2 A3 <<<"$SMS_ARG"
+      SMSRU_API_ID=""; TG_GATEWAY_TOKEN=""; TWILIO_SID=""; TWILIO_TOKEN=""; TWILIO_FROM=""; SMSGATE_USER=""; SMSGATE_PASS=""
+      case "$SMS_PROVIDER" in
+        phone) SMSGATE_USER="$A1"; SMSGATE_PASS="$A2" ;;
+        smsru) SMSRU_API_ID="$A1" ;;
+        telegram) TG_GATEWAY_TOKEN="$A1" ;;
+        twilio) TWILIO_SID="$A1"; TWILIO_TOKEN="$A2"; TWILIO_FROM="$A3" ;;
+      esac
+      echo "Коды: $SMS_PROVIDER"
+    fi
   else
     sms_setup
   fi

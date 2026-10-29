@@ -17,6 +17,14 @@ curl -fsSL https://raw.githubusercontent.com/RomashkaFree991/Kosmo/ccr-c8594e95-
 Повторный запуск команды (или `kosmo update`) обновляет код. База и настройки остаются.
 
 ## Коды по SMS
+Данные можно передать прямо в команде установки, тогда скрипт ничего не спрашивает:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/RomashkaFree991/Kosmo/ccr-c8594e95-6dq4vq/deploy/install.sh | sudo bash -s -- kosmochat.duckdns.org you@mail.com --phone USERNAME PASSWORD
+```
+
+Другие варианты: `--smsru API_ID`, `--telegram TOKEN`, `--twilio SID TOKEN FROM`, `--no-sms`.
+
 Во время установки скрипт спрашивает, как отправлять коды. Поменять позже можно командой `kosmo sms`.
 
 | Вариант | Где взять ключ | Настройка |
