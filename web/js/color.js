@@ -32,6 +32,9 @@ function applySeed(hex) {
       m: [P.tone(12), P.tone(24), T.tone(26), N.tone(92), P.tone(62), N.tone(98)],
       g: [P.tone(4), P.tone(13), T.tone(13), N.tone(70), P.tone(45), N.tone(90)],
     };
+    // Liquid Glass: яркий акцент того же оттенка (сообщения, кнопки, переключатели)
+    const seedHct = Hct.fromInt(argbFromHex(hex));
+    vars['--glass-accent'] = hexFromArgb(Hct.from(seedHct.hue, Math.max(56, seedHct.chroma), 60).toInt());
     for (const [k, list] of Object.entries(tones)) {
       ['bg', 'a', 'b', 'line', 'dot', 'dot2'].forEach((name, i) => { vars[`--wp${k}-${name}`] = hexFromArgb(list[i]); });
     }
@@ -49,6 +52,7 @@ function applySeed(hex) {
       '--md-sys-color-surface-container': `hsl(${h} 8% 12%)`,
       '--md-sys-color-surface-container-high': `hsl(${h} 8% 17%)`,
       '--md-btn-bg': `hsl(${h} 90% 98%)`,
+      '--glass-accent': `hsl(${h} 85% 58%)`,
       '--md-btn-fg': `hsl(${h} 70% 12%)`,
       '--wpm-bg': `hsl(${h} 45% 11%)`, '--wpm-a': `hsl(${h} 35% 22%)`, '--wpm-b': `hsl(${(h + 60) % 360} 30% 24%)`,
       '--wpm-line': `hsl(${h} 30% 90%)`, '--wpm-dot': `hsl(${h} 50% 60%)`, '--wpm-dot2': `hsl(${h} 40% 97%)`,

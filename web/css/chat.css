@@ -99,7 +99,7 @@ html[data-theme="material"] .chat.is-held { background: var(--md-sys-color-surfa
 
 /* ---------- Сообщения ---------- */
 
-.chat-wallpaper { position: fixed; inset: 0; z-index: -1; }
+.chat-wallpaper { position: absolute; inset: 0; z-index: 0; }
 .bubble-row { display: flex; }
 .bubble-row.mine { justify-content: flex-end; }
 .bubble {
@@ -236,8 +236,6 @@ html[data-theme="material"] .theirs .b-play { background: var(--md-sys-color-pri
 html[data-theme="material"] .orbit-ring { border-color: color-mix(in srgb, var(--md-sys-color-primary) 45%, transparent); }
 
 /* ---------- Поле ввода: «+», текст, голосовое / отправить ---------- */
-.panel-chat.is-kosmo .composer { display: none; }
-.panel-chat:not(.is-kosmo) .composer-ro { display: none; }
 .composer {
   position: fixed;
   z-index: 3;
@@ -451,3 +449,38 @@ html[data-theme="material"] .lang-chip[aria-checked="true"] { background: var(--
   tab-size: 2;
 }
 #sheet-code .btn { width: 100%; margin-bottom: 4px; }
+
+/* ---------- Окно чата: слои без position: fixed ----------
+   fixed внутри сдвигаемой (transform) панели на телефонах рисовался с задержкой
+   в несколько секунд. Теперь панель не прокручивается сама: фон, лента и поле
+   ввода — абсолютные слои, прокручивается только #chat-scroll. */
+.panel-chat { overflow: hidden; padding-inline: 0; }
+.chat-scroll {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+  padding-inline: max(0px, calc((100% - 680px) / 2));
+}
+.chat-scroll::-webkit-scrollbar { display: none; }
+.panel-chat .messages { padding-bottom: 76px; }
+.composer, .composer-ro, .compose-bar, .attach-menu, .emoji-picker, .chat-join { position: absolute; }
+.composer-ro, .composer, .chat-join { z-index: 4; }
+.compose-bar { z-index: 4; }
+.attach-menu, .emoji-picker { z-index: 6; }
+.panel-chat:not([data-composer="compose"]) .composer,
+.panel-chat:not([data-composer="ro"]) .composer-ro,
+.panel-chat:not([data-composer="join"]) .chat-join { display: none; }
+.panel-chat:not([data-composer="compose"]) .compose-bar { display: none; }
+.chat-join {
+  left: 50%;
+  bottom: max(14px, env(safe-area-inset-bottom));
+  width: min(440px, calc(100% - 28px));
+  transform: translateX(-50%);
+}
+.chat-join .btn { width: 100%; height: 52px; border-radius: 999px; font-size: 16px; }
+.panel-chat.no-media .attach-btn { display: none; }

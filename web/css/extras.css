@@ -96,7 +96,7 @@ button.title-pill:active { scale: 0.97; }
 
 /* ---------- Чат: сообщения прижаты к низу, как в мессенджерах ---------- */
 .panel-chat .messages { justify-content: flex-end; }
-.panel-chat.is-composing .messages { padding-bottom: 170px; }
+.panel-chat.is-composing .messages { padding-bottom: 136px; }
 .tile-muted { color: var(--c-text-3); font-weight: 500; }
 .tile-hidden {
   display: inline-flex;
@@ -364,7 +364,8 @@ html[data-theme="glass"] .react-bar { background: var(--c-sheet-bg); }
 
 /* ---------- Анимации эмодзи ---------- */
 .emoji { overflow: visible; }
-.emoji * { transform-box: fill-box; transform-origin: center; }
+/* центр вращения — только у анимированных частей; у остальных есть свой transform */
+.emoji [class] { transform-box: fill-box; transform-origin: center; }
 .e-beat { animation: e-beat 1.3s ease-in-out infinite; }
 .e-delay { animation-delay: 0.35s; }
 @keyframes e-beat { 0%, 60%, 100% { scale: 1; } 15% { scale: 1.16; } 30% { scale: 0.94; } 45% { scale: 1.08; } }
@@ -459,3 +460,13 @@ html[data-theme] .panel.is-open.is-under { transform: translateX(-18%) scale(0.9
 /* в форме профиля общее правило для полей не должно растягивать переключатель */
 .setup-form input.switch { flex: none; width: 51px; height: 31px; }
 html[data-theme="material"] .setup-form input.switch { width: 52px; height: 32px; }
+
+/* ---------- Liquid Glass: карточки и меню тоже окрашены в выбранный цвет ---------- */
+html[data-theme="glass"] .group,
+html[data-theme="glass"] .tile { background: color-mix(in srgb, var(--c-accent) 9%, #111113); }
+html[data-theme="glass"] button.tile:hover { background: color-mix(in srgb, var(--c-accent) 14%, #141416); }
+html[data-theme="glass"] .tile:first-child .tile-icon,
+html[data-theme="glass"] .row-icon { background: color-mix(in srgb, var(--c-accent) 20%, transparent); color: color-mix(in srgb, var(--c-accent) 70%, #fff); }
+html[data-theme="glass"] .danger .row-icon { background: rgba(255, 69, 58, 0.14); color: var(--c-error); }
+html[data-theme="glass"] .switch:checked { background: var(--c-accent); }
+html[data-theme="glass"] .group-row-btn:active { background: color-mix(in srgb, var(--c-accent) 12%, transparent); }

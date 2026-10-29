@@ -84,3 +84,29 @@ export function mediaDuration(blob, kind = 'audio') {
     el.src = URL.createObjectURL(blob);
   });
 }
+
+// Волна и точная длительность голосового: декодируем запись и берём пики
+// громкости по отрезкам — где голос громче, там палочка выше
+export async function analyzeAudio(blob, bars = 36) {
+  const Ctx = window.AudioContext || window.webkitAudioContext;
+  if (!Ctx) return null;
+  const ctx = new Ctx();
+  try {
+    const buf = await ctx.decodeAudioData(await blob.arrayBuffer());
+    const data = buf.getChannelData(0);
+    const size = Math.max(1, Math.floor(data.length / bars));
+    const peaks = [];
+    for (let i = 0; i < bars; i++) {
+      let sum = 0;
+      const startAt = i * size;
+      for (let j = 0; j < size; j += 8) sum += (data[startAt + j] ?? 0) ** 2;
+      peaks.push(Math.sqrt(sum / (size / 8)));   // RMS — средняя громкость отрезка
+    }
+    const max = Math.max(...peaks) || 1;
+    return { duration: buf.duration, wave: peaks.map((p) => Math.round(Math.max(0.08, p / max) * 100) / 100) };
+  } catch {
+    return null;
+  } finally {
+    ctx.close?.();
+  }
+}

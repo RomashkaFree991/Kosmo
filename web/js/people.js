@@ -2,7 +2,7 @@
 // Номер и био показываются, только если человек их не скрыл.
 
 import { $, db, toast, escapeHtml, userAvatarHtml, cosmicBadge } from './core.js';
-import { openOverlay, closeOverlay } from './panels.js';
+import { openOverlay, closeOverlay, state } from './panels.js';
 import { formatPhone } from './phone.js';
 import { hydrateMedia } from './media.js';
 
@@ -15,6 +15,7 @@ const ICON = {
   calendar: svg('<rect x="3.5" y="5" width="17" height="15.5" rx="3"/><path d="M3.5 10h17M8 3v4M16 3v4"/>'),
   chat: svg('<path d="M20 11.5a7.5 7 0 0 1-10.9 6.2L4 19l1.4-4A7 7 0 0 1 4.5 11.5 7.5 7 0 0 1 20 11.5z"/>'),
   lock: svg('<rect x="5" y="10.5" width="14" height="9.5" rx="2.5"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"/>'),
+  block: svg('<circle cx="12" cy="12" r="8.5"/><path d="M6 6l12 12"/>'),
 };
 const monthYear = new Intl.DateTimeFormat('en-GB', { month: 'long', year: 'numeric' });
 
@@ -30,14 +31,20 @@ export function showUser(userId) {
   if (!u) { toast('This account was deleted'); return; }
   shown = u;
   const p = u.privacy ?? {};
+  const myBlocked = state.acc.user.privacy?.blocked?.includes(u.id);
+  // скрытое фото профиля другие не видят
+  const shownUser = p.avatar === 'nobody' ? { ...u, avatar: { ...u.avatar, photo: null } } : u;
   $('#user-profile').innerHTML = `
     <section class="profile-hero">
       <div class="hero-avatar">
         <span class="hero-orbit" aria-hidden="true"></span>
-        ${userAvatarHtml(u, 'avatar-hero')}
+        ${userAvatarHtml(shownUser, 'avatar-hero')}
       </div>
       <h2 class="profile-name"><span>${escapeHtml(u.name)}</span>${u.role === 'owner' ? cosmicBadge('owner') : ''}</h2>
-      <button class="pill-btn" type="button" data-close-overlay>${ICON.chat}Message</button>
+      <div class="hero-actions">
+        <button class="pill-btn" type="button" data-user-message>${ICON.chat}Message</button>
+        <button class="pill-btn${myBlocked ? ' is-danger' : ''}" type="button" data-user-block>${ICON.block}${myBlocked ? 'Unblock' : 'Block'}</button>
+      </div>
     </section>
     <section class="tiles" aria-label="Account">
       ${u.username ? tile(ICON.at, 'Username', `@${escapeHtml(u.username)}`, 'data-copy-user="username"') : ''}
@@ -51,6 +58,17 @@ export function showUser(userId) {
 }
 
 document.addEventListener('click', async (e) => {
+  if (e.target.closest('[data-user-message]') && shown) {
+    closeOverlay();
+    // открыть личный чат, если сейчас открыт не он
+    document.dispatchEvent(new CustomEvent('kosmo:open-dm', { detail: shown.id }));
+    return;
+  }
+  if (e.target.closest('[data-user-block]') && shown) {
+    document.dispatchEvent(new CustomEvent('kosmo:toggle-block', { detail: shown.id }));
+    showUser(shown.id);
+    return;
+  }
   const c = e.target.closest('[data-copy-user]');
   if (!c || !shown) return;
   const value = c.dataset.copyUser === 'id' ? shown.publicId : `@${shown.username}`;

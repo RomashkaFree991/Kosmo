@@ -55,7 +55,7 @@ html[data-theme="glass"] {
   --c-text: #fff;
   --c-text-2: rgba(235, 235, 245, 0.6);
   --c-text-3: rgba(235, 235, 245, 0.3);
-  --c-accent: #0a84ff;
+  --c-accent: var(--glass-accent, #0a84ff);
   --c-error: #ff453a;
   --c-success: #30d158;
   --c-field-bg: rgba(118, 118, 128, 0.24);

@@ -13,6 +13,10 @@ import { overlayOpen, closeOverlay } from './panels.js';
 import { renderProfile, renderSessions, resetProfileCache } from './profile.js';
 import { applyDesign } from './design.js';
 import { hydrateMedia } from './media.js';
+import { renderFeed, refreshFeed } from './feed.js';
+import { openCreate, searchRooms, roomPreview, refreshRoom } from './rooms.js';
+import { maybeLock, notify, refreshSettings } from './settings.js';
+import { isRoom, roomAvatar } from './chats.js';
 
 const app = $('#app');
 const tabbar = $('#tabbar');
@@ -28,19 +32,7 @@ const ICON = {
 };
 
 /* ---------------------------------------------------------------------------
-   Лента: пока пусто
-   --------------------------------------------------------------------------- */
-function renderFeed() {
-  $('#feed').innerHTML = `
-    <div class="feed-empty">
-      <div class="feed-empty-art" aria-hidden="true">${kosmoAvatar('avatar-feed')}<span class="orbit-ring"></span><span class="orbit-moon"></span></div>
-      <h3>Nothing here yet</h3>
-      <p>Posts from channels you follow will appear in your feed.</p>
-    </div>`;
-}
-
-/* ---------------------------------------------------------------------------
-   Поиск: официальный Kosmo и люди (по имени, @username или ID)
+   Поиск: официальный Kosmo, группы и каналы, люди (имя, @username, ID, номер)
    --------------------------------------------------------------------------- */
 const searchInput = $('#search-input');
 
@@ -57,9 +49,12 @@ function renderSearch(query) {
   const me = state.acc.user;
   const out = $('#search-results');
   const kosmo = !q || 'kosmo official'.includes(q);
+  const digits = q.replace(/\D/g, '');
+  const byPhone = (u) => digits.length >= 5 && u.privacy?.findByPhone !== false && u.phone.replace(/\D/g, '').includes(digits);
   const people = Object.values(db.all())
-    .filter((u) => u.id !== me.id && (!q || u.name.toLowerCase().includes(q) || (u.username && u.username.includes(q)) || u.publicId === q));
-  if (!kosmo && !people.length) {
+    .filter((u) => u.id !== me.id && (!q || u.name.toLowerCase().includes(q) || (u.username && u.username.includes(q)) || u.publicId === q || byPhone(u)));
+  const rooms = searchRooms(q);
+  if (!kosmo && !people.length && !rooms.length) {
     out.innerHTML = `<div class="search-empty">${ICON.empty}<span>No results</span></div>`;
     return;
   }
@@ -71,6 +66,13 @@ function renderSearch(query) {
         <div class="chat-meta"></div>
         <div class="chat-bottom"><span class="chat-text">official account</span></div>
       </li></ul>`,
+    rooms.length && `<p class="section-label">Groups and channels</p><ul class="chat-list">${rooms.map((c) => `
+      <li class="chat ripple-host" data-search-chat="${c.id}" tabindex="0" role="button">
+        ${roomAvatar(c)}
+        <div class="chat-top"><span class="chat-name">${highlight(c.name, query)}</span></div>
+        <div class="chat-meta"></div>
+        <div class="chat-bottom"><span class="chat-text">${c.type === 'channel' ? 'Channel' : 'Group'} · ${escapeHtml(roomPreview(c))}</span></div>
+      </li>`).join('')}</ul>`,
     people.length && `<p class="section-label">People</p><ul class="chat-list">${people.map((u) => `
       <li class="chat ripple-host" data-person="${u.id}" tabindex="0" role="button">
         ${userAvatarHtml(u)}
@@ -178,7 +180,7 @@ menu.addEventListener('click', (e) => {
   if (!item) return;
   closeMenu();
   if (item.dataset.new === 'chat') openSearch();
-  else toast(`${item.textContent.trim()} — coming soon`);
+  else openCreate(item.dataset.new);
 });
 document.addEventListener('click', (e) => {
   if (!menu.hidden && !e.target.closest('#new-menu')) closeMenu();
@@ -218,22 +220,35 @@ export function sync() {
   state.acc = next;
   // уведомления: вход с другого устройства, новые сообщения
   const login = next.user.messages.filter((m) => !kosmoBefore.has(m.id) && m.kind === 'login' && m.sid !== next.session.id);
-  if (login.length) toast(`New login: ${login[login.length - 1].device}`);
+  if (login.length && next.user.security?.loginAlerts !== false) toast(`New login: ${login[login.length - 1].device}`);
   const incoming = incomingSince(seenMessages).filter((m) => m.chatId !== openChatId());
   if (incoming.length) {
     const last = incoming[incoming.length - 1];
     const from = db.get(last.from);
-    toast(`${from?.name ?? 'New message'}: ${previewText(last)}`);
+    const c = chats.get(last.chatId);
+    const blocked = next.user.privacy?.blocked?.includes(last.from);
+    if (!blocked && !last.threadOf) {
+      notify({
+        kind: isRoom(c) ? (c.type === 'channel' ? 'channels' : 'groups') : 'private',
+        title: isRoom(c) ? c.name : from?.name ?? 'New message',
+        text: previewText(last),
+      });
+    }
   }
   seenMessages = snapshot();
   refreshOpenChat();
   renderChatList();
   renderProfile();
+  refreshFeed();
+  refreshRoom();
+  refreshSettings();
   if (panelOpen() === 'sessions') renderSessions();
 }
 
 document.addEventListener('kosmo:changed', sync);
-document.addEventListener('kosmo:profile', () => { renderChatList(); });
+document.addEventListener('kosmo:profile', () => { renderChatList(); renderFeed(); });
+document.addEventListener('kosmo:room-changed', () => { renderChatList(); refreshOpenChat(); });
+document.addEventListener('kosmo:account-deleted', () => leave('Your account was deleted'));
 
 // Отметка «был в сети» раз в минуту и при возвращении на вкладку
 function heartbeat() {
@@ -249,6 +264,7 @@ document.addEventListener('visibilitychange', heartbeat);
 async function leave(message) {
   tab.clear();
   resetPanels();
+  $('#lock').hidden = true;
   app.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'scale(0.96)' }], { duration: 300, easing: 'ease-in', fill: 'forwards' });
   await wait(300);
   app.hidden = true;
@@ -275,9 +291,10 @@ export function showApp({ animate = true } = {}) {
   resetProfileCache();
   seenMessages = snapshot();
   renderChatList();
-  renderFeed();
+  renderFeed(true);
   renderProfile(true);
   applyDesign();
+  maybeLock();
   // всегда начинаем с чатов
   $$('.view').forEach((v) => { v.hidden = v.id !== 'view-chats'; v.classList.toggle('is-active', v.id === 'view-chats'); });
   currentView = 'chats';
@@ -296,6 +313,6 @@ export function showApp({ animate = true } = {}) {
 export function initHome({ logout }) {
   onLogout = logout;
   window.addEventListener('storage', (e) => {
-    if (e.key === 'kosmo:accounts' || e.key === 'kosmo:chats') sync();
+    if (e.key === 'kosmo:accounts' || e.key === 'kosmo:chats' || e.key === 'kosmo:feed') sync();
   });
 }

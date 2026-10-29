@@ -12,6 +12,7 @@
   <link rel="stylesheet" href="css/app.css">
   <link rel="stylesheet" href="css/chat.css">
   <link rel="stylesheet" href="css/extras.css">
+  <link rel="stylesheet" href="css/social.css">
   <!-- До первого кадра: тема, вошла ли эта вкладка, нужна ли заставка -->
   <script>
     (function () {
@@ -247,7 +248,9 @@
         <header class="app-header">
           <span class="circle-spacer" aria-hidden="true"></span>
           <div class="title-pill glass" data-refract="0.7"><span>Feed</span></div>
-          <span class="circle-spacer" aria-hidden="true"></span>
+          <button class="circle-btn glass" type="button" id="new-post-btn" aria-label="New post" data-refract="0.7">
+            <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></svg>
+          </button>
         </header>
         <div class="feed" id="feed"></div>
       </section>
@@ -279,6 +282,9 @@
 
     <section class="panel panel-chat" id="panel-chat" aria-label="Chat" aria-hidden="true" inert>
       <div class="wallpaper chat-wallpaper" aria-hidden="true"></div>
+      <!-- Прокручивается только эта часть; поле ввода и фон — обычные слои панели,
+           без position: fixed внутри сдвигаемой панели (из-за этого они появлялись с задержкой) -->
+      <div class="chat-scroll" id="chat-scroll">
       <header class="panel-header">
         <button class="circle-btn glass" type="button" data-close-panel aria-label="Back" data-refract="0.7">
           <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 6l-6 6 6 6"/></svg>
@@ -299,11 +305,15 @@
         </button>
       </div>
       <div class="messages" id="messages"></div>
+      </div>
 
-      <!-- Kosmo: писать нельзя -->
+      <!-- Нижняя часть: вступить, «писать нельзя» или поле ввода (выбирает data-composer) -->
+      <div class="chat-join" id="chat-join">
+        <button class="btn btn-primary" type="button" id="join-btn">Join</button>
+      </div>
       <div class="composer-ro glass" data-refract="0.6">
         <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10.5" width="14" height="9.5" rx="2.5"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"/></svg>
-        <span>Only Kosmo can send messages here</span>
+        <span id="composer-ro-text">Only Kosmo can send messages here</span>
       </div>
 
       <!-- Ответ / редактирование: полоска над полем ввода -->
@@ -409,11 +419,6 @@
             <textarea id="edit-bio" rows="3" maxlength="70" placeholder="Bio" aria-label="Bio"></textarea>
             <span class="counter" id="edit-counter" aria-hidden="true">70</span>
           </div>
-          <section class="group group-pad">
-            <span class="group-label">Privacy</span>
-            <label class="switch-row"><span>Show my phone number</span><input type="checkbox" class="switch" id="priv-phone" role="switch"></label>
-            <label class="switch-row"><span>Show my bio</span><input type="checkbox" class="switch" id="priv-bio" role="switch"></label>
-          </section>
           <button class="btn btn-primary" type="submit">Save</button>
         </form>
       </div>
@@ -487,6 +492,113 @@
       </div>
     </section>
 
+    <section class="panel" id="panel-create" aria-label="New group" aria-hidden="true" inert>
+      <header class="panel-header">
+        <button class="circle-btn glass" type="button" data-close-panel aria-label="Back" data-refract="0.7"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 6l-6 6 6 6"/></svg></button>
+        <div class="title-pill glass" data-refract="0.7"><span id="create-title">New group</span></div>
+        <span class="circle-spacer" aria-hidden="true"></span>
+      </header>
+      <div class="panel-body" id="create-body"></div>
+    </section>
+
+    <section class="panel panel-overlay" id="panel-room" aria-label="Info" aria-hidden="true" inert>
+      <header class="panel-header">
+        <button class="circle-btn glass" type="button" data-close-overlay aria-label="Back" data-refract="0.7"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 6l-6 6 6 6"/></svg></button>
+        <div class="title-pill glass" data-refract="0.7"><span id="room-title">Info</span></div>
+        <span class="circle-spacer" aria-hidden="true"></span>
+      </header>
+      <div class="panel-body profile" id="room-body"></div>
+    </section>
+
+    <section class="panel panel-overlay" id="panel-thread" aria-label="Comments" aria-hidden="true" inert>
+      <header class="panel-header">
+        <button class="circle-btn glass" type="button" data-close-overlay aria-label="Back" data-refract="0.7"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 6l-6 6 6 6"/></svg></button>
+        <div class="title-pill glass" data-refract="0.7"><span id="thread-title">Comments</span></div>
+        <span class="circle-spacer" aria-hidden="true"></span>
+      </header>
+      <div class="panel-body thread" id="thread-body"></div>
+      <form class="mini-composer glass" id="thread-form" data-refract="0.6" novalidate>
+        <textarea rows="1" placeholder="Write a comment" aria-label="Comment" id="thread-input"></textarea>
+        <button class="circle-btn send-btn" type="submit" aria-label="Send" data-mode="send"><svg class="i ic-send" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M5.5 11.5L12 5l6.5 6.5"/></svg></button>
+      </form>
+    </section>
+
+    <section class="panel panel-overlay" id="panel-post" aria-label="Post" aria-hidden="true" inert>
+      <header class="panel-header">
+        <button class="circle-btn glass" type="button" data-close-overlay aria-label="Back" data-refract="0.7"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 6l-6 6 6 6"/></svg></button>
+        <div class="title-pill glass" data-refract="0.7"><span id="post-title">Post</span></div>
+        <span class="circle-spacer" aria-hidden="true"></span>
+      </header>
+      <div class="panel-body thread" id="post-body"></div>
+      <form class="mini-composer glass" id="post-comment-form" data-refract="0.6" novalidate>
+        <textarea rows="1" placeholder="Write a comment" aria-label="Comment" id="post-comment-input"></textarea>
+        <button class="circle-btn send-btn" type="submit" aria-label="Send" data-mode="send"><svg class="i ic-send" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M5.5 11.5L12 5l6.5 6.5"/></svg></button>
+      </form>
+    </section>
+
+    <section class="panel" id="panel-compose" aria-label="New post" aria-hidden="true" inert>
+      <header class="panel-header">
+        <button class="circle-btn glass" type="button" data-close-panel aria-label="Back" data-refract="0.7"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 6l-6 6 6 6"/></svg></button>
+        <div class="title-pill glass" data-refract="0.7"><span id="compose-title">New post</span></div>
+        <span class="circle-spacer" aria-hidden="true"></span>
+      </header>
+      <div class="panel-body" id="compose-body"></div>
+    </section>
+
+    <section class="panel" id="panel-privacy" aria-label="Privacy" aria-hidden="true" inert>
+      <header class="panel-header">
+        <button class="circle-btn glass" type="button" data-close-panel aria-label="Back" data-refract="0.7"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 6l-6 6 6 6"/></svg></button>
+        <div class="title-pill glass" data-refract="0.7"><span id="privacy-title">Privacy</span></div>
+        <span class="circle-spacer" aria-hidden="true"></span>
+      </header>
+      <div class="panel-body" id="privacy-body"></div>
+    </section>
+
+    <section class="panel" id="panel-security" aria-label="Security" aria-hidden="true" inert>
+      <header class="panel-header">
+        <button class="circle-btn glass" type="button" data-close-panel aria-label="Back" data-refract="0.7"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 6l-6 6 6 6"/></svg></button>
+        <div class="title-pill glass" data-refract="0.7"><span id="security-title">Security</span></div>
+        <span class="circle-spacer" aria-hidden="true"></span>
+      </header>
+      <div class="panel-body" id="security-body"></div>
+    </section>
+
+    <section class="panel" id="panel-notifications" aria-label="Notifications" aria-hidden="true" inert>
+      <header class="panel-header">
+        <button class="circle-btn glass" type="button" data-close-panel aria-label="Back" data-refract="0.7"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 6l-6 6 6 6"/></svg></button>
+        <div class="title-pill glass" data-refract="0.7"><span id="notifications-title">Notifications</span></div>
+        <span class="circle-spacer" aria-hidden="true"></span>
+      </header>
+      <div class="panel-body" id="notifications-body"></div>
+    </section>
+
+    <section class="panel" id="panel-storage" aria-label="Data and storage" aria-hidden="true" inert>
+      <header class="panel-header">
+        <button class="circle-btn glass" type="button" data-close-panel aria-label="Back" data-refract="0.7"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 6l-6 6 6 6"/></svg></button>
+        <div class="title-pill glass" data-refract="0.7"><span id="storage-title">Data and storage</span></div>
+        <span class="circle-spacer" aria-hidden="true"></span>
+      </header>
+      <div class="panel-body" id="storage-body"></div>
+    </section>
+
+    <section class="panel" id="panel-about" aria-label="About" aria-hidden="true" inert>
+      <header class="panel-header">
+        <button class="circle-btn glass" type="button" data-close-panel aria-label="Back" data-refract="0.7"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 6l-6 6 6 6"/></svg></button>
+        <div class="title-pill glass" data-refract="0.7"><span id="about-title">About</span></div>
+        <span class="circle-spacer" aria-hidden="true"></span>
+      </header>
+      <div class="panel-body" id="about-body"></div>
+    </section>
+
+    <section class="panel panel-overlay" id="panel-passcode" aria-label="Passcode" aria-hidden="true" inert>
+      <header class="panel-header">
+        <button class="circle-btn glass" type="button" data-close-overlay aria-label="Back" data-refract="0.7"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 6l-6 6 6 6"/></svg></button>
+        <div class="title-pill glass" data-refract="0.7"><span id="passcode-title">Passcode</span></div>
+        <span class="circle-spacer" aria-hidden="true"></span>
+      </header>
+      <div class="panel-body passcode-body" id="passcode-body"></div>
+    </section>
+
     <!-- Нижняя панель -->
     <nav class="tabbar glass" id="tabbar" data-refract="0.8" aria-label="Main">
       <span class="tab-thumb" aria-hidden="true"></span>
@@ -527,6 +639,8 @@
   </div>
 
   <input type="file" id="photo-input" accept="image/*" hidden>
+  <input type="file" id="post-media-input" accept="image/*,video/*" multiple hidden>
+  <input type="file" id="room-avatar-input" accept="image/*" hidden>
 
   <!-- Нижняя панель: страна / QR -->
   <div class="scrim" id="scrim" hidden></div>
@@ -547,11 +661,24 @@
     </div>
     <form class="sheet-body" id="sheet-code" novalidate hidden>
       <div class="lang-row" role="radiogroup" aria-label="Language" id="code-langs"></div>
+      <div class="code-field caption-field">
+        <textarea id="code-caption" rows="1" maxlength="1000" placeholder="Add a caption (optional)" aria-label="Caption"></textarea>
+      </div>
       <div class="code-field">
         <textarea id="code-input" rows="8" spellcheck="false" placeholder="Paste or write code" aria-label="Code"></textarea>
       </div>
       <button class="btn btn-primary" type="submit">Send code</button>
     </form>
+    <form class="sheet-body" id="sheet-media" novalidate hidden>
+      <div class="media-preview" id="media-preview"></div>
+      <div class="code-field caption-field">
+        <textarea id="media-caption" rows="2" maxlength="1000" placeholder="Add a caption" aria-label="Caption"></textarea>
+      </div>
+      <button class="btn btn-primary" type="submit" id="media-send">Send</button>
+    </form>
+    <div class="sheet-body" id="sheet-forward" hidden>
+      <ul class="chat-list forward-list" id="forward-list"></ul>
+    </div>
     <div class="sheet-body" id="sheet-qr" hidden>
       <div class="qr-box" id="qr-box"></div>
       <ol class="qr-steps">
@@ -559,6 +686,15 @@
         <li>Settings → Devices → Link device</li>
         <li>Point the camera at this code</li>
       </ol>
+    </div>
+  </div>
+
+  <div class="lock" id="lock" hidden>
+    <div class="lock-inner">
+      <div class="lock-logo" id="lock-avatar" aria-hidden="true"></div>
+      <h1 class="screen-title" id="lock-title">Enter passcode</h1>
+      <div id="lock-pad"></div>
+      <button class="link-btn" type="button" id="lock-logout">Log out</button>
     </div>
   </div>
 

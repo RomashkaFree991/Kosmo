@@ -10,6 +10,7 @@ import { createOtp } from './otp.js';
 import { state, openPanel } from './panels.js';
 import { putBlob, hydrateMedia, squareAvatar } from './media.js';
 import { ICON as CHAT_ICON, deviceIcon } from './chats.js';
+import { SICON } from './settings.js';
 
 const svg = (d, cls = 'i') => `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true">${d}</svg>`;
 const ICON = {
@@ -46,8 +47,8 @@ function tile(icon, label, value, attrs = '', wide = false) {
   </${tag}>`;
 }
 
-const row = (attrs, icon, text, extra = '') => `
-  <button class="group-row group-row-btn ripple-host" type="button" ${attrs}>
+const row = (attrs, icon, text, extra = '', cls = '') => `
+  <button class="group-row group-row-btn ripple-host ${cls}" type="button" ${attrs}>
     <span class="row-icon">${icon}</span><span class="row-text">${text}</span>${extra}
   </button>`;
 
@@ -57,7 +58,7 @@ const hiddenMark = '<span class="tile-hidden"><svg class="i" viewBox="0 0 24 24"
 let sig = '';
 export function renderProfile(force = false) {
   const u = state.acc.user;
-  const next = JSON.stringify([u.name, u.username, u.phone, u.bio, u.role, u.avatar, u.publicId, u.sessions.length, u.privacy]);
+  const next = JSON.stringify([u.name, u.username, u.phone, u.bio, u.role, u.avatar, u.publicId, u.sessions.length, u.privacy, u.security?.lock]);
   if (next === sig && !force) return;
   sig = next;
   $('#profile').innerHTML = `
@@ -80,11 +81,19 @@ export function renderProfile(force = false) {
       ${tile(ICON.devices, 'Sessions', `${u.sessions.length} active`, 'data-open-sessions aria-label="Sessions"')}
     </section>
 
-    <section class="group" aria-label="Settings">
-      ${row('data-open-edit', ICON.edit, 'Edit profile', ICON.chevron)}
-      ${row('data-open-design', ICON.palette, 'Designs', ICON.chevron)}
-      ${row('data-open-sessions', ICON.devices, 'Sessions', `<span class="row-value">${u.sessions.length}</span>${ICON.chevron}`)}
-      ${row('data-open-phone', ICON.call, 'Change number', ICON.chevron)}
+    <section class="group settings-group" aria-label="Account settings">
+      ${row('data-open-edit', ICON.edit, 'Edit profile', ICON.chevron, 'ic-blue')}
+      ${row('data-open-design', ICON.palette, 'Designs', ICON.chevron, 'ic-pink')}
+    </section>
+    <section class="group settings-group" aria-label="Settings">
+      ${row('data-open-settings="privacy"', SICON.lock, 'Privacy', ICON.chevron, 'ic-violet')}
+      ${row('data-open-settings="security"', ICON.shield, 'Security', `<span class="row-value">${u.security?.lock ? 'Passcode lock' : ''}</span>${ICON.chevron}`, 'ic-green')}
+      ${row('data-open-settings="notifications"', SICON.bell, 'Notifications', ICON.chevron, 'ic-red')}
+      ${row('data-open-settings="storage"', SICON.data, 'Data and storage', ICON.chevron, 'ic-orange')}
+      ${row('data-open-sessions', ICON.devices, 'Sessions', `<span class="row-value">${u.sessions.length}</span>${ICON.chevron}`, 'ic-teal')}
+    </section>
+    <section class="group settings-group" aria-label="More">
+      ${row('data-open-settings="about"', SICON.info, 'About Kosmo', ICON.chevron, 'ic-blue')}
       <button class="group-row group-row-btn ripple-host danger" type="button" id="logout-btn">
         <span class="row-icon">${ICON.logout}</span><span class="row-text">Log out</span>
       </button>
@@ -151,8 +160,6 @@ function openEdit() {
   draft = { avatar: { color: null, text: '', photo: null, ...u.avatar } };
   editName.value = u.name;
   editUsername.value = u.username;
-  $('#priv-phone').checked = !u.privacy?.hidePhone;
-  $('#priv-bio').checked = !u.privacy?.hideBio;
   editBio.value = u.bio ?? '';
   $('#avatar-text').value = draft.avatar.text ?? '';
   editCounter.textContent = 70 - editBio.value.length;
@@ -219,7 +226,6 @@ $('#edit-form').addEventListener('submit', (e) => {
     u.username = username;
     u.bio = editBio.value.trim();
     u.avatar = draft.avatar;
-    u.privacy = { hidePhone: !$('#priv-phone').checked, hideBio: !$('#priv-bio').checked };
   });
   state.reload();
   renderProfile(true);

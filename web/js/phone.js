@@ -21,9 +21,13 @@ export const COUNTRIES = [
   { iso: 'de', name: 'Germany', dial: '49', mask: '### ########' },
   { iso: 'us', name: 'United States', dial: '1', mask: '(###) ###-####' },
   { iso: 'gb', name: 'United Kingdom', dial: '44', mask: '#### ######' },
+  // тестовые номера Kosmo: +000 …
+  { iso: 'test', name: 'Test numbers', dial: '000', mask: '### ###-##-##' },
 ];
 
-const flagUrl = (iso) => `https://flagcdn.com/${iso}.svg`;
+// у тестовых номеров вместо флага — маленькая планета Kosmo
+const TEST_FLAG = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 26 19"><rect width="26" height="19" rx="3" fill="#1b1340"/><ellipse cx="13" cy="9.5" rx="10" ry="2.6" fill="none" stroke="#bf5af2" stroke-width="1.4" transform="rotate(-16 13 9.5)"/><circle cx="13" cy="9.5" r="5" fill="#64d2ff"/></svg>')}`;
+const flagUrl = (iso) => (iso === 'test' ? TEST_FLAG : `https://flagcdn.com/${iso}.svg`);
 const maskDigits = (mask) => mask.split('#').length - 1;
 
 function applyMask(mask, digits) {
@@ -125,18 +129,23 @@ export function openSheet(kind, opts = {}) {
   $('#sheet-country').hidden = kind !== 'country';
   $('#sheet-qr').hidden = kind !== 'qr';
   $('#sheet-code').hidden = kind !== 'code';
-  $('#sheet-title').textContent = { country: 'Choose country', qr: 'Log in with QR code', code: 'Code' }[kind];
+  $('#sheet-media').hidden = kind !== 'media';
+  $('#sheet-forward').hidden = kind !== 'forward';
+  $('#sheet-title').textContent = opts.title ?? { country: 'Choose country', qr: 'Log in with QR code', code: 'Code', media: 'Send', forward: 'Forward to' }[kind];
   sheet.hidden = false;
   scrim.hidden = false;
   if (kind === 'country') renderCountries('');
   if (kind === 'qr') renderQr();
   if (kind === 'code') renderCode();
+  if (kind === 'media') renderMedia(opts.files ?? []);
+  if (kind === 'forward') $('#forward-list').innerHTML = opts.items ?? '';
   requestAnimationFrame(() => {
     sheet.classList.add('is-open');
     scrim.classList.add('is-open');
     refreshRefraction();
     if (kind === 'country') setTimeout(() => $('#country-search').focus({ preventScroll: true }), 250);
     else if (kind === 'code') setTimeout(() => $('#code-input').focus({ preventScroll: true }), 250);
+    else if (kind === 'media') setTimeout(() => $('#media-caption').focus({ preventScroll: true }), 250);
     else $('#sheet-close').focus({ preventScroll: true });
   });
 }
@@ -230,6 +239,7 @@ let codeLang = LANGS[0];
 
 function renderCode() {
   $('#code-input').value = '';
+  $('#code-caption').value = '';
   $('#code-langs').innerHTML = LANGS.map((l) => `<button class="lang-chip" type="button" role="radio" data-lang="${l}" aria-checked="${l === codeLang}">${l}</button>`).join('');
 }
 
@@ -250,7 +260,38 @@ $('#sheet-code').addEventListener('submit', (e) => {
   e.preventDefault();
   const text = $('#code-input').value.replace(/\s+$/, '');
   if (!text.trim()) { shake($('.code-field')); return; }
-  sheetOpts.onSend?.(text, codeLang);
+  sheetOpts.onSend?.(text, codeLang, $('#code-caption').value.trim());
+  closeSheet();
+});
+
+/* ---------- Фото / видео с подписью ---------- */
+let previewUrls = [];
+function renderMedia(files) {
+  previewUrls.forEach((u) => URL.revokeObjectURL(u));
+  previewUrls = files.map((f) => URL.createObjectURL(f));
+  $('#media-caption').value = '';
+  $('#media-preview').innerHTML = files.map((f, i) => (f.type.startsWith('video/')
+    ? `<div class="mp-item"><video src="${previewUrls[i]}" muted playsinline preload="metadata"></video><span class="mp-badge">Video</span></div>`
+    : `<div class="mp-item"><img src="${previewUrls[i]}" alt=""></div>`)).join('');
+  $('#media-preview').dataset.count = files.length;
+}
+$('#sheet-media').addEventListener('submit', (e) => {
+  e.preventDefault();
+  sheetOpts.onSend?.($('#media-caption').value.trim());
+  closeSheet();
+});
+$('#media-caption').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey && matchMedia('(pointer: fine)').matches) {
+    e.preventDefault();
+    $('#sheet-media').requestSubmit();
+  }
+});
+
+/* ---------- Переслать: выбор чата ---------- */
+$('#forward-list').addEventListener('click', (e) => {
+  const item = e.target.closest('[data-forward]');
+  if (!item) return;
+  sheetOpts.onPick?.(item.dataset.forward);
   closeSheet();
 });
 
