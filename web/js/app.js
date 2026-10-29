@@ -3,9 +3,11 @@
 
 import { $, initTheme, initPress, tab } from './core.js';
 import { initColor } from './color.js';
+import { initDesign } from './design.js';
 import { initAuth, showAuth } from './auth.js';
 import { initHome, showApp } from './home.js';
 
+initDesign();
 initTheme();
 initPress();
 initColor();

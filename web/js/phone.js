@@ -124,16 +124,19 @@ export function openSheet(kind, opts = {}) {
   lastFocus = document.activeElement;
   $('#sheet-country').hidden = kind !== 'country';
   $('#sheet-qr').hidden = kind !== 'qr';
-  $('#sheet-title').textContent = kind === 'country' ? 'Choose country' : 'Log in with QR code';
+  $('#sheet-code').hidden = kind !== 'code';
+  $('#sheet-title').textContent = { country: 'Choose country', qr: 'Log in with QR code', code: 'Code' }[kind];
   sheet.hidden = false;
   scrim.hidden = false;
   if (kind === 'country') renderCountries('');
   if (kind === 'qr') renderQr();
+  if (kind === 'code') renderCode();
   requestAnimationFrame(() => {
     sheet.classList.add('is-open');
     scrim.classList.add('is-open');
     refreshRefraction();
     if (kind === 'country') setTimeout(() => $('#country-search').focus({ preventScroll: true }), 250);
+    else if (kind === 'code') setTimeout(() => $('#code-input').focus({ preventScroll: true }), 250);
     else $('#sheet-close').focus({ preventScroll: true });
   });
 }
@@ -219,6 +222,36 @@ $('#country-search').addEventListener('keydown', (e) => {
 $('#country-list').addEventListener('click', (e) => {
   const item = e.target.closest('.country-item');
   if (item) pickCountry(item.dataset.iso);
+});
+
+/* ---------- Отправка кода ---------- */
+const LANGS = ['JavaScript', 'Kotlin', 'Python', 'HTML', 'CSS', 'JSON', 'Other'];
+let codeLang = LANGS[0];
+
+function renderCode() {
+  $('#code-input').value = '';
+  $('#code-langs').innerHTML = LANGS.map((l) => `<button class="lang-chip" type="button" role="radio" data-lang="${l}" aria-checked="${l === codeLang}">${l}</button>`).join('');
+}
+
+$('#code-langs').addEventListener('click', (e) => {
+  const chip = e.target.closest('[data-lang]');
+  if (!chip) return;
+  codeLang = chip.dataset.lang;
+  document.querySelectorAll('.lang-chip').forEach((c) => c.setAttribute('aria-checked', String(c === chip)));
+});
+$('#code-input').addEventListener('keydown', (e) => {
+  // Tab вставляет отступ, а не уводит фокус
+  if (e.key !== 'Tab' || e.shiftKey) return;
+  e.preventDefault();
+  const t = e.target;
+  t.setRangeText('  ', t.selectionStart, t.selectionEnd, 'end');
+});
+$('#sheet-code').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const text = $('#code-input').value.replace(/\s+$/, '');
+  if (!text.trim()) { shake($('.code-field')); return; }
+  sheetOpts.onSend?.(text, codeLang);
+  closeSheet();
 });
 
 // Декоративный QR: детерминированный узор с тремя «глазками» по углам

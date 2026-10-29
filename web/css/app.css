@@ -194,7 +194,7 @@ html[data-theme="material"] .bio-name { font-weight: 500; letter-spacing: 0; }
   position: fixed;
   inset: 0;
   overflow: hidden;
-  background: var(--bg);
+  overflow: clip;   /* clip не даёт браузеру «прокрутить» контейнер к полю в фокусе */
   --tabbar-space: calc(96px + env(safe-area-inset-bottom));
 }
 .app.is-entering .views { animation: app-in 700ms var(--spring) both; }
@@ -242,7 +242,7 @@ html[data-theme="material"] .view.is-entering { animation: view-in 400ms var(--m
   position: absolute;
   inset: 0 0 -28px;
   z-index: -1;
-  background: linear-gradient(#000 45%, rgba(0, 0, 0, 0));
+  background: linear-gradient(var(--page-bg) 45%, transparent);
   pointer-events: none;
 }
 .circle-btn {
@@ -582,23 +582,15 @@ html[data-theme="material"] .tab-badge { background: var(--md-sys-color-error); 
 .tabbar.is-moving .tab-thumb { scale: 1.12 0.9; }
 
 /* Material: индикатор-пилюля за иконкой выбранной вкладки (M3 navigation bar) */
-html[data-theme="material"] .tab-thumb { display: none; }
-html[data-theme="material"] .tab { color: var(--md-sys-color-on-surface-variant); gap: 4px; }
-html[data-theme="material"] .tab-icon { width: 56px; height: 32px; }
-html[data-theme="material"] .tab-icon::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  border-radius: 999px;
+html[data-theme="material"] .tab-thumb {
+  top: 6px; bottom: 6px; left: 6px;
+  width: calc((100% - 12px) / 4);
   background: var(--md-sys-color-secondary-container);
-  scale: 0.4 1;
-  opacity: 0;
-  transition: scale 400ms var(--md-emphasized), opacity 150ms ease;
+  box-shadow: none;
+  transition: transform 450ms var(--md-emphasized), scale 220ms ease;
 }
-html[data-theme="material"] .tab.is-active { color: var(--md-sys-color-on-surface); }
-html[data-theme="material"] .tab.is-active .tab-icon { color: var(--md-sys-color-on-secondary-container); }
-html[data-theme="material"] .tab.is-active .tab-icon::before { scale: 1; opacity: 1; }
+html[data-theme="material"] .tab { color: var(--md-sys-color-on-surface-variant); gap: 4px; }
+html[data-theme="material"] .tab.is-active { color: var(--md-sys-color-on-secondary-container); }
 html[data-theme="material"] .tab-label { font-size: 12px; font-weight: 500; }
 html[data-theme="material"] .tab.is-active .tab-label { font-weight: 700; }
 .tab.is-active .avatar-tab { box-shadow: 0 0 0 2px var(--bg), 0 0 0 3.5px currentColor; }
@@ -613,7 +605,7 @@ html[data-theme="material"] .tab.is-active .tab-label { font-weight: 700; }
   overflow-y: auto;
   scrollbar-width: none;
   padding-inline: max(0px, calc((100% - 680px) / 2));
-  background: var(--bg);
+  background: var(--page-bg);
   transform: translateX(100%);
   visibility: hidden;
   transition: transform var(--spring-dur) var(--spring), visibility 0s linear var(--spring-dur);
@@ -715,7 +707,7 @@ html[data-theme="material"] .menu-item { border-radius: 0; padding: 0 16px; }
 .pill-sub { font-size: 12px; font-weight: 500; color: var(--c-text-2); }
 
 /* ---------- Чат Kosmo ---------- */
-.messages { flex: 1; display: flex; flex-direction: column; gap: 10px; padding: 4px 16px 110px; }
+.messages { flex: 1; display: flex; flex-direction: column; gap: 6px; padding: 4px 12px 110px; }
 .day-chip {
   align-self: center;
   margin: 6px 0 2px;
@@ -772,7 +764,7 @@ html[data-theme="material"] .msg-chip.is-muted { background: var(--md-sys-color-
 html[data-theme="material"] .btn-danger { background: var(--md-sys-color-error); color: #601410; }
 
 /* Поле ввода в чате Kosmo — только для чтения */
-.composer {
+.composer-ro {
   position: fixed;
   z-index: 2;
   left: 50%;
@@ -788,10 +780,9 @@ html[data-theme="material"] .btn-danger { background: var(--md-sys-color-error);
   color: var(--c-text-2);
   font-size: 14px;
 }
-.panel:not(.is-open) .composer { visibility: hidden; }
-html[data-theme="glass"] .composer { background: rgba(28, 28, 30, 0.64); }
-html[data-theme="material"] .composer { background: var(--md-sys-color-surface-container-high); }
-.composer svg { width: 18px; height: 18px; }
+html[data-theme="glass"] .composer-ro { background: rgba(28, 28, 30, 0.64); }
+html[data-theme="material"] .composer-ro { background: var(--md-sys-color-surface-container-high); }
+.composer-ro svg { width: 18px; height: 18px; }
 
 /* ---------- Сессии ---------- */
 .sess-card {

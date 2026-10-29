@@ -4,7 +4,7 @@
 
 import {
   $, $$, root, wait, easing, toast, shake, refreshRefraction, paintAvatar,
-  db, uid, hashPasscode, startSession, networkInfo,
+  db, uid, hashPasscode, startSession, networkInfo, newPublicId,
 } from './core.js';
 import { createPhoneField, openSheet } from './phone.js';
 import { createOtp } from './otp.js';
@@ -308,6 +308,9 @@ $('#bio-form').addEventListener('submit', async (e) => {
     createdAt: Date.now(),
     // первый аккаунт на сайте — владелец (золотая галочка)
     role: db.isEmpty() ? 'owner' : 'user',
+    publicId: newPublicId(),
+    avatar: { color: null, text: '', photo: null },
+    chatPrefs: {},
     sessions: [],
     messages: [],
   };

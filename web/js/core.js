@@ -71,6 +71,7 @@ function applyTheme(theme) {
   root.dataset.theme = theme;
   $$('[data-set-theme]').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.setTheme === theme)));
   store.set('theme', theme);
+  document.dispatchEvent(new CustomEvent('kosmo:theme', { detail: theme }));
   refreshRefraction();
 }
 
@@ -155,7 +156,7 @@ export function initPress() {
 /* ---------------------------------------------------------------------------
    Аватары: инициалы на градиенте, цвет стабилен для имени
    --------------------------------------------------------------------------- */
-const AVATAR_COLORS = [
+export const AVATAR_COLORS = [
   ['#ff885e', '#ff516a'], ['#ffcd6a', '#ffa85c'], ['#82b1ff', '#665fff'], ['#a0de7e', '#54cb68'],
   ['#53edd6', '#28c9b7'], ['#72d5fd', '#2a9ef1'], ['#e0a2f3', '#d669ed'],
 ];
@@ -165,6 +166,8 @@ export function initials(name) {
   return ((parts[0]?.[0] ?? '') + (parts[1]?.[0] ?? '')).toUpperCase();
 }
 
+const colorStyle = ([a1, a2]) => `--a1:${a1};--a2:${a2}`;
+
 export function avatarStyle(seed) {
   // FNV-1a: равномерно раскладывает имена по цветам
   let h = 2166136261;
@@ -172,9 +175,19 @@ export function avatarStyle(seed) {
   h ^= h >>> 15;   // перемешивание, чтобы близкие имена не попадали в один цвет
   h = Math.imul(h, 2246822507) >>> 0;
   h = (h ^ (h >>> 13)) >>> 0;
-  const [a1, a2] = AVATAR_COLORS[h % AVATAR_COLORS.length];
-  return `--a1:${a1};--a2:${a2}`;
+  return colorStyle(AVATAR_COLORS[h % AVATAR_COLORS.length]);
 }
+
+// Аватар пользователя с его настройками: своё фото, цвет, свои буквы
+export function userAvatarHtml(user, cls = '') {
+  const a = user.avatar ?? {};
+  const style = a.color != null ? colorStyle(AVATAR_COLORS[a.color]) : avatarStyle(user.name);
+  const text = escapeHtml(a.text || initials(user.name));
+  const photo = a.photo ? `<img data-media="${a.photo}" alt="">` : '';
+  return `<span class="avatar ${cls}${a.photo ? ' has-photo' : ''}" style="${style}" aria-hidden="true">${photo}<span>${text}</span></span>`;
+}
+
+export const newPublicId = () => String(Math.floor(1e9 + Math.random() * 9e9));
 
 const PERSON_SVG = '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8.5" r="3.8"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/></svg>';
 
@@ -305,6 +318,18 @@ export const db = {
   }
   store.remove('users');
   store.remove('session');
+})();
+
+// Поля, появившиеся позже: публичный ID, аватар, настройки чатов
+(function upgrade() {
+  const all = db.all();
+  let changed = false;
+  for (const u of Object.values(all)) {
+    if (!u.publicId) { u.publicId = newPublicId(); changed = true; }
+    if (!u.avatar) { u.avatar = { color: null, text: '', photo: null }; changed = true; }
+    if (!u.chatPrefs) { u.chatPrefs = {}; changed = true; }
+  }
+  if (changed) store.setJSON('accounts', all);
 })();
 
 export const tab = {

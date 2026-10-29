@@ -8,6 +8,11 @@
 :root {
   color-scheme: dark;
   --bg: #000;
+  --page-bg: #000;   /* фон страницы: чёрный или основной тон обоев */
+
+  /* Обои (Profile → Designs). color.js пересчитывает тона из палитры */
+  --wpm-bg: #1d1238; --wpm-a: #3b2a6b; --wpm-b: #5a2f4d; --wpm-line: #e9ddff; --wpm-dot: #8f73d8; --wpm-dot2: #fdf7ff;
+  --wpg-bg: #07050f; --wpg-a: #1a1236; --wpg-b: #2a1228; --wpg-line: #9c94b0; --wpg-dot: #5d4a9a; --wpg-dot2: #e6e0f0;
 
   /* Пружины. JS подменяет их на настоящую пружину через linear(),
      здесь — запасные кривые для браузеров без linear(). */
@@ -67,6 +72,10 @@ html[data-theme="glass"] {
   --r-field: 999px;
 }
 
+html[data-theme="glass"] { --wp-bg: var(--wpg-bg); --wp-a: var(--wpg-a); --wp-b: var(--wpg-b); --wp-line: var(--wpg-line); --wp-dot: var(--wpg-dot); --wp-dot2: var(--wpg-dot2); }
+html[data-theme="material"] { --wp-bg: var(--wpm-bg); --wp-a: var(--wpm-a); --wp-b: var(--wpm-b); --wp-line: var(--wpm-line); --wp-dot: var(--wpm-dot); --wp-dot2: var(--wpm-dot2); }
+html[data-wallpaper]:not([data-wallpaper="black"]) { --page-bg: var(--wp-bg); }
+
 /* ---------- Тема: Material You ---------- */
 html[data-theme="material"] {
   --font: "Roboto Flex", Roboto, system-ui, sans-serif;
@@ -98,7 +107,7 @@ html[data-theme="material"] {
 html, body { height: 100%; }
 body {
   margin: 0;
-  background: var(--bg);
+  background: var(--page-bg);
   color: var(--c-text);
   font-family: var(--font);
   font-size: 17px;
@@ -107,7 +116,17 @@ body {
   -webkit-tap-highlight-color: transparent;
   overflow-x: hidden;
 }
-button, input { font: inherit; color: inherit; }
+button, input, textarea { font: inherit; color: inherit; }
+
+/* Обои: фиксированный слой под всем интерфейсом */
+.wallpaper { pointer-events: none; }
+.wallpaper svg { display: block; width: 100%; height: 100%; }
+.wallpaper-page { position: fixed; inset: 0; z-index: 0; }
+.wp-spin { transform-box: view-box; animation: wp-spin 90s linear infinite; }
+.wp-drift { animation: wp-drift 18s ease-in-out infinite alternate; }
+.wp-drift-2 { animation-duration: 24s; animation-direction: alternate-reverse; }
+@keyframes wp-spin { to { rotate: 360deg; } }
+@keyframes wp-drift { to { translate: -40px 50px; } }
 button { cursor: pointer; }
 
 /* Иконки: единый контурный набор, толщина 2, скруглённые концы */
@@ -673,8 +692,8 @@ html[data-theme="material"] .screen.leave-back    { animation: m-out-back 200ms 
   background: var(--c-sheet-bg);
   transform: translate(-50%, 105%);
   transition: transform var(--spring-dur) var(--spring);
-  touch-action: none;
 }
+.sheet-handle, .sheet-head { touch-action: none; }
 .sheet.is-open { transform: translate(-50%, 0); }
 .sheet.is-dragging { transition: none; }
 /* Glass: панель «парит» над краем экрана, как на iOS 26 */
