@@ -1,11 +1,11 @@
-// Вход по QR-коду без сервера: экран входа показывает настоящий QR с
-// одноразовым кодом, вошедшая вкладка (Profile → Sessions → Link a device)
-// сканирует его камерой или вводит код — и передаёт вход через BroadcastChannel.
+// Вход по QR-коду: экран входа показывает QR с одноразовым кодом и ждёт
+// по WebSocket; вошедшее устройство (Profile → Sessions → Link a device)
+// сканирует его камерой или вводит код — сервер создаёт новую сессию.
 
-import { $, db, uid, toast, shake, refreshRefraction } from './core.js';
+import { $, toast, shake, refreshRefraction, deviceInfo } from './core.js';
 import { state } from './panels.js';
+import { api, anonSocket } from './api.js';
 
-const bc = 'BroadcastChannel' in window ? new BroadcastChannel('kosmo-qr') : null;
 const TTL = 120_000;
 const ALPHA = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const newCode = () => Array.from(crypto.getRandomValues(new Uint8Array(6)), (b) => ALPHA[b % ALPHA.length]).join('');
@@ -26,12 +26,18 @@ function qrSvg(text) {
 }
 
 /* ---------- Экран входа: показать код и ждать подтверждения ---------- */
-let waiting = null;   // { code, timer, onLinked }
+let waiting = null;   // { code, timer, onLinked, sock }
 
 export async function showLoginQr(onLinked) {
   stopLoginQr();
   const code = newCode();
-  waiting = { code, onLinked, timer: setTimeout(() => showLoginQr(onLinked), TTL) };
+  const sock = anonSocket((msg) => {
+    if (msg.t !== 'qr-login' || !waiting || waiting.code !== code) return;
+    stopLoginQr();
+    onLinked({ token: msg.token, uid: msg.uid, sid: msg.sid });
+  });
+  sock.onopen = () => sock.send(JSON.stringify({ t: 'qr-wait', code }));
+  waiting = { code, onLinked, sock, timer: setTimeout(() => showLoginQr(onLinked), TTL) };
   $('#qr-code').innerHTML = `Code: <b>${pretty(code)}</b>`;
   $('#qr-box').innerHTML = '<div class="qr-loading"></div>';
   await qrReady;
@@ -42,18 +48,9 @@ export async function showLoginQr(onLinked) {
 export function stopLoginQr() {
   if (!waiting) return;
   clearTimeout(waiting.timer);
+  waiting.sock?.close();
   waiting = null;
 }
-
-bc?.addEventListener('message', ({ data }) => {
-  if (data.type !== 'link' || !waiting || data.code !== waiting.code) return;
-  const user = db.get(data.uid);
-  if (!user) return;
-  const { onLinked } = waiting;
-  stopLoginQr();
-  bc.postMessage({ type: 'linked', code: data.code });
-  onLinked(user);
-});
 
 /* ---------- Вошедшая вкладка: сканировать или ввести код ---------- */
 let dlg = null;
@@ -89,18 +86,16 @@ export function openLinkDevice() {
   refreshRefraction();
 }
 
-function link(code) {
-  if (!bc) { toast('Not supported in this browser'); return; }
-  let ok = false;
-  const onAck = ({ data }) => {
-    if (data.type === 'linked' && data.code === code) { ok = true; bc.removeEventListener('message', onAck); closeLink(); toast('Device linked'); }
-  };
-  bc.addEventListener('message', onAck);
-  bc.postMessage({ type: 'link', code, uid: state.acc.user.id, id: uid() });
-  setTimeout(() => {
-    bc.removeEventListener('message', onAck);
-    if (!ok && dlg) { shake($('#link-code').parentElement); toast('Code not found or expired'); }
-  }, 1500);
+async function link(code) {
+  try {
+    const d = deviceInfo();
+    await api('POST', '/api/qr/approve', { code, device: { name: `${d.browser} (via QR)`, type: 'desktop' } });
+    closeLink();
+    toast('Device linked');
+  } catch (err) {
+    if (dlg) shake($('#link-code').parentElement);
+    toast(err.message);
+  }
 }
 
 async function startScan() {

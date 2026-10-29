@@ -1,7 +1,8 @@
-// Медиа (фото, видео, музыка, голосовые, аватарки) храним в IndexedDB:
-// localStorage маленький и только для текста. Сообщения хранят лишь id файла.
+// Медиа (фото, видео, музыка, голосовые, аватарки) загружаются на сервер,
+// сообщения хранят лишь id файла. Свои файлы ещё и кешируются в IndexedDB,
+// чтобы показываться сразу, без скачивания.
 
-import { uid, $$ } from './core.js';
+import { $$, tab } from './core.js';
 
 let dbPromise = null;
 function idb() {
@@ -24,18 +25,25 @@ function tx(mode, fn) {
 }
 
 export async function putBlob(blob) {
-  const id = uid();
-  await tx('readwrite', (s) => s.put(blob, id));
-  return id;
+  const res = await fetch('/api/media', {
+    method: 'POST',
+    headers: { 'Content-Type': blob.type || 'application/octet-stream', Authorization: `Bearer ${tab.get()?.token ?? ''}` },
+    body: blob,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.message || 'Upload failed');
+  await tx('readwrite', (s) => s.put(blob, data.id)).catch(() => {});
+  return data.id;
 }
 
 const urls = new Map();
 export async function mediaUrl(id) {
+  if (!id) return null;
   if (urls.has(id)) return urls.get(id);
   const blob = await tx('readonly', (s) => s.get(id)).catch(() => null);
-  if (!blob) return null;
-  const url = URL.createObjectURL(blob);
-  urls.set(id, url);
+  // своё — из кеша, чужое — прямо с сервера
+  const url = blob ? URL.createObjectURL(blob) : /^[a-f0-9]{32}$/.test(id) ? `/media/${id}` : null;
+  if (url) urls.set(id, url);
   return url;
 }
 

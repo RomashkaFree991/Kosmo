@@ -1,7 +1,8 @@
 // Kosmo: точка входа. Если эта вкладка уже вошла — сразу приложение,
 // иначе заставка и вход/регистрация.
 
-import { $, initTheme, initPress, initGuards, tab } from './core.js';
+import { $, initTheme, initPress, initGuards, tab, toast } from './core.js';
+import { boot } from './api.js';
 import { initColor } from './color.js';
 import { initDesign } from './design.js';
 import { initEmoji } from './emoji.js';
@@ -20,11 +21,20 @@ initColor();
 initHome({ logout: showAuth });
 initAuth({ signedIn: () => showApp() });
 
-if (tab.get()) {
+// Уже входили в этом браузере: сразу показываем кеш, затем свежие данные с сервера
+const saved = tab.get();
+if (saved?.token) {
   $('#auth').hidden = true;
-  // сессию могли завершить с другого устройства, пока вкладка была закрыта
-  if (!showApp()) {
-    tab.clear();
-    showAuth();
-  }
+  const fromCache = showApp();
+  boot()
+    .then(() => {
+      if (fromCache) document.dispatchEvent(new CustomEvent('kosmo:remote'));
+      else if (!showApp()) { tab.clear(); showAuth(); }
+    })
+    .catch((err) => {
+      if (err.status === 401) return;            // сессия завершена — home.js выйдет сам
+      if (!fromCache) { showAuth(); toast(err.message); }
+    });
+} else if (saved) {
+  tab.clear();
 }

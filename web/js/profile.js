@@ -12,6 +12,7 @@ import { putBlob, hydrateMedia, squareAvatar } from './media.js';
 import { ICON as CHAT_ICON, deviceIcon } from './chats.js';
 import { SICON } from './settings.js';
 import { accountsHtml, linkedAccounts } from './accounts.js';
+import { api } from './api.js';
 import './qrlogin.js';
 
 const svg = (d, cls = 'i') => `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true">${d}</svg>`;
@@ -249,32 +250,28 @@ async function terminate(sid, el) {
   const s = state.acc.user.sessions.find((x) => x.id === sid);
   if (!s || !canControl(s)) return;
   el?.closest('.sess-card')?.classList.add('is-removing');
-  await wait(260);
-  db.update(state.acc.user.id, (u) => { u.sessions = u.sessions.filter((x) => x.id !== sid); });
-  toast(`${s.name} — session terminated`);
-  document.dispatchEvent(new CustomEvent('kosmo:changed'));
+  try {
+    await Promise.all([api('DELETE', `/api/sessions/${sid}`), wait(260)]);
+    toast(`${s.name} — session terminated`);
+  } catch (err) {
+    el?.closest('.sess-card')?.classList.remove('is-removing');
+    toast(err.message);
+  }
 }
 
 function toggleTrust(sid) {
   const s = state.acc.user.sessions.find((x) => x.id === sid);
   if (!s || !canControl(s)) return;
-  db.update(state.acc.user.id, (u) => {
-    const t = u.sessions.find((x) => x.id === sid);
-    if (t) t.trusted = !t.trusted;
-  });
-  toast(s.trusted ? `${s.name} is no longer trusted` : `${s.name} is now trusted`);
-  document.dispatchEvent(new CustomEvent('kosmo:changed'));
+  api('POST', `/api/sessions/${sid}/trust`, { trusted: !s.trusted })
+    .then(() => toast(s.trusted ? `${s.name} is no longer trusted` : `${s.name} is now trusted`), (err) => toast(err.message));
 }
 
 function terminateOthers() {
   const ids = state.acc.user.sessions.filter(canControl).map((s) => s.id);
   if (!ids.length) return;
   $$('.sess-card[data-sid]').forEach((c) => { if (ids.includes(c.dataset.sid)) c.classList.add('is-removing'); });
-  setTimeout(() => {
-    db.update(state.acc.user.id, (u) => { u.sessions = u.sessions.filter((x) => !ids.includes(x.id)); });
-    toast(ids.length === 1 ? 'Session terminated' : `${ids.length} sessions terminated`);
-    document.dispatchEvent(new CustomEvent('kosmo:changed'));
-  }, 260);
+  Promise.all(ids.map((id) => api('DELETE', `/api/sessions/${id}`)))
+    .then(() => toast(ids.length === 1 ? 'Session terminated' : `${ids.length} sessions terminated`), (err) => toast(err.message));
 }
 
 function sessionCard(s) {
@@ -346,7 +343,11 @@ function openPhoneChange() {
   openPanel('phone');
 }
 
+let cpTicket = null;
 const oldOtp = createOtp($('#cp-old-otp'), {
+  verify: async (code) => {
+    try { cpTicket = (await api('POST', '/api/phone/verify', { step: 'old', code })).ticket; return true; } catch (err) { toast(err.message); return false; }
+  },
   onComplete: () => {
     setStep('new-phone');
     cpField.clear();
@@ -355,25 +356,20 @@ const oldOtp = createOtp($('#cp-old-otp'), {
 });
 
 const newOtp = createOtp($('#cp-new-otp'), {
+  verify: async (code) => {
+    try { await api('POST', '/api/phone/verify', { step: 'new', phone: cpNewPhone, code, ticket: cpTicket }); return true; } catch (err) { toast(err.message); return false; }
+  },
   onComplete: () => {
-    const { user, session } = state.acc;
-    const from = user.phone;
-    db.update(user.id, (u) => {
-      u.messages.push({
-        id: crypto.randomUUID?.() ?? String(Date.now()),
-        kind: 'phone', at: Date.now(), sid: session.id,
-        device: session.name, type: session.type, ip: session.ip, location: session.location,
-        from, to: cpNewPhone,
-      });
-      u.phone = cpNewPhone;
-    });
     $('#cp-done').textContent = formatPhone(cpNewPhone);
     setStep('done');
     document.dispatchEvent(new CustomEvent('kosmo:changed'));
   },
 });
 
-$('#cp-start').addEventListener('click', () => {
+$('#cp-start').addEventListener('click', async () => {
+  try {
+    await api('POST', '/api/phone/code', { step: 'old' });
+  } catch (err) { toast(err.message); return; }
   $('#cp-old').textContent = formatPhone(state.acc.user.phone);
   oldOtp.reset();
   setStep('old-code');
@@ -386,18 +382,19 @@ $('#cp-new-form').addEventListener('submit', (e) => {
   if (!cpField.isComplete()) { cpField.shake(); return; }
   const phone = cpField.e164;
   if (phone === state.acc.user.phone) { cpField.shake(); toast('This is already your number'); return; }
-  if (db.byPhone(phone)) { cpField.shake(); toast('This number is used by another account'); return; }
   cpNewPhone = phone;
   cpSubmit.style.width = `${cpSubmit.offsetWidth}px`;
   requestAnimationFrame(() => cpSubmit.classList.add('is-loading'));
-  setTimeout(() => {
-    cpSubmit.classList.remove('is-loading');
-    cpSubmit.style.removeProperty('width');
-    $('#cp-new').textContent = formatPhone(phone);
-    newOtp.reset();
-    setStep('new-code');
-    setTimeout(newOtp.focus, 350);
-  }, 900);
+  const stop = () => { cpSubmit.classList.remove('is-loading'); cpSubmit.style.removeProperty('width'); };
+  api('POST', '/api/phone/code', { step: 'new', phone, ticket: cpTicket })
+    .then(() => {
+      stop();
+      $('#cp-new').textContent = formatPhone(phone);
+      newOtp.reset();
+      setStep('new-code');
+      setTimeout(newOtp.focus, 350);
+    })
+    .catch((err) => { stop(); cpField.shake(); toast(err.message); });
 });
 
 export const resetProfileCache = () => { sig = ''; };

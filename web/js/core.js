@@ -15,8 +15,12 @@ export const store = {
   getJSON(key, fallback) {
     try { return JSON.parse(this.get(key)) ?? fallback; } catch { return fallback; }
   },
-  setJSON(key, value) { this.set(key, JSON.stringify(value)); },
+  setJSON(key, value) { this.set(key, JSON.stringify(value)); writeHook?.(key, value); },
 };
+
+// Синхронизация с сервером (api.js) узнаёт о каждой записи коллекции
+let writeHook = null;
+export function setWriteHook(fn) { writeHook = fn; }
 
 /* ---------------------------------------------------------------------------
    Пружины: считаем затухающее колебание и отдаём его CSS через linear()
@@ -203,7 +207,6 @@ export function userAvatarHtml(user, cls = '') {
 }
 
 // Публичные ID идут по порядку: 1, 2, 3…
-export const newPublicId = () => String(Object.values(db.all()).reduce((max, u) => Math.max(max, Number(u.publicId) || 0), 0) + 1);
 
 const PERSON_SVG = '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8.5" r="3.8"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/></svg>';
 
@@ -300,8 +303,8 @@ export function networkInfo() {
 }
 
 /* ---------------------------------------------------------------------------
-   Аккаунты и сессии (демо: localStorage этого браузера)
-   Каждая вкладка — отдельная сессия (sessionStorage), как отдельное устройство.
+   Аккаунты: кеш данных с сервера (localStorage). Свой профиль — полный,
+   чужие — то, что разрешает их приватность.
    --------------------------------------------------------------------------- */
 export const db = {
   all() { return store.getJSON('accounts', {}); },
@@ -325,89 +328,41 @@ export const db = {
   isEmpty() { return Object.keys(this.all()).length === 0; },
 };
 
-// Аккаунты из прошлой версии (ключ — номер телефона, без сессий)
-(function migrate() {
-  const old = store.getJSON('users', null);
-  if (!old) return;
-  for (const u of Object.values(old)) {
-    if (db.byPhone(u.phone)) continue;
-    db.save({ ...u, id: uid(), passSalt: u.phone, sessions: [], messages: [], role: db.isEmpty() ? 'owner' : 'user' });
-  }
-  store.remove('users');
-  store.remove('session');
-})();
-
-// Поля, появившиеся позже: публичный ID, аватар, настройки чатов
-(function upgrade() {
-  const all = db.all();
-  let changed = false;
-  // старые случайные 10-значные ID → по порядку регистрации, начиная с 1
-  const list = Object.values(all).sort((a, b) => a.createdAt - b.createdAt);
-  if (list.some((u) => !/^\d{1,8}$/.test(u.publicId ?? ''))) {
-    list.forEach((u, i) => { u.publicId = String(i + 1); });
-    changed = true;
-  }
-  for (const u of list) {
-    if (!u.privacy) { u.privacy = { hidePhone: false, hideBio: false }; changed = true; }
-    if (!u.avatar) { u.avatar = { color: null, text: '', photo: null }; changed = true; }
-    if (!u.chatPrefs) { u.chatPrefs = {}; changed = true; }
-  }
-  if (changed) store.setJSON('accounts', all);
-})();
-
+// Вход этого браузера: { uid, sid, token } — остаётся после перезапуска
 export const tab = {
-  get() { try { return JSON.parse(sessionStorage.getItem('kosmo:auth')); } catch { return null; } },
-  set(value) { try { sessionStorage.setItem('kosmo:auth', JSON.stringify(value)); } catch { /* приватный режим */ } },
-  clear() { try { sessionStorage.removeItem('kosmo:auth'); } catch { /* приватный режим */ } },
+  get() { try { return JSON.parse(localStorage.getItem('kosmo:auth')); } catch { return null; } },
+  set(value) { try { localStorage.setItem('kosmo:auth', JSON.stringify(value)); } catch { /* приватный режим */ } },
+  clear() { try { localStorage.removeItem('kosmo:auth'); } catch { /* приватный режим */ } },
 };
 
-// Текущий вошедший аккаунт этой вкладки, если его сессия ещё жива
+// Текущий вошедший аккаунт, если его сессия есть в данных
 export function current() {
   const t = tab.get();
   if (!t) return null;
   const user = db.get(t.uid);
-  const session = user?.sessions.find((s) => s.id === t.sid);
+  const session = user?.sessions?.find((s) => s.id === t.sid);
   return session ? { user, session } : null;
 }
 
-// Новая сессия: при регистрации — «Welcome», при входе — «New login» в чате Kosmo
-export async function startSession(user, { isNew }) {
-  const net = await networkInfo();
-  const dev = deviceInfo();
-  const now = Date.now();
-  const session = {
-    id: uid(),
-    ...dev,
-    ip: net.ip,
-    location: net.location,
-    createdAt: now,
-    lastActive: now,
-    first: isNew,
-    // владелец при создании аккаунта сразу доверенный; если доверенных не осталось — тоже
-    trusted: isNew || !user.sessions.some((s) => s.trusted),
-  };
-  user.sessions.push(session);
-  user.messages.push({
-    id: uid(),
-    kind: isNew ? 'welcome' : 'login',
-    at: now,
-    sid: session.id,
-    device: session.name,
-    type: session.type,
-    ip: session.ip,
-    location: session.location,
-  });
-  db.save(user);
-  tab.set({ uid: user.id, sid: session.id });
-  return session;
-}
-
-// Код-пароль храним только в виде SHA-256 (где доступен WebCrypto)
-export async function hashPasscode(salt, code) {
-  if (!crypto.subtle) return `plain:${code}`;
-  const data = new TextEncoder().encode(`kosmo:${salt}:${code}`);
-  const buf = await crypto.subtle.digest('SHA-256', data);
-  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
+/* ---------------------------------------------------------------------------
+   Даты
+   --------------------------------------------------------------------------- */
+// формат дат по языку интерфейса (html lang)
+const fmts = {};
+const fmt = (kind) => {
+  const loc = document.documentElement.lang === 'ru' ? 'ru-RU' : 'en-GB';
+  return (fmts[loc + kind] ??= new Intl.DateTimeFormat(loc, kind === 'date'
+    ? { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }
+    : { hour: '2-digit', minute: '2-digit' }));
+};
+export const formatDate = (t) => fmt('date').format(t);
+export const formatTime = (t) => fmt('time').format(t);
+export function timeAgo(t) {
+  const s = Math.round((Date.now() - t) / 1000);
+  if (s < 60) return 'just now';
+  if (s < 3600) return `${Math.floor(s / 60)} min ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)} h ago`;
+  return formatDate(t);
 }
 
 /* ---------------------------------------------------------------------------
@@ -441,25 +396,4 @@ export function patchList(box, items, onCreate) {
     else cursor = cursor.nextElementSibling;
   }
   for (const el of [...box.children]) if (!keep.has(el)) el.remove();
-}
-
-/* ---------------------------------------------------------------------------
-   Даты
-   --------------------------------------------------------------------------- */
-// формат дат по языку интерфейса (html lang)
-const fmts = {};
-const fmt = (kind) => {
-  const loc = document.documentElement.lang === 'ru' ? 'ru-RU' : 'en-GB';
-  return (fmts[loc + kind] ??= new Intl.DateTimeFormat(loc, kind === 'date'
-    ? { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }
-    : { hour: '2-digit', minute: '2-digit' }));
-};
-export const formatDate = (t) => fmt('date').format(t);
-export const formatTime = (t) => fmt('time').format(t);
-export function timeAgo(t) {
-  const s = Math.round((Date.now() - t) / 1000);
-  if (s < 60) return 'just now';
-  if (s < 3600) return `${Math.floor(s / 60)} min ago`;
-  if (s < 86400) return `${Math.floor(s / 3600)} h ago`;
-  return formatDate(t);
 }

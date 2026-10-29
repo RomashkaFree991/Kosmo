@@ -1,8 +1,8 @@
 // Отложенные сообщения, напоминания и автоудаление (исчезающие сообщения).
-// Раз в несколько секунд вкладка отправляет свои отложенные сообщения,
-// присылает наступившие напоминания и стирает истёкшие сообщения.
+// Отправку отложенных и удаление истёкших сообщений делает сервер;
+// вкладка только присылает наступившие напоминания.
 
-import { $, db, uid, toast, escapeHtml, formatDate, refreshRefraction } from './core.js';
+import { $, db, store, uid, toast, escapeHtml, formatDate, refreshRefraction } from './core.js';
 import { state } from './panels.js';
 import { chats } from './chats.js';
 
@@ -83,7 +83,7 @@ export function schedule(chatId, members, msg, sendAt) {
   const c = all[chatId] ?? { id: chatId, members, messages: [], read: {} };
   (c.scheduled ??= []).push({ id: uid(), from: me, sendAt, msg: { from: me, kind: 'text', ...msg } });
   all[chatId] = c;
-  localStorage.setItem('kosmo:chats', JSON.stringify(all));
+  store.setJSON('chats', all);
   toast(`Scheduled for ${formatDate(sendAt)}`);
 }
 
@@ -98,8 +98,8 @@ function sendNow(chatId, sid) {
   const m = { id: uid(), at: Date.now(), ...item.msg, scheduledAt: item.sendAt };
   if (c.ttl) m.expiresAt = m.at + c.ttl * 1000;
   c.messages.push(m);
-  c.read[m.from] = m.at;
-  localStorage.setItem('kosmo:chats', JSON.stringify(all));
+  (c.read ??= {})[m.from] = m.at;
+  store.setJSON('chats', all);
 }
 
 let list = null;
@@ -155,33 +155,12 @@ export function addReminder(chatId, msgId, text, at) {
 }
 
 /* ---------------------------------------------------------------------------
-   Тик: отправка, напоминания, автоудаление
+   Тик: напоминания
    --------------------------------------------------------------------------- */
 function tick() {
   if (!state.acc || $('#app').hidden) return;
   const me = state.acc.user.id;
   const now = Date.now();
-  const all = chats.all();
-  const touched = new Set();
-  for (const c of Object.values(all)) {
-    // отложенные — только свои, чтобы другие вкладки не отправили дважды
-    for (const s of (c.scheduled ?? []).filter((x) => x.from === me && x.sendAt <= now)) {
-      c.scheduled = c.scheduled.filter((x) => x.id !== s.id);
-      const m = { id: uid(), at: now, ...s.msg, scheduledAt: s.sendAt };
-      if (c.ttl) m.expiresAt = now + c.ttl * 1000;
-      c.messages.push(m);
-      c.read[me] = now;
-      touched.add(c.id);
-    }
-    const before = c.messages.length;
-    c.messages = c.messages.filter((m) => !m.expiresAt || m.expiresAt > now);
-    if (c.messages.length !== before) touched.add(c.id);
-  }
-  if (touched.size) {
-    localStorage.setItem('kosmo:chats', JSON.stringify(all));
-    touched.forEach(changed);
-    document.dispatchEvent(new CustomEvent('kosmo:changed'));
-  }
   const due = (state.acc.user.reminders ?? []).filter((r) => r.at <= now);
   if (due.length) {
     db.update(me, (u) => {

@@ -238,7 +238,7 @@ function kosmoMessages() {
 }
 
 function kosmoUnread() {
-  const readAt = state.acc.session.readAt ?? state.acc.session.createdAt - 1;
+  const readAt = prefs(KOSMO).readAt ?? state.acc.session.createdAt - 1;
   return kosmoMessages().filter((m) => m.at > readAt).length;
 }
 
@@ -654,12 +654,12 @@ function chatMessages() {
 
 function markOpenRead() {
   if (open.id === KOSMO) {
-    db.update(state.acc.user.id, (u) => {
-      const s = u.sessions.find((x) => x.id === state.acc.session.id);
-      if (s) s.readAt = Date.now();
-    });
+    if (kosmoUnread()) setPref(KOSMO, { readAt: Date.now() });
   } else if (curChat()) {
-    chats.markRead(open.id, state.acc.user.id);
+    // отметка о прочтении — только когда есть что прочитать (иначе лишние запросы)
+    const c = curChat();
+    const me = state.acc.user.id;
+    if (c.messages.some((m) => m.from !== me && m.at > (c.read?.[me] ?? 0))) chats.markRead(open.id, me);
   }
   state.reload();
 }

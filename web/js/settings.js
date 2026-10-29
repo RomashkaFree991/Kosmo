@@ -2,7 +2,7 @@
 // аккаунта), Notifications, Data and storage, About. Экран блокировки.
 
 import {
-  $, $$, db, tab, toast, escapeHtml, userAvatarHtml, hashPasscode, kosmoAvatar, refreshRefraction, wait,
+  $, $$, db, tab, toast, escapeHtml, userAvatarHtml, kosmoAvatar, refreshRefraction, wait,
 } from './core.js';
 import { state, openPanel, openOverlay, closeOverlay, overlayOpen } from './panels.js';
 import { hydrateMedia } from './media.js';
@@ -11,6 +11,7 @@ import { chats, isRoom, ICON } from './chats.js';
 import { posts } from './feeddata.js';
 import { formatPhone } from './phone.js';
 import { LANGS, lang, setLang } from './i18n.js';
+import { api as serverApi } from './api.js';
 
 const svg = (d, cls = 'i') => `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true">${d}</svg>`;
 export const SICON = {
@@ -232,15 +233,21 @@ function startPasscode(mode) {
   openOverlay('passcode');
 }
 
+// код-пароль проверяет сервер (хранится там только хешем)
 async function checkCode(code) {
-  const u = me();
-  return (await hashPasscode(u.passSalt ?? u.id, code)) === u.passHash;
+  try {
+    return (await serverApi('POST', '/api/passcode/verify', { code })).ok;
+  } catch (err) {
+    toast(err.message);
+    return false;
+  }
 }
 
 async function onPasscode(code, api) {
   if (!pc) return;
   if (pc.step === 'current') {
     if (!(await checkCode(code))) { toast('Wrong passcode'); await api.error(); return; }
+    pc.current = code;
     await api.success();
     if (pc.mode === 'delete') { api.reset(); confirmDelete(); return; }
     pc.step = 'new';
@@ -249,7 +256,7 @@ async function onPasscode(code, api) {
     return;
   }
   if (pc.step === 'new') {
-    if (await checkCode(code)) { toast('Choose a different passcode'); await api.error(); return; }
+    if (code === pc.current) { toast('Choose a different passcode'); await api.error(); return; }
     pc.code = code;
     pc.step = 'repeat';
     api.reset();
@@ -263,19 +270,17 @@ async function onPasscode(code, api) {
     setPassTitle('Change passcode', 'Enter a new passcode');
     return;
   }
+  try {
+    await serverApi('POST', '/api/passcode/change', { current: pc.current, next: code });
+  } catch (err) {
+    toast(err.message);
+    await api.error();
+    return;
+  }
   await api.success();
-  const u = me();
-  const hash = await hashPasscode(u.passSalt ?? u.id, code);
-  db.update(u.id, (x) => {
-    x.passHash = hash;
-    const s = state.acc.session;
-    x.messages.push({ id: crypto.randomUUID?.() ?? String(Date.now()), kind: 'passcode', at: Date.now(), sid: s.id, device: s.name, type: s.type, ip: s.ip, location: s.location });
-  });
-  state.reload();
   pc = null;
   closeOverlay();
   toast('Passcode changed');
-  document.dispatchEvent(new CustomEvent('kosmo:changed'));
 }
 
 function confirmDelete() {
@@ -295,22 +300,13 @@ function confirmDelete() {
 
 document.addEventListener('click', async (e) => {
   if (!e.target.closest('[data-delete-account]')) return;
-  const uidX = me().id;
-  // чаты: свои группы и каналы удаляются, из остальных выходим
-  const all = chats.all();
-  for (const [id, c] of Object.entries(all)) {
-    if (!c.members.includes(uidX)) continue;
-    if (isRoom(c) && c.owner === uidX) delete all[id];
-    else if (isRoom(c)) {
-      c.members = c.members.filter((x) => x !== uidX);
-      c.admins = (c.admins ?? []).filter((x) => x !== uidX);
-    }
+  // сервер удаляет профиль, свои группы и каналы, посты и истории
+  try {
+    await serverApi('DELETE', '/api/account', { passcode: pc?.current });
+  } catch (err) {
+    toast(err.message);
+    return;
   }
-  localStorage.setItem('kosmo:chats', JSON.stringify(all));
-  localStorage.setItem('kosmo:feed', JSON.stringify(posts.all().filter((p) => p.author !== uidX)));
-  const accounts = db.all();
-  delete accounts[uidX];
-  localStorage.setItem('kosmo:accounts', JSON.stringify(accounts));
   closeOverlay();
   await wait(200);
   document.dispatchEvent(new CustomEvent('kosmo:account-deleted'));

@@ -24,9 +24,7 @@ export const stories = {
   all() {
     const now = Date.now();
     const list = store.getJSON('stories', []);
-    const live = list.filter((s) => now - s.at < DAY);
-    if (live.length !== list.length) store.setJSON('stories', live);   // старше суток — удаляем
-    return live;
+    return list.filter((s) => now - s.at < DAY);   // старше суток сервер удалит сам
   },
   save(list) { store.setJSON('stories', list); },
   update(id, fn) {

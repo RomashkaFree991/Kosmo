@@ -1,13 +1,13 @@
-// Голосовые и видеозвонки по WebRTC. Сервера нет, поэтому сигналинг идёт
-// через BroadcastChannel: звонить можно между вкладками этого браузера
-// (каждая вкладка — отдельное «устройство»). Итог звонка пишется в чат.
+// Голосовые и видеозвонки по WebRTC. Сигналы (вызов, SDP, ICE) идут через
+// WebSocket сервера, медиа — напрямую между устройствами или через TURN
+// сервера, если прямое соединение невозможно. Итог звонка пишется в чат.
 
 import { $, db, toast, escapeHtml, userAvatarHtml, uid } from './core.js';
 import { state } from './panels.js';
 import { hydrateMedia } from './media.js';
 import { chats } from './chats.js';
+import { api, sendSignal, onSignal, isOnline } from './api.js';
 
-const bc = 'BroadcastChannel' in window ? new BroadcastChannel('kosmo-calls') : null;
 const TAB = uid();
 const RING_TIMEOUT = 30_000;
 const svg = (d) => `<svg class="i" viewBox="0 0 24 24" aria-hidden="true">${d}</svg>`;
@@ -24,7 +24,20 @@ const fmt = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(
 
 let call = null;   // текущий звонок этой вкладки
 
-const post = (msg) => bc?.postMessage({ ...msg, tab: TAB });
+// сигнал собеседнику (во все его вкладки)
+const post = (msg, to = call?.peer) => { if (to) sendSignal(to, { ...msg, tab: TAB }); };
+
+let iceCache = null;
+async function iceServers() {
+  if (iceCache && iceCache.at > Date.now() - 3_600_000) return iceCache.list;
+  try {
+    const { iceServers: list } = await api('GET', '/api/ice');
+    iceCache = { at: Date.now(), list };
+    return list;
+  } catch {
+    return [{ urls: 'stun:stun.l.google.com:19302' }];
+  }
+}
 
 /* ---------------------------------------------------------------------------
    Экран звонка
@@ -77,10 +90,9 @@ export function startCall(peerId, video = false) {
   if (peer.privacy?.blocked?.includes(state.acc.user.id)) { toast(`You can't call ${peer.name.split(/\s+/)[0]}`); return; }
   call = { id: uid(), peer: peerId, video, outgoing: true, state: 'ringing', el: screen(peer, { video, incoming: false }), queue: [] };
   ringback(true);
-  post({ type: 'ring', callId: call.id, from: state.acc.user.id, to: peerId, video });
+  post({ type: 'ring', callId: call.id, from: state.acc.user.id, to: peerId, video }, peerId);
   call.timeout = setTimeout(() => finish('missed', true), RING_TIMEOUT);
-  // нет второй вкладки с этим человеком — никто не ответит
-  if (!bc) setTimeout(() => finish('missed', true), 1500);
+  if (!isOnline()) { toast('No connection to the server'); setTimeout(() => finish('missed', true), 1500); }
 }
 
 /* ---------------------------------------------------------------------------
@@ -88,9 +100,9 @@ export function startCall(peerId, video = false) {
    --------------------------------------------------------------------------- */
 function incoming(msg) {
   if (!state.acc || $('#app').hidden || msg.to !== state.acc.user.id) return;
-  if (call) { post({ type: 'busy', callId: msg.callId }); return; }
+  if (call) { post({ type: 'busy', callId: msg.callId }, msg.from); return; }
   const peer = db.get(msg.from);
-  if (!peer || state.acc.user.privacy?.blocked?.includes(msg.from)) { post({ type: 'decline', callId: msg.callId }); return; }
+  if (!peer || state.acc.user.privacy?.blocked?.includes(msg.from)) { post({ type: 'decline', callId: msg.callId }, msg.from); return; }
   call = { id: msg.callId, peer: msg.from, video: msg.video, outgoing: false, state: 'ringing', el: screen(peer, { video: msg.video, incoming: true }), queue: [], callerTab: msg.tab };
   ringtone(true);
   navigator.vibrate?.([300, 200, 300]);
@@ -107,7 +119,7 @@ async function accept() {
 
 async function setupPeer() {
   const c = call;
-  c.pc = new RTCPeerConnection();
+  c.pc = new RTCPeerConnection({ iceServers: await iceServers() });
   try {
     c.local = await navigator.mediaDevices.getUserMedia({ audio: true, video: c.video ? { width: 640, height: 480 } : false });
     c.local.getTracks().forEach((t) => c.pc.addTrack(t, c.local));
@@ -118,7 +130,7 @@ async function setupPeer() {
     if (c.video) c.pc.addTransceiver('video', { direction: 'recvonly' });
     toast('No access to microphone — listening only');
   }
-  c.pc.onicecandidate = (e) => { if (e.candidate) post({ type: 'ice', callId: c.id, candidate: e.candidate.toJSON() }); };
+  c.pc.onicecandidate = (e) => { if (e.candidate) post({ type: 'ice', callId: c.id, candidate: e.candidate.toJSON() }, c.peer); };
   c.pc.ontrack = (e) => {
     const v = c.el.querySelector('.call-remote');
     v.srcObject = e.streams[0] ?? new MediaStream([e.track]);
@@ -149,8 +161,10 @@ async function flushIce() {
 /* ---------------------------------------------------------------------------
    Сигналинг
    --------------------------------------------------------------------------- */
-bc?.addEventListener('message', async ({ data: msg }) => {
-  if (msg.type === 'ring') { incoming(msg); return; }
+onSignal(async (from, msg) => {
+  if (!msg || typeof msg !== 'object') return;
+  if (msg.type === 'ring') { if (msg.from === from) incoming(msg); return; }
+  if (call && from !== call.peer) return;
   if (!call || msg.callId !== call.id) return;
   if (msg.tab === TAB) return;
   switch (msg.type) {
@@ -160,6 +174,7 @@ bc?.addEventListener('message', async ({ data: msg }) => {
       call.calleeTab = msg.tab;
       call.state = 'connecting';
       setStatus('Connecting…');
+      // остальные вкладки собеседника перестают звонить
       post({ type: 'taken', callId: call.id, tabOk: msg.tab });
       await setupPeer();
       await call.pc.setLocalDescription(await call.pc.createOffer());
@@ -211,7 +226,7 @@ function finish(status, log, silent = false) {
   clearInterval(c.tick);
   ringtone(false);
   ringback(false);
-  if (!silent) post({ type: 'end', callId: c.id });
+  if (!silent) post({ type: 'end', callId: c.id }, c.peer);
   c.pc?.close();
   c.local?.getTracks().forEach((t) => t.stop());
   const duration = c.started ? Math.round((Date.now() - c.started) / 1000) : 0;

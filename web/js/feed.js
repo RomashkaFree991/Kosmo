@@ -2,7 +2,7 @@
 // пересылка в чаты, просмотры. Автор может изменить или удалить свой пост.
 
 import {
-  $, $$, db, toast, shake, escapeHtml, userAvatarHtml, cosmicBadge, formatTime, timeAgo, refreshRefraction, patchList,
+  $, $$, db, store, toast, shake, escapeHtml, userAvatarHtml, cosmicBadge, formatTime, timeAgo, refreshRefraction, patchList,
 } from './core.js';
 import { state, openPanel, closePanel, openOverlay, closeOverlay, overlayOpen } from './panels.js';
 import { putBlob, hydrateMedia, compressImage, mediaDuration } from './media.js';
@@ -32,12 +32,12 @@ function mediaGrid(p) {
   return `<div class="post-media" data-count="${Math.min(p.media.length, 4)}">${p.media.slice(0, 4).map((m, i) => `
     <button class="post-media-item" type="button" data-post-view="${p.id}" data-i="${i}" aria-label="Open ${m.type}">
       ${m.type === 'video'
-        ? `<video data-media="${m.media}" muted playsinline preload="metadata" ${store.autoplay ? 'autoplay loop' : ''}></video><span class="b-play-ov">${ICON.play}</span>${m.duration ? `<span class="b-dur-ov">${fmtDur(m.duration)}</span>` : ''}`
+        ? `<video data-media="${m.media}" muted playsinline preload="metadata" ${feedPrefs.autoplay ? 'autoplay loop' : ''}></video><span class="b-play-ov">${ICON.play}</span>${m.duration ? `<span class="b-dur-ov">${fmtDur(m.duration)}</span>` : ''}`
         : `<img data-media="${m.media}" alt="" style="aspect-ratio:${m.w || 4}/${m.h || 3}">`}
       ${i === 3 && p.media.length > 4 ? `<span class="post-more">+${p.media.length - 4}</span>` : ''}
     </button>`).join('')}</div>`;
 }
-const store = { get autoplay() { return state.acc?.user.settings?.autoplay !== false; } };
+const feedPrefs = { get autoplay() { return state.acc?.user.settings?.autoplay !== false; } };
 
 function reactionRow(p) {
   const me = state.acc.user.id;
@@ -114,7 +114,7 @@ function markViewed(list) {
   if (!unseen.length) return;
   const all = posts.all();
   all.forEach((p) => { if (unseen.includes(p.id)) (p.views ??= []).push(me); });
-  localStorage.setItem('kosmo:feed', JSON.stringify(all));
+  store.setJSON('feed', all);
   feedSig = '';
 }
 

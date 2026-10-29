@@ -3,9 +3,9 @@
 // Вход: номер → код из SMS → код-пароль, заданный при регистрации.
 
 import {
-  $, $$, root, wait, easing, toast, shake, refreshRefraction, paintAvatar,
-  db, uid, hashPasscode, startSession, networkInfo, newPublicId,
+  $, $$, root, wait, easing, toast, shake, refreshRefraction, paintAvatar, tab, networkInfo, deviceInfo,
 } from './core.js';
+import { api, boot } from './api.js';
 import { createPhoneField, openSheet, closeSheet } from './phone.js';
 import { showLoginQr, stopLoginQr } from './qrlogin.js';
 import { createOtp } from './otp.js';
@@ -14,7 +14,7 @@ const auth = $('#auth');
 const backBtn = $('#back-btn');
 
 // Состояние текущей попытки входа/регистрации
-const flow = { phone: null, user: null, newId: null, passHash: null, mode: 'create' };
+const flow = { phone: null, ticket: null, exists: false, pass: null, mode: 'create' };
 let onSignedIn = () => {};
 
 /* ---------------------------------------------------------------------------
@@ -105,30 +105,74 @@ $('#phone-form').addEventListener('submit', (e) => {
     return;
   }
   flow.phone = phoneField.e164;
-  flow.user = db.byPhone(flow.phone);
-  networkInfo();   // заранее узнаём IP для будущей сессии
+  networkInfo();   // заранее узнаём город для будущей сессии
   // В M3 кнопка морфится в круг: фиксируем ширину, чтобы переход был плавным
   submitBtn.style.width = `${submitBtn.offsetWidth}px`;
   requestAnimationFrame(() => submitBtn.classList.add('is-loading'));
-  setTimeout(() => {
-    otp.reset();
-    showScreen('screen-code', 'forward', () => otp.focus());
-    submitBtn.classList.remove('is-loading');
-    submitBtn.style.removeProperty('width');
-  }, 1000);
+  const stop = () => { submitBtn.classList.remove('is-loading'); submitBtn.style.removeProperty('width'); };
+  // код отправляет сервер: SMS, Telegram или (в тестовом режиме) лог
+  Promise.all([api('POST', '/api/auth/code', { phone: flow.phone }, { auth: false }), wait(600)])
+    .then(([r]) => {
+      $('#code-hint').textContent = r.channel === 'telegram' ? `Code sent to Telegram · ${phoneField.e164}`
+        : r.channel === 'log' ? 'Test mode: the code is in the server log' : `Code sent by SMS to ${phoneField.e164}`;
+      otp.reset();
+      resendTimer();
+      showScreen('screen-code', 'forward', () => otp.focus());
+      stop();
+    })
+    .catch((err) => { stop(); phoneField.shake(); toast(err.message); });
 });
 
 // Вход по QR: другая вкладка, где уже вошли, сканирует код и подтверждает
 $('#qr-btn').addEventListener('click', () => openSheet('qr', {
-  renderQr: () => showLoginQr((user) => { closeSheet(); signIn(user, false); }),
+  renderQr: () => showLoginQr((session) => { closeSheet(); finish(session); }),
   onClose: stopLoginQr,
 }));
 
 /* ---------------------------------------------------------------------------
    2. Код из SMS
    --------------------------------------------------------------------------- */
+// «Отправить ещё раз» — через минуту
+const resendBtn = $('#code-resend');
+let resendTick = null;
+function resendTimer() {
+  clearInterval(resendTick);
+  let left = 60;
+  resendBtn.disabled = true;
+  const paint = () => { resendBtn.textContent = left > 0 ? `Send again in ${left} s` : 'Send again'; };
+  paint();
+  resendTick = setInterval(() => {
+    left -= 1;
+    paint();
+    if (left <= 0) { clearInterval(resendTick); resendBtn.disabled = false; }
+  }, 1000);
+}
+resendBtn.addEventListener('click', async () => {
+  resendBtn.disabled = true;
+  try {
+    await api('POST', '/api/auth/code', { phone: flow.phone }, { auth: false });
+    toast('Code sent again');
+    resendTimer();
+  } catch (err) {
+    toast(err.message);
+    resendBtn.disabled = false;
+  }
+});
 // Есть аккаунт с этим номером — спрашиваем его код-пароль, иначе создаём новый
-const otp = createOtp($('#otp'), { onComplete: () => openPasscode(flow.user ? 'enter' : 'create') });
+const otp = createOtp($('#otp'), {
+  verify: async (code) => {
+    try {
+      const r = await api('POST', '/api/auth/verify', { phone: flow.phone, code }, { auth: false });
+      flow.ticket = r.ticket;
+      flow.exists = r.exists;
+      return true;
+    } catch (err) {
+      toast(err.message);
+      return false;
+    }
+  },
+  onComplete: () => openPasscode(flow.exists ? 'enter' : 'create'),
+});
 
 /* ---------------------------------------------------------------------------
    3. Код-пароль: 4 ячейки и клавиатура как на iPhone
@@ -175,9 +219,11 @@ async function pressKey(key) {
 async function submitPass() {
   passBusy = true;
   await wait(180);   // дать точке «вспыхнуть»
+  let session = null;
   if (flow.mode === 'enter') {
-    const hash = await hashPasscode(flow.user.passSalt ?? flow.user.id, pass);
-    if (hash !== flow.user.passHash) {
+    try {
+      session = await api('POST', '/api/auth/login', { ticket: flow.ticket, passcode: pass, ...(await deviceAndPlace()) }, { auth: false });
+    } catch (err) {
       attempts += 1;
       shake(passCells);
       await wait(500);
@@ -185,18 +231,18 @@ async function submitPass() {
       pass = '';
       renderPass();
       passBusy = false;
-      if (attempts >= 3) toast('Wrong passcode');
+      if (err.code !== 'wrong_passcode' || attempts >= 3) toast(err.message);
+      if (err.code === 'bad_ticket') showScreen('screen-phone', 'back');
       return;
     }
   } else {
-    flow.newId = uid();
-    flow.passHash = await hashPasscode(flow.newId, pass);
+    flow.pass = pass;
   }
   passCells.classList.add('is-done');
   navigator.vibrate?.([10, 40, 10]);
   await wait(650);
-  if (flow.mode === 'enter') {
-    signIn(flow.user, false);
+  if (session) {
+    finish(session);
     return;
   }
   prepareNameScreen();
@@ -239,7 +285,7 @@ const USERNAME_RE = /^(?=.*[a-z])[a-z0-9]{3,32}$/;
 // @username можно оставить пустым
 function usernameOk(value) {
   if (!value) return true;
-  return USERNAME_RE.test(value) && !RESERVED.includes(value) && !db.usernameTaken(value, flow.user?.id);
+  return USERNAME_RE.test(value) && !RESERVED.includes(value);
 }
 
 function prepareNameScreen() {
@@ -310,24 +356,18 @@ $('#bio-form').addEventListener('submit', async (e) => {
   if (signupBtn.classList.contains('is-loading')) return;
   signupBtn.style.width = `${signupBtn.offsetWidth}px`;
   requestAnimationFrame(() => signupBtn.classList.add('is-loading'));
-  const user = {
-    id: flow.newId,
-    phone: flow.phone,
-    passHash: flow.passHash,
-    name: nameInput.value.trim(),
-    username: usernameInput.value,
-    bio: bioInput.value.trim(),
-    createdAt: Date.now(),
-    // первый аккаунт на сайте — владелец (золотая галочка)
-    role: db.isEmpty() ? 'owner' : 'user',
-    publicId: newPublicId(),
-    avatar: { color: null, text: '', photo: null },
-    chatPrefs: {},
-    privacy: { hidePhone: false, hideBio: false },
-    sessions: [],
-    messages: [],
-  };
-  await Promise.all([signIn(user, true), wait(700)]);
+  try {
+    const [session] = await Promise.all([api('POST', '/api/auth/register', {
+      ticket: flow.ticket, passcode: flow.pass,
+      name: nameInput.value.trim(), username: usernameInput.value, bio: bioInput.value.trim(),
+      ...(await deviceAndPlace()),
+    }, { auth: false }), wait(700)]);
+    await finish(session);
+  } catch (err) {
+    toast(err.message);
+    if (err.code === 'username_taken') showScreen('screen-name', 'back', () => usernameInput.focus());
+    if (err.code === 'bad_ticket') showScreen('screen-phone', 'back');
+  }
   signupBtn.classList.remove('is-loading');
   signupBtn.style.removeProperty('width');
 });
@@ -335,10 +375,22 @@ $('#bio-form').addEventListener('submit', async (e) => {
 /* ---------------------------------------------------------------------------
    Вход в приложение и выход из него
    --------------------------------------------------------------------------- */
-async function signIn(user, isNew) {
-  // при входе берём свежую копию: другие вкладки могли её поменять
-  const fresh = isNew ? user : db.get(user.id);
-  await startSession(fresh, { isNew });
+async function deviceAndPlace() {
+  const d = deviceInfo();
+  const net = await networkInfo();
+  return { device: { name: d.name, type: d.type }, location: net.location };
+}
+
+// Сессия получена: сохраняем вход, загружаем данные с сервера, открываем приложение
+async function finish({ token, uid, sid }) {
+  tab.set({ uid, sid, token });
+  try {
+    await boot();
+  } catch (err) {
+    tab.clear();
+    toast(err.message);
+    return;
+  }
   root.classList.add('has-session');
   auth.classList.add('is-leaving');
   await wait(380);

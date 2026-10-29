@@ -20,6 +20,7 @@ import { isRoom, roomAvatar, searchMessages, allMedia, chatTitle, chatAvatar, op
 import { openViewer } from './viewer.js';
 import { renderStories } from './stories.js';
 import { rememberAccount, forgetAccount, linkedAccounts, paintAuthCancel } from './accounts.js';
+import { api, boot, shutdown } from './api.js';
 
 const app = $('#app');
 const tabbar = $('#tabbar');
@@ -303,10 +304,20 @@ document.addEventListener('kosmo:room-changed', () => { renderChatList(); refres
 document.addEventListener('kosmo:account-deleted', () => { forgetAccount(state.acc?.user.id); leave('Your account was deleted'); });
 
 // Переключение между аккаунтами этой вкладки
-document.addEventListener('kosmo:switch-account', (e) => {
+document.addEventListener('kosmo:switch-account', async (e) => {
+  shutdown();
   tab.set(e.detail);
   resetPanels();
   leaveArchive();
+  try {
+    await boot();
+  } catch {
+    forgetAccount(e.detail.uid);
+    tab.clear();
+    toast('This session was terminated');
+    leave();
+    return;
+  }
   $('#auth').hidden = true;
   root.classList.add('has-session');
   if (!showApp({ animate: false })) { forgetAccount(e.detail.uid); toast('This session was terminated'); return; }
@@ -316,6 +327,7 @@ document.addEventListener('kosmo:switch-account', (e) => {
 
 // Ещё один аккаунт: вход, не выходя из текущих
 document.addEventListener('kosmo:add-account', async () => {
+  shutdown();
   tab.clear();
   resetPanels();
   app.animate([{ opacity: 1 }, { opacity: 0, transform: 'scale(0.97)' }], { duration: 250, easing: 'ease-in', fill: 'forwards' });
@@ -331,17 +343,19 @@ document.addEventListener('kosmo:add-account', async () => {
 });
 
 // Отметка «был в сети» раз в минуту и при возвращении на вкладку
-function heartbeat() {
-  if (app.hidden || !state.acc || document.visibilityState !== 'visible') return;
-  db.update(state.acc.user.id, (u) => {
-    const s = u.sessions.find((x) => x.id === state.acc.session.id);
-    if (s) s.lastActive = Date.now();
-  });
-}
-setInterval(heartbeat, 60_000);
-document.addEventListener('visibilitychange', heartbeat);
+// «В сети» отмечает сервер по живому соединению (api.js шлёт ping)
+const heartbeat = () => {};
+
+// Изменения с сервера и завершённая сессия
+document.addEventListener('kosmo:remote', () => sync());
+document.addEventListener('kosmo:session-ended', () => {
+  if (!state.acc) return;
+  forgetAccount(state.acc.user.id);
+  leave('This session was terminated from another device');
+});
 
 async function leave(message) {
+  shutdown();
   tab.clear();
   resetPanels();
   $('#lock').hidden = true;
@@ -360,7 +374,7 @@ async function leave(message) {
 
 document.addEventListener('click', (e) => {
   if (!e.target.closest('#logout-btn') || !state.acc) return;
-  db.update(state.acc.user.id, (u) => { u.sessions = u.sessions.filter((s) => s.id !== state.acc.session.id); });
+  api('POST', '/api/logout').catch(() => {});
   forgetAccount(state.acc.user.id);
   const other = linkedAccounts()[0];
   if (other) { document.dispatchEvent(new CustomEvent('kosmo:switch-account', { detail: other })); return; }

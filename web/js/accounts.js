@@ -1,6 +1,6 @@
-// Несколько аккаунтов в одной вкладке (до 5): список внизу профиля,
+// Несколько аккаунтов в этом браузере (до 5): список внизу профиля,
 // переключение в одно касание, «Add account» ведёт на вход, не выходя
-// из текущих. Список живёт столько же, сколько вход вкладки (sessionStorage).
+// из текущих. Входы (токены) хранятся в localStorage.
 
 import { $, db, tab, escapeHtml, userAvatarHtml, toast } from './core.js';
 import { formatPhone } from './phone.js';
@@ -8,21 +8,25 @@ import { formatPhone } from './phone.js';
 export const MAX_ACCOUNTS = 5;
 const KEY = 'kosmo:tab-accounts';
 
-const read = () => { try { return JSON.parse(sessionStorage.getItem(KEY)) ?? []; } catch { return []; } };
-const write = (list) => { try { sessionStorage.setItem(KEY, JSON.stringify(list)); } catch { /* приватный режим */ } };
+const read = () => { try { return JSON.parse(localStorage.getItem(KEY)) ?? []; } catch { return []; } };
+const write = (list) => { try { localStorage.setItem(KEY, JSON.stringify(list)); } catch { /* приватный режим */ } };
 
-// Только живые входы: сессию могли завершить с другого устройства
+// Входы этого браузера; завершённые сессии отсеиваются при переключении
 export function linkedAccounts() {
-  const list = read().filter((a) => db.get(a.uid)?.sessions.some((s) => s.id === a.sid));
-  write(list);
-  return list;
+  return read().filter((a) => a.token);
+}
+
+// имя и номер другого аккаунта запоминаем при входе — его данных в кеше нет
+function remember(t) {
+  const u = db.get(t.uid);
+  return u ? { ...t, name: u.name, phone: u.phone, avatar: u.avatar } : t;
 }
 
 export function rememberAccount() {
   const t = tab.get();
   if (!t) return;
   const list = linkedAccounts().filter((a) => a.uid !== t.uid);
-  list.unshift(t);
+  list.unshift(remember(t));
   write(list.slice(0, MAX_ACCOUNTS));
 }
 
@@ -30,19 +34,13 @@ export function forgetAccount(uid) {
   write(read().filter((a) => a.uid !== uid));
 }
 
-// Непрочитанное у другого аккаунта — для бейджа в списке
-function unreadFor(uid) {
-  const all = JSON.parse(localStorage.getItem('kosmo:chats') || '{}');
-  return Object.values(all).filter((c) => c.members.includes(uid))
-    .reduce((n, c) => n + c.messages.filter((m) => m.from !== uid && m.at > (c.read?.[uid] ?? 0) && !m.threadOf).length, 0);
-}
 
 export function accountsHtml(currentUid) {
   const list = linkedAccounts();
   const rows = list.map((a) => {
-    const u = db.get(a.uid);
+    const u = a.uid === currentUid ? db.get(a.uid) : { name: a.name ?? 'Account', phone: a.phone ?? '', avatar: a.avatar ?? {} };
     const me = a.uid === currentUid;
-    const n = me ? 0 : unreadFor(a.uid);
+    const n = 0;
     return `
       <button class="group-row group-row-btn account-row${me ? ' is-current' : ''}" type="button" ${me ? 'disabled' : `data-switch-account="${a.uid}"`}>
         ${userAvatarHtml(u, 'avatar-xs')}
