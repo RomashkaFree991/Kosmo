@@ -10,6 +10,7 @@ import { createPad } from './pad.js';
 import { chats, isRoom, ICON } from './chats.js';
 import { posts } from './feeddata.js';
 import { formatPhone } from './phone.js';
+import { LANGS, lang, setLang } from './i18n.js';
 
 const svg = (d, cls = 'i') => `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true">${d}</svg>`;
 export const SICON = {
@@ -66,6 +67,15 @@ function renderPrivacy() {
   const blocked = (p.blocked ?? []).map((id) => db.get(id)).filter(Boolean);
   $('#privacy-body').innerHTML = `
     <div class="note">${SICON.lock}<span>Choose who can see your info and contact you. Changes apply instantly.</span></div>
+    <p class="section-label">Language</p>
+    <section class="group group-pad">
+      <div class="choice-row">
+        <span class="sw-text">Interface language</span>
+        <div class="segs" role="radiogroup" aria-label="Language">
+          ${LANGS.map(([v, l]) => `<button type="button" class="seg-btn" role="radio" data-lang-pick="${v}" aria-checked="${lang() === v}" data-no-i18n>${l}</button>`).join('')}
+        </div>
+      </div>
+    </section>
     <p class="section-label">Who can see</p>
     <section class="group group-pad">
       ${choice('hidePhone', 'Phone number', p.hidePhone ? 'nobody' : 'everybody')}
@@ -95,6 +105,13 @@ function renderPrivacy() {
 }
 
 $('#privacy-body').addEventListener('click', (e) => {
+  const lp = e.target.closest('[data-lang-pick]');
+  if (lp) {
+    setLang(lp.dataset.langPick);
+    $$('[data-lang-pick]').forEach((b) => b.setAttribute('aria-checked', String(b === lp)));
+    toast(lp.dataset.langPick === 'ru' ? 'Язык: русский' : 'Language: English');
+    return;
+  }
   const c = e.target.closest('[data-choice]');
   if (c) {
     const key = c.dataset.choice;

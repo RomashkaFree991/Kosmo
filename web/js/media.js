@@ -42,6 +42,8 @@ export async function mediaUrl(id) {
 // Подставить адреса во все <img|video|audio data-media="id"> внутри root
 export function hydrateMedia(root = document) {
   $$('[data-media]:not([src])', root).forEach(async (el) => {
+    // уже загруженный файл подставляем сразу — без мигания пустой картинки
+    if (urls.has(el.dataset.media)) { el.src = urls.get(el.dataset.media); return; }
     const url = await mediaUrl(el.dataset.media);
     if (url) el.src = url;
     else el.closest('.avatar')?.classList.remove('has-photo');

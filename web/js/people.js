@@ -15,6 +15,7 @@ const ICON = {
   calendar: svg('<rect x="3.5" y="5" width="17" height="15.5" rx="3"/><path d="M3.5 10h17M8 3v4M16 3v4"/>'),
   chat: svg('<path d="M20 11.5a7.5 7 0 0 1-10.9 6.2L4 19l1.4-4A7 7 0 0 1 4.5 11.5 7.5 7 0 0 1 20 11.5z"/>'),
   lock: svg('<rect x="5" y="10.5" width="14" height="9.5" rx="2.5"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"/>'),
+  video: svg('<rect x="3" y="6" width="13" height="12" rx="3"/><path d="M16 10.5l5-3v9l-5-3z"/>'),
   block: svg('<circle cx="12" cy="12" r="8.5"/><path d="M6 6l12 12"/>'),
 };
 const monthYear = new Intl.DateTimeFormat('en-GB', { month: 'long', year: 'numeric' });
@@ -43,6 +44,9 @@ export function showUser(userId) {
       <h2 class="profile-name"><span>${escapeHtml(u.name)}</span>${u.role === 'owner' ? cosmicBadge('owner') : ''}</h2>
       <div class="hero-actions">
         <button class="pill-btn" type="button" data-user-message>${ICON.chat}Message</button>
+        <button class="pill-btn" type="button" data-user-call="voice" aria-label="Voice call">${ICON.call}Call</button>
+        <button class="pill-btn" type="button" data-user-call="video" aria-label="Video call">${ICON.video}Video</button>
+        <button class="pill-btn" type="button" data-user-secret>${ICON.lock}Secret chat</button>
         <button class="pill-btn${myBlocked ? ' is-danger' : ''}" type="button" data-user-block>${ICON.block}${myBlocked ? 'Unblock' : 'Block'}</button>
       </div>
     </section>
@@ -62,6 +66,16 @@ document.addEventListener('click', async (e) => {
     closeOverlay();
     // открыть личный чат, если сейчас открыт не он
     document.dispatchEvent(new CustomEvent('kosmo:open-dm', { detail: shown.id }));
+    return;
+  }
+  const callBtn = e.target.closest('[data-user-call]');
+  if (callBtn && shown) {
+    document.dispatchEvent(new CustomEvent('kosmo:start-call', { detail: { user: shown.id, video: callBtn.dataset.userCall === 'video' } }));
+    return;
+  }
+  if (e.target.closest('[data-user-secret]') && shown) {
+    closeOverlay();
+    document.dispatchEvent(new CustomEvent('kosmo:start-secret', { detail: shown.id }));
     return;
   }
   if (e.target.closest('[data-user-block]') && shown) {

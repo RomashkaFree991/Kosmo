@@ -411,12 +411,51 @@ export async function hashPasscode(salt, code) {
 }
 
 /* ---------------------------------------------------------------------------
+   Перерисовка списка по ключам: неизменившиеся элементы остаются на месте
+   (не мигают, анимации не играют заново), меняются только нужные.
+   items: [{ key, sig, html }]; onCreate(el, key) — для новых элементов
+   --------------------------------------------------------------------------- */
+const tpl = document.createElement('template');
+export function patchList(box, items, onCreate) {
+  const old = new Map();
+  for (const el of box.children) if (el.dataset.key) old.set(el.dataset.key, el);
+  const keep = new Set();
+  let cursor = box.firstElementChild;
+  for (const it of items) {
+    let el = old.get(it.key);
+    if (!el || el.dataset.sig !== it.sig) {
+      tpl.innerHTML = it.html.trim();
+      const fresh = tpl.content.firstElementChild;
+      fresh.dataset.key = it.key;
+      fresh.dataset.sig = it.sig;
+      if (el) {
+        el.replaceWith(fresh);
+        if (cursor === el) cursor = fresh;
+      } else {
+        onCreate?.(fresh, it.key);
+      }
+      el = fresh;
+    }
+    keep.add(el);
+    if (el !== cursor) box.insertBefore(el, cursor);
+    else cursor = cursor.nextElementSibling;
+  }
+  for (const el of [...box.children]) if (!keep.has(el)) el.remove();
+}
+
+/* ---------------------------------------------------------------------------
    Даты
    --------------------------------------------------------------------------- */
-const dateFmt = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-const timeFmt = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit' });
-export const formatDate = (t) => dateFmt.format(t);
-export const formatTime = (t) => timeFmt.format(t);
+// формат дат по языку интерфейса (html lang)
+const fmts = {};
+const fmt = (kind) => {
+  const loc = document.documentElement.lang === 'ru' ? 'ru-RU' : 'en-GB';
+  return (fmts[loc + kind] ??= new Intl.DateTimeFormat(loc, kind === 'date'
+    ? { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }
+    : { hour: '2-digit', minute: '2-digit' }));
+};
+export const formatDate = (t) => fmt('date').format(t);
+export const formatTime = (t) => fmt('time').format(t);
 export function timeAgo(t) {
   const s = Math.round((Date.now() - t) / 1000);
   if (s < 60) return 'just now';

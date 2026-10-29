@@ -44,12 +44,18 @@ function handleError(v, exceptId) {
   return '';
 }
 
-// Кого можно добавить: все, кроме меня, если они не запретили добавлять себя
+// Добавить можно только тех, с кем уже есть личная переписка
+// (и кто не запретил добавлять себя); им придёт сообщение-приглашение
 function addable(c) {
   const me = state.acc.user.id;
   return Object.values(db.all()).filter((u) => u.id !== me && !c?.members.includes(u.id)
-    && !u.privacy?.blocked?.includes(me))
+    && !u.privacy?.blocked?.includes(me) && (chats.get(chats.idFor(me, u.id))?.messages.length ?? 0) > 0)
     .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function sendInvites(roomIdX, userIds) {
+  const me = state.acc.user.id;
+  userIds.forEach((u) => chats.send(chats.idFor(me, u), [me, u], { from: me, kind: 'invite', room: roomIdX, to: u }));
 }
 const canBeAdded = (u) => u.privacy?.groups !== 'nobody';
 
@@ -125,7 +131,7 @@ function memberPicker(c, picked, query = '') {
         <div class="chat-meta"><span class="pick-check">${I.check}</span></div>
         <div class="chat-bottom"><span class="chat-text">${ok ? (u.username ? `@${escapeHtml(u.username)}` : `ID ${escapeHtml(u.publicId)}`) : 'Doesn\'t allow adding to groups'}</span></div>
       </li>`;
-  }).join('') : '<li class="list-empty"><span>No people found</span></li>';
+  }).join('') : `<li class="list-empty"><span>${query ? 'No people found' : 'You can add people you already chat with. Start a chat first, then add them here.'}</span></li>`;
 }
 
 function renderMembersStep() {
@@ -158,6 +164,7 @@ function createRoom() {
     createdAt: Date.now(),
     settings: draft.type === 'channel' ? { signatures: false, reactions: true } : { invite: true, media: true },
   });
+  sendInvites(c.id, c.members.filter((x) => x !== me));
   draft = null;
   closePanel({ instant: true });
   renderChatList();
@@ -479,6 +486,7 @@ $('#room-body').addEventListener('click', (e) => {
     mode = 'info';
     picking = [];
     mutate((c) => { c.members = [...new Set([...c.members, ...add])]; });
+    sendInvites(roomId, add);
     toast(n === 1 ? 'Added' : `${n} people added`);
   }
   const lg = t.closest('[data-link-group]');

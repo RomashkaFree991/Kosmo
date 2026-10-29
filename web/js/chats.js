@@ -2,12 +2,14 @@
 // нажатию), архив отдельным экраном, чат Kosmo с уведомлениями о входах.
 // В чате: вложения с подписью, голосовые с настоящей волной, свои эмодзи,
 // реакции, ответ, изменение, закрепление, удаление (у себя или у всех),
-// свой просмотрщик фото и видео, комментарии под постами каналов.
+// свой просмотрщик фото и видео, комментарии под постами каналов,
+// альбомы, кружки, стикеры, опросы, звонки, отложенные и исчезающие
+// сообщения, секретные чаты, свайпы (ответ / переслать), поиск по чату.
 // Демо: переписка хранится в localStorage этого браузера, файлы — в IndexedDB.
 
 import {
   $, $$, db, store, uid, toast, escapeHtml, userAvatarHtml, kosmoAvatar, cosmicBadge,
-  formatDate, formatTime, refreshRefraction, timeAgo,
+  formatDate, formatTime, refreshRefraction, timeAgo, patchList,
 } from './core.js';
 import { formatPhone, openSheet } from './phone.js';
 import { state, openPanel, panelOpen, onPanelClose, overlayOpen } from './panels.js';
@@ -16,6 +18,11 @@ import { EMOJI, EMOJI_IDS, REACTIONS, emojiSvg } from './emoji.js';
 import { showUser } from './people.js';
 import { openViewer } from './viewer.js';
 import { posts } from './feeddata.js';
+import { stickerHtml, stickerPickerHtml, stickerByRef } from './stickers.js';
+import { pollHtml, openPollCreator, closePoll, retractVote } from './polls.js';
+import { roundHtml, openRoundRecorder } from './round.js';
+import { startCall } from './calls.js';
+import { pickTime, schedule, myScheduled, openScheduledList, addReminder, TTL_OPTIONS, ttlLabel } from './schedule.js';
 
 export const KOSMO = 'kosmo';
 const emit = (name, detail) => document.dispatchEvent(new CustomEvent(name, { detail }));
@@ -61,6 +68,8 @@ export const chats = {
 
 // Группы и каналы
 export const isRoom = (c) => c?.type === 'group' || c?.type === 'channel';
+export const isSecret = (c) => Boolean(c?.secret);
+export const secretIdFor = (a, b) => `secret_${[a, b].sort().join('_')}`;
 export function roleOf(c, userId) {
   if (!c) return null;
   if (c.owner === userId) return 'owner';
@@ -125,6 +134,20 @@ export const ICON = {
   eye: svg('<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.8"/>'),
   forward: svg('<path d="M14 8l5 4.5-5 4.5"/><path d="M18.5 12.5H10a5 5 0 0 0-5 5v1"/>'),
   chevron: svg('<path d="M9.5 6l6 6-6 6"/>'),
+  lock: svg('<rect x="5" y="10.5" width="14" height="9.5" rx="2.5"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"/>'),
+  timer: svg('<circle cx="12" cy="13" r="7.5"/><path d="M12 9v4l2.5 2M9.5 3h5"/>'),
+  call: svg('<path d="M6.5 3.5h3l1.5 4.2-2 1.3a10 10 0 0 0 6 6l1.3-2 4.2 1.5v3a2 2 0 0 1-2.2 2A16.5 16.5 0 0 1 4.5 5.7a2 2 0 0 1 2-2.2z"/>'),
+  callOut: svg('<path d="M6.5 3.5h3l1.5 4.2-2 1.3a10 10 0 0 0 6 6l1.3-2 4.2 1.5v3a2 2 0 0 1-2.2 2A16.5 16.5 0 0 1 4.5 5.7a2 2 0 0 1 2-2.2zM15 3.5h5.5V9M20.5 3.5L14 10"/>'),
+  callIn: svg('<path d="M6.5 3.5h3l1.5 4.2-2 1.3a10 10 0 0 0 6 6l1.3-2 4.2 1.5v3a2 2 0 0 1-2.2 2A16.5 16.5 0 0 1 4.5 5.7a2 2 0 0 1 2-2.2zM20.5 9.5H15V4M15 9.5L21.5 3"/>'),
+  search: svg('<circle cx="11" cy="11" r="6"/><path d="M15.5 15.5L20 20"/>'),
+  bell: svg('<path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 2h-15zM10 20.5a2.2 2.2 0 0 0 4 0"/>'),
+  clock: svg('<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>'),
+  poll: svg('<path d="M5 20V10M12 20V4M19 20v-7"/>'),
+  round: svg('<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="3.5"/>'),
+  stop: svg('<rect x="6" y="6" width="12" height="12" rx="2.5"/>'),
+  more: svg('<circle cx="12" cy="5.5" r="1.6" fill="currentColor"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/><circle cx="12" cy="18.5" r="1.6" fill="currentColor"/>'),
+  invite: svg('<circle cx="9" cy="9" r="3.2"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0M18 8v6M15 11h6"/>'),
+  silent: svg('<path d="M6 16.5V11a6 6 0 0 1 9.4-4.9M18 11v5.5l1.5 2H7M10 20.5a2.2 2.2 0 0 0 4 0M3 3l18 18"/>'),
 };
 export const deviceIcon = (type) => ICON[type] ?? ICON.desktop;
 export const KOSMO_NAME = `<span class="name-with-badge">Kosmo ${cosmicBadge('official')}</span>`;
@@ -161,6 +184,7 @@ function kosmoCopy(m) {
   if (m.kind === 'welcome') return { title: `Welcome to Kosmo, ${first}!`, text: 'Your account has been created. This device was added as a trusted device.' };
   if (m.kind === 'login') return { title: 'New login to your account', text: 'A device signed in to your account. If it wasn\'t you, terminate this session.' };
   if (m.kind === 'passcode') return { title: 'Passcode changed', text: 'The passcode of your account was changed.' };
+  if (m.kind === 'reminder') return { title: 'Reminder', text: escapeHtml(m.text) };
   return {
     title: 'Phone number changed',
     text: `Your number was changed from <b>${escapeHtml(formatPhone(m.from))}</b> to <b>${escapeHtml(formatPhone(m.to))}</b>.`,
@@ -183,6 +207,15 @@ const detailRow = (icon, label, value) =>
 
 function kosmoCard(m, isNew) {
   const copy = kosmoCopy(m);
+  if (m.kind === 'reminder') {
+    return `
+    <article class="msg msg-reminder${isNew ? ' is-new' : ''}">
+      <h3 class="msg-title">${ICON.bell}${copy.title}</h3>
+      <p class="msg-text">${copy.text}</p>
+      ${chats.get(m.chatId) ? `<button class="btn btn-secondary glass msg-btn" type="button" data-goto="${m.chatId}" data-goto-msg="${m.msgId}">Open message</button>` : ''}
+      <span class="msg-time">${formatTime(m.at)}</span>
+    </article>`;
+  }
   return `
     <article class="msg${isNew ? ' is-new' : ''}">
       <h3 class="msg-title">${copy.title}</h3>
@@ -223,6 +256,12 @@ export function previewText(m) {
     case 'code': return `Code · ${m.lang}${cap}`;
     case 'emoji': return `${EMOJI[m.emoji]?.label ?? 'Emoji'} emoji`;
     case 'post': return 'Shared post';
+    case 'album': return `Album · ${m.items.length}${cap}`;
+    case 'round': return `Video message · ${fmtDur(m.duration ?? 0)}`;
+    case 'sticker': return `Sticker${m.sticker?.text ? ` · ${m.sticker.text}` : ''}`;
+    case 'poll': return `${m.poll.quiz ? 'Quiz' : 'Poll'}: ${m.poll.question}`;
+    case 'invite': return 'Invitation';
+    case 'call': return `${m.video ? 'Video call' : 'Call'}${m.duration ? ` · ${fmtDur(m.duration)}` : ''}`;
     default: return m.text;
   }
 }
@@ -230,7 +269,8 @@ export function previewText(m) {
 // Сообщения чата, которые видит этот пользователь (комментарии к постам — отдельно)
 function visible(c, me) {
   const cleared = prefs(c.id).clearedAt ?? 0;
-  return c.messages.filter((m) => m.at > cleared && !m.hiddenFor?.includes(me));
+  const now = Date.now();
+  return c.messages.filter((m) => m.at > cleared && !m.hiddenFor?.includes(me) && (!m.expiresAt || m.expiresAt > now));
 }
 const mainMessages = (c, me) => visible(c, me).filter((m) => !m.threadOf);
 
@@ -249,7 +289,7 @@ function listItems() {
   for (const c of chats.forUser(me)) {
     const p = prefs(c.id);
     const msgs = mainMessages(c, me);
-    if (!msgs.length && !isRoom(c)) continue;
+    if (!msgs.length && !isRoom(c) && !isSecret(c)) continue;
     const last = msgs[msgs.length - 1];
     const lastAt = last?.at ?? c.createdAt ?? 0;
     const unread = msgs.filter((m) => m.from !== me && m.at > (c.read[me] ?? 0)).length;
@@ -264,10 +304,10 @@ function listItems() {
     const otherId = c.members.find((x) => x !== me) ?? me;
     const other = publicUser(db.get(otherId)) ?? { id: otherId, name: 'Deleted account', username: '', avatar: {} };
     items.push({
-      id: c.id, other, lastAt, unread, pinned: p.pinned ?? 0, archived: p.archived,
-      preview: `${last.from === me ? '<b>You:</b> ' : ''}${escapeHtml(previewText(last))}`,
-      mineRead: last.from === me && isRead(c, last),
-      mine: last.from === me,
+      id: c.id, other, lastAt, unread, pinned: p.pinned ?? 0, archived: p.archived, secret: isSecret(c),
+      preview: last ? `${last.from === me ? '<b>You:</b> ' : ''}${escapeHtml(previewText(last))}` : 'Secret chat created',
+      mineRead: last?.from === me && isRead(c, last),
+      mine: last?.from === me,
     });
   }
   return items.sort((a, b) => (b.pinned || 0) - (a.pinned || 0) || b.lastAt - a.lastAt);
@@ -283,10 +323,11 @@ function isRead(c, m) {
 
 function chatRow(it, i) {
   const avatar = it.kosmo ? kosmoAvatar() : it.room ? roomAvatar(it.room) : userAvatarHtml(it.other);
-  const name = it.kosmo ? KOSMO_NAME : it.room ? roomName(it.room) : displayName(it.other);
+  const name = it.kosmo ? KOSMO_NAME : it.room ? roomName(it.room)
+    : it.secret ? `<span class="name-with-badge is-secret"><span class="room-icon">${ICON.lock}</span>${escapeHtml(it.other.name)}</span>` : displayName(it.other);
   const status = it.unread ? `<span class="badge">${it.unread}</span>` : it.pinned ? svg('<path d="M9 4h6l-1 6 3 3v1H7v-1l3-3zM12 14v6"/>', 'i pin') : '';
   return `
-    <li class="chat ripple-host" style="--i:${i}" data-chat="${it.id}" tabindex="0" role="button">
+    <li class="chat ripple-host" data-chat="${it.id}" tabindex="0" role="button">
       ${avatar}
       <div class="chat-top"><span class="chat-name">${name}</span></div>
       <div class="chat-meta"><span class="chat-time">${it.mine ? ticks(it.mineRead) : ''}${shortTime(it.lastAt)}</span>${status}</div>
@@ -316,34 +357,68 @@ function setArchiveMode(on) {
 $('#archive-back').addEventListener('click', () => setArchiveMode(false));
 export const leaveArchive = () => setArchiveMode(false);
 
+// Папки: все, личные, группы, каналы, непрочитанные
+const FOLDERS = [['all', 'All'], ['personal', 'Personal'], ['groups', 'Groups'], ['channels', 'Channels'], ['unread', 'Unread']];
+let folder = 'all';
+const inFolder = (it, f) => (f === 'all' ? true
+  : f === 'personal' ? !it.room
+    : f === 'groups' ? it.room?.type === 'group'
+      : f === 'channels' ? it.room?.type === 'channel'
+        : it.unread > 0);
+
+function paintFolders(items) {
+  const box = $('#folders');
+  box.hidden = archiveMode;
+  box.innerHTML = FOLDERS.map(([id, label]) => {
+    const n = items.filter((it) => !it.archived && inFolder(it, id)).reduce((a, it) => a + (it.unread || 0), 0);
+    return `<button class="folder${folder === id ? ' is-active' : ''}" type="button" role="tab" aria-selected="${folder === id}" data-folder="${id}">${label}${n && id !== 'all' ? `<span class="folder-n">${n}</span>` : ''}</button>`;
+  }).join('');
+}
+$('#folders').addEventListener('click', (e) => {
+  const f = e.target.closest('[data-folder]');
+  if (!f || f.dataset.folder === folder) return;
+  folder = f.dataset.folder;
+  listSig = '';
+  renderChatList();
+  f.scrollIntoView?.({ inline: 'nearest', block: 'nearest', behavior: 'smooth' });
+});
+
 export function renderChatList() {
   const items = listItems();
-  const main = items.filter((it) => !it.archived);
+  const main = items.filter((it) => !it.archived && inFolder(it, folder));
   const archived = items.filter((it) => it.archived);
   const total = items.reduce((n, it) => n + (it.unread || 0), 0);
   const badge = $('#chats-badge');
   badge.hidden = !total;
   badge.textContent = total;
   if (archiveMode && !archived.length) { setArchiveMode(false); return; }
-  const sig = JSON.stringify([items.map((it) => [it.id, it.lastAt, it.unread, it.pinned, it.archived, it.preview, it.mineRead, it.other?.avatar, it.other?.name, it.room?.name, it.room?.avatar]), archiveMode]);
+  const sig = JSON.stringify([items.map((it) => [it.id, it.lastAt, it.unread, it.pinned, it.archived, it.preview, it.mineRead, it.other?.avatar, it.other?.name, it.room?.name, it.room?.avatar]), archiveMode, folder]);
   if (sig === listSig) return;
   listSig = sig;
 
-  let html;
+  paintFolders(items);
+  // по ключам: строки, которые не поменялись, не перерисовываются и не мигают
+  const rows = [];
+  const add = (key, html) => rows.push({ key, sig: html, html });
   if (archiveMode) {
-    html = archived.map(chatRow).join('');
+    archived.forEach((it, i) => add(it.id, chatRow(it, i)));
   } else {
-    const archiveRow = archived.length ? `
+    const archiveRow = archived.length && folder === 'all' ? `
       <li class="chat archive-row ripple-host" data-archive-open tabindex="0" role="button">
         <span class="avatar archive-avatar">${ICON.archive}</span>
         <div class="chat-top"><span class="chat-name">Archived chats</span></div>
         <div class="chat-meta">${archived.some((a) => a.unread) ? `<span class="badge is-muted">${archived.reduce((n, a) => n + a.unread, 0)}</span>` : ''}</div>
         <div class="chat-bottom"><span class="chat-text">${archived.map((a) => (a.kosmo ? 'Kosmo' : escapeHtml(a.room?.name ?? a.other.name))).join(', ')}</span></div>
       </li>` : '';
-    html = archiveRow + main.map(chatRow).join('')
-      + (main.length ? '' : `<li class="list-empty">${ICON.users}<span>No chats yet. Find people in Search or create a group.</span></li>`);
+    if (archiveRow) add('archive', archiveRow);
+    main.forEach((it, i) => add(it.id, chatRow(it, i)));
+    if (!main.length) {
+      add('empty', `<li class="list-empty">${ICON.users}<span>${folder === 'all' ? 'No chats yet. Find people in Search or create a group.' : 'No chats in this folder'}</span></li>`);
+    }
   }
-  $('#chat-list').innerHTML = html;
+  // появление лесенкой — только у новых строк
+  let n = 0;
+  patchList($('#chat-list'), rows, (el) => { el.classList.add('is-new'); el.style.setProperty('--i', Math.min(n++, 12)); });
   hydrateMedia($('#chat-list'));
 }
 
@@ -507,10 +582,15 @@ document.addEventListener('click', (e) => {
   });
   // Escape закрывает только меню, а не весь чат
   document.addEventListener('keydown', (e) => {
-    if (e.key !== 'Escape' || !(ctx.el || mm.el)) return;
+    const pickerOpen = !$('#emoji-picker').hidden || !$('#attach-menu').hidden;
+    if (e.key !== 'Escape' || !(ctx.el || mm.el || more || quick || pickerOpen)) return;
     e.stopImmediatePropagation();
     closeCtx();
     closeMsgMenu();
+    closeMore();
+    closeQuick();
+    closePicker();
+    closeAttach();
   });
 })();
 
@@ -606,10 +686,14 @@ function paintHeader() {
     avatar = roomAvatar(c, 'avatar-head');
   } else {
     const other = publicUser(db.get(open.otherId));
-    title = displayName(other ?? { name: 'Deleted account' });
+    title = isSecret(c) ? `<span class="name-with-badge is-secret"><span class="room-icon">${ICON.lock}</span>${escapeHtml(other?.name ?? 'Deleted account')}</span>`
+      : displayName(other ?? { name: 'Deleted account' });
     sub = other ? lastSeen(other) : '';
+    if (isSecret(c)) sub = 'secret chat';
     avatar = userAvatarHtml(other ?? { name: '?' }, 'avatar-head');
   }
+  if (c?.ttl) sub += ` · auto-delete ${ttlLabel(c.ttl)}`;
+  $('#chat-more').hidden = open.id === KOSMO;
   $('#chat-title').innerHTML = title;
   $('#chat-sub').textContent = sub;
   $('#chat-head-avatar').innerHTML = avatar;
@@ -640,6 +724,7 @@ function paintComposer() {
   // в группе можно запретить участникам отправлять медиа
   panel.classList.toggle('no-media', c?.type === 'group' && c.settings?.media === false && !isAdmin(c, me));
   panel.dataset.composer = mode;
+  $$('[data-rooms-only]', attachMenu).forEach((b) => { b.hidden = !isRoom(c); });
   if (mode === 'ro') $('#composer-ro-text').textContent = text;
   if (mode === 'join') $('#join-btn').textContent = c.type === 'channel' ? 'Join channel' : 'Join group';
 }
@@ -701,13 +786,13 @@ function quoteHtml(m, all) {
   return `<button class="b-reply" type="button" data-jump="${target.id}"><b>${who}</b><span>${escapeHtml(previewText(target))}</span></button>`;
 }
 
-export function reactionsHtml(m, scope = 'msg') {
+export function reactionsHtml(m, scope = 'msg', anim = false) {
   const me = state.acc.user.id;
   const entries = Object.entries(m.reactions ?? {}).filter(([, users]) => users.length);
   if (!entries.length) return '';
   const prev = reactMemo.get(m.id) ?? {};
   return `<div class="reactions">${entries.map(([id, users]) => {
-    const changed = (prev[id]?.length ?? 0) < users.length;
+    const changed = anim && (prev[id]?.length ?? 0) < users.length;
     return `<button class="reaction${users.includes(me) ? ' is-mine' : ''}${changed ? ' is-new' : ''}" type="button" data-react-toggle="${id}" data-${scope}="${m.id}" aria-label="${EMOJI[id]?.label} ${users.length}">
       ${emojiSvg(id)}<span>${users.length}</span>
     </button>`;
@@ -723,8 +808,51 @@ function waveBars(m) {
   }).join('');
 }
 
-export function mediaBody(m) {
+function albumHtml(m) {
+  const n = m.items.length;
+  return `<div class="b-album" data-count="${Math.min(n, 6)}">${m.items.slice(0, 6).map((it, i) => `
+    <button class="b-album-item" type="button" data-view-media="${m.id}:${i}" aria-label="Open ${it.type}">
+      ${it.type === 'video' ? `<video data-media="${it.media}" muted playsinline preload="metadata"></video><span class="b-play-ov">${ICON.play}</span>`
+        : `<img data-media="${it.media}" alt="">`}
+      ${i === 5 && n > 6 ? `<span class="post-more">+${n - 6}</span>` : ''}
+    </button>`).join('')}</div>`;
+}
+
+function inviteHtml(m) {
+  const me = state.acc.user.id;
+  const room = chats.get(m.room);
+  const what = room?.type === 'channel' ? 'channel' : 'group';
+  const from = m.from === me ? 'You' : escapeHtml(db.get(m.from)?.name ?? 'Someone');
+  const to = m.from === me ? escapeHtml(db.get(m.to)?.name.split(/\s+/)[0] ?? 'them') : 'you';
+  if (!room) return `<div class="b-invite is-gone">${ICON.invite}<span>This ${what} no longer exists</span></div>`;
+  return `
+    <div class="b-invite">
+      <div class="b-invite-head">${roomAvatar(room, 'avatar-sm')}<span><b>${escapeHtml(room.name)}</b><small>${room.type === 'channel' ? 'Channel' : 'Group'} · ${room.members.length} ${room.type === 'channel' ? 'subscribers' : 'members'}</small></span></div>
+      <p class="b-invite-text">${from} added ${to} to the ${what}</p>
+      <button class="b-invite-btn" type="button" data-goto="${room.id}">${room.type === 'channel' ? 'Open channel' : 'Open group'}</button>
+    </div>`;
+}
+
+function callHtml(m) {
+  const mine = m.from === state.acc.user.id;
+  const missed = m.status !== 'ended';
+  const title = m.status === 'declined' ? 'Declined call' : m.status === 'busy' ? 'Line busy' : missed ? (mine ? 'Cancelled call' : 'Missed call') : mine ? 'Outgoing call' : 'Incoming call';
+  return `
+    <div class="b-call${missed ? ' is-missed' : ''}">
+      <span class="b-call-icon">${mine ? ICON.callOut : ICON.callIn}</span>
+      <span class="b-call-text"><b>${m.video ? title.replace('call', 'video call') : title}</b><small>${m.duration ? fmtDur(m.duration) : formatTime(m.at)}</small></span>
+      <button class="b-call-back" type="button" data-call-back="${m.video ? 'video' : 'voice'}" aria-label="Call back">${m.video ? ICON.video : ICON.call}</button>
+    </div>`;
+}
+
+export function mediaBody(m, chatId = null) {
   switch (m.kind) {
+    case 'album': return albumHtml(m);
+    case 'round': return roundHtml(m);
+    case 'sticker': return stickerHtml(m.sticker, 'sticker-big');
+    case 'poll': return pollHtml(m, chatId);
+    case 'invite': return inviteHtml(m);
+    case 'call': return callHtml(m);
     case 'photo':
       return `<button class="b-photo-btn" type="button" data-view-media="${m.id}" aria-label="Open photo"><img class="b-photo" data-media="${m.media}" alt="Photo" style="aspect-ratio:${m.w || 4}/${m.h || 3}"></button>`;
     case 'video':
@@ -768,42 +896,54 @@ export function mediaBody(m) {
   }
 }
 
-function linkify(text) {
-  return escapeHtml(text ?? '').replace(/\n/g, '<br>');
+// @username — ссылка на профиль; адреса сайтов — ссылки
+export function linkify(text) {
+  return escapeHtml(text ?? '')
+    .replace(/(^|[\s(])@([a-z0-9]{3,32})\b/gi, (all, pre, name) => `${pre}<button class="mention" type="button" data-mention="${name.toLowerCase()}">@${name}</button>`)
+    .replace(/\bhttps?:\/\/[^\s<]+[^\s<.,!?)]/g, (url) => `<a class="b-link" href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`)
+    .replace(/\n/g, '<br>');
 }
 
-function bubble(m, isNew, all, c) {
+function bubble(m, all, c, anim = false) {
   const me = state.acc.user.id;
   const mine = m.from === me;
   const room = isRoom(c);
   const channel = c?.type === 'channel';
   const read = mine && !channel && c && isRead(c, m);
   // анимация галочек: первая рисуется при отправке, вторая — когда прочитали
-  const tickState = read ? 'read' : 'sent';
-  const was = tickMemo.get(m.id);
-  const tickCls = !mine ? '' : !was && isNew ? 'tick-in' : was === 'sent' && read ? 'tick-read' : '';
-  tickMemo.set(m.id, tickState);
+  let tickCls = '';
+  if (anim) {
+    const was = tickMemo.get(m.id);
+    tickCls = !mine ? '' : !was && !known.has(m.id) ? 'tick-in' : was === 'sent' && read ? 'tick-read' : '';
+    tickMemo.set(m.id, read ? 'read' : 'sent');
+  }
   const sender = room && !channel && !mine ? publicUser(db.get(m.from)) : null;
   const signature = channel && c.settings?.signatures ? db.get(m.from)?.name : null;
   const side = channel ? 'theirs channel-post' : mine ? 'mine' : 'theirs';
-  const caption = m.caption && ['photo', 'video', 'code'].includes(m.kind) ? `<p class="b-text b-caption">${linkify(m.caption)}</p>` : '';
+  const caption = m.caption && ['photo', 'video', 'code', 'album'].includes(m.kind) ? `<p class="b-text b-caption">${linkify(m.caption)}</p>` : '';
   const views = channel ? Object.values(c.read).filter((t) => t >= m.at).length : 0;
   const comments = channel && c.linked ? (chats.get(c.linked)?.messages ?? []).filter((x) => x.threadOf?.post === m.id).length : null;
+  const fwdUser = m.fwd && db.get(m.fwd.from);
+  const fwd = m.fwd ? `<span class="b-fwd">${ICON.forward}Forwarded from&nbsp;${fwdUser ? `<button type="button" data-user-open="${m.fwd.from}">${escapeHtml(fwdUser.name)}</button>` : `<b>${escapeHtml(m.fwd.name ?? 'Hidden user')}</b>`}</span>` : '';
+  const reactions = reactionsHtml(m, 'msg', anim);
+  const meta = `<span class="b-meta">${m.expiresAt ? `<span class="b-ttl" title="Disappears ${formatDate(m.expiresAt)}">${ICON.timer}</span>` : ''}${m.silent ? `<span class="b-ttl">${ICON.silent}</span>` : ''}${signature ? `<em class="b-sign">${escapeHtml(signature)}</em>` : ''}${m.edited ? '<em>edited</em>' : ''}${channel ? `${ICON.eye}${views}&nbsp;` : ''}${formatTime(m.at)}${mine && !channel ? ticks(read, tickCls) : ''}</span>`;
   const html = `
-    <div class="bubble-row ${side}${isNew ? ' is-new' : ''}" data-id="${m.id}">
-      ${sender ? `<span class="b-avatar">${userAvatarHtml(sender, 'avatar-xs')}</span>` : ''}
-      <div class="bubble kind-${m.kind ?? 'text'}${caption ? ' has-caption' : ''}">
-        ${channel ? `<span class="b-sender b-channel">${roomAvatar(c, 'avatar-xs')}${escapeHtml(c.name)}</span>` : ''}
-        ${sender ? `<span class="b-sender" style="${sender.avatar?.color != null ? '' : ''}">${escapeHtml(sender.name)}</span>` : ''}
+    <div class="bubble-row ${side}" data-id="${m.id}">
+      ${sender ? `<button class="b-avatar" type="button" data-user-open="${m.from}" aria-label="${escapeHtml(sender.name)}">${userAvatarHtml(sender, 'avatar-xs')}</button>` : ''}
+      <span class="swipe-ic swipe-reply" aria-hidden="true">${ICON.reply}</span>
+      <span class="swipe-ic swipe-fwd" aria-hidden="true">${ICON.forward}</span>
+      <div class="bubble kind-${m.kind ?? 'text'}${caption ? ' has-caption' : ''}${reactions ? ' has-reactions' : ''}">
+        ${channel ? `<button class="b-sender b-channel" type="button" data-open-user>${roomAvatar(c, 'avatar-xs')}${escapeHtml(c.name)}</button>` : ''}
+        ${sender ? `<button class="b-sender" type="button" data-user-open="${m.from}">${escapeHtml(sender.name)}</button>` : ''}
+        ${fwd}
         ${m.replyTo ? quoteHtml(m, all) : ''}
-        ${mediaBody(m)}
+        ${mediaBody(m, c?.id)}
         ${caption}
-        ${reactionsHtml(m)}
-        <span class="b-meta">${signature ? `<em class="b-sign">${escapeHtml(signature)}</em>` : ''}${m.edited ? '<em>edited</em>' : ''}${channel ? `${ICON.eye}${views}&nbsp;` : ''}${formatTime(m.at)}${mine && !channel ? ticks(read, tickCls) : ''}</span>
+        ${reactions ? `<div class="b-foot">${reactions}${meta}</div>` : meta}
         ${comments != null ? `<button class="b-comments" type="button" data-thread="${m.id}">${ICON.comment}<span>${comments ? `${comments} comment${comments === 1 ? '' : 's'}` : 'Leave a comment'}</span>${ICON.chevron}</button>` : ''}
       </div>
     </div>`;
-  reactMemo.set(m.id, structuredClone(m.reactions ?? {}));
+  if (anim) reactMemo.set(m.id, structuredClone(m.reactions ?? {}));
   return html;
 }
 
@@ -848,23 +988,38 @@ export function renderMessages({ scroll = false } = {}) {
   const msgs = chatMessages();
   const c = curChat();
   paintPinned();
+  paintScheduled();
   if (!msgs.length && open.id !== KOSMO) {
     messagesBox.innerHTML = emptyState();
     hydrateMedia(messagesBox);
     return;
   }
+  // по ключам: перерисовываются только изменившиеся сообщения —
+  // остальные не мигают и не проигрывают анимацию заново
+  const rows = [];
   let lastDay = '';
-  messagesBox.innerHTML = msgs.map((m) => {
+  for (const m of msgs) {
     const day = new Date(m.at).toDateString();
-    const sep = day !== lastDay ? `<div class="day-chip">${formatDate(m.at).split(',')[0]}</div>` : '';
-    lastDay = day;
-    const isNew = !known.has(m.id);
-    return sep + (open.id === KOSMO ? kosmoCard(m, isNew) : bubble(m, isNew, msgs, c));
-  }).join('');
+    if (day !== lastDay) {
+      const chip = `<div class="day-chip">${formatDate(m.at).split(',')[0]}</div>`;
+      rows.push({ key: `day:${day}`, sig: chip, html: chip });
+      lastDay = day;
+    }
+    if (open.id === KOSMO) {
+      const html = kosmoCard(m, false);
+      rows.push({ key: m.id, sig: html, html });
+    } else {
+      rows.push({ key: m.id, sig: bubble(m, msgs, c), get html() { return bubble(m, msgs, c, true); } });
+    }
+  }
+  patchList(messagesBox, rows, (el, key) => { if (!key.startsWith('day:') && !known.has(key)) el.classList.add('is-new'); });
   msgs.forEach((m) => known.add(m.id));
+  if (searchQ) markSearch();
   hydrateMedia(messagesBox);
   if (scroll) toBottom(true);
 }
+
+document.addEventListener('kosmo:chat-updated', (e) => { if (openChatId() && e.detail === open.id) renderMessages({ scroll: stick }); renderChatList(); });
 
 // Новое сообщение пришло (или что-то изменилось), пока чат открыт
 export function refreshOpenChat() {
@@ -898,11 +1053,21 @@ $('#pinned-close').addEventListener('click', () => {
    --------------------------------------------------------------------------- */
 let compose = null;   // { mode: 'reply' | 'edit', id }
 
-function send(msg) {
+function send(msg, { at = null, silent = false } = {}) {
   const me = state.acc.user.id;
   const extra = compose?.mode === 'reply' ? { replyTo: compose.id } : {};
   const c = curChat();
-  chats.send(open.id, c?.members ?? [me, open.otherId], { from: me, kind: 'text', ...extra, ...msg });
+  const members = c?.members ?? [me, open.otherId];
+  // отложенная отправка
+  if (at) {
+    schedule(open.id, members, { ...extra, ...msg, ...(silent ? { silent: true } : {}) }, at);
+    setCompose(null);
+    renderMessages();
+    return;
+  }
+  const m = chats.send(open.id, members, { from: me, kind: 'text', ...extra, ...msg, ...(silent ? { silent: true } : {}) });
+  // исчезающие сообщения: таймер чата
+  if (c?.ttl) chats.update(open.id, (x) => { const y = x.messages.find((z) => z.id === m.id); if (y) y.expiresAt = y.at + x.ttl * 1000; });
   // удалённый или архивный чат возвращается в список
   const p = prefs(open.id);
   if (p.archived) setPref(open.id, { archived: false });
@@ -912,10 +1077,11 @@ function send(msg) {
   renderChatList();
 }
 
-// Отправить в любой чат (пересылка постов из ленты)
+// Отправить в любой чат (пересылка постов из ленты и сообщений)
 export function sendToChat(chatId, msg) {
   const me = state.acc.user.id;
   const c = chats.get(chatId);
+  if (c?.ttl) msg = { ...msg, expiresAt: Date.now() + c.ttl * 1000 };
   if (chatId.startsWith('dm:')) {
     const other = chatId.slice(3);
     chats.send(chats.idFor(me, other), [me, other], { from: me, ...msg });
@@ -930,6 +1096,7 @@ export function forwardTargets() {
   const me = state.acc.user.id;
   const rows = [];
   for (const c of chats.forUser(me)) {
+    if (isSecret(c)) continue;
     if (isRoom(c)) {
       if (!canPost(c, me)) continue;
       rows.push({ id: c.id, html: `${roomAvatar(c)}<div class="chat-top"><span class="chat-name">${roomName(c)}</span></div><div class="chat-meta"></div><div class="chat-bottom"><span class="chat-text">${c.type}</span></div>` });
@@ -969,17 +1136,44 @@ $('#cb-close').addEventListener('click', () => {
   setCompose(null);
 });
 
-// Все фото и видео открытого чата — для листания в просмотрщике
-function chatMedia() {
-  const c = curChat();
-  return chatMessages().filter((m) => m.kind === 'photo' || m.kind === 'video').map((m) => ({
-    id: m.id,
-    type: m.kind,
-    media: m.media,
-    caption: m.caption,
-    title: c?.type === 'channel' ? c.name : m.from === state.acc.user.id ? 'You' : db.get(m.from)?.name ?? '',
-    sub: formatDate(m.at),
-  }));
+// Все фото и видео чата (и из альбомов) — для листания в просмотрщике
+export function mediaOf(msgs, c) {
+  const out = [];
+  for (const m of msgs) {
+    const title = c?.type === 'channel' ? c.name : m.from === state.acc.user.id ? 'You' : db.get(m.from)?.name ?? '';
+    const base = { caption: m.caption, title, sub: formatDate(m.at) };
+    if (m.kind === 'photo' || m.kind === 'video') out.push({ ...base, id: m.id, type: m.kind, media: m.media });
+    if (m.kind === 'album') m.items.forEach((it, i) => out.push({ ...base, id: `${m.id}:${i}`, type: it.type, media: it.media }));
+  }
+  return out;
+}
+const chatMedia = () => mediaOf(chatMessages(), curChat());
+
+/* ---------- Пересылка сообщений ---------- */
+const FWD_FIELDS = ['kind', 'text', 'media', 'w', 'h', 'duration', 'wave', 'lang', 'caption', 'emoji', 'items', 'name', 'post', 'sticker'];
+export function forwardMessage(m) {
+  if (isSecret(curChat())) { toast('Messages from secret chats can’t be forwarded'); return; }
+  if (m.kind === 'poll' || m.kind === 'invite' || m.kind === 'call') { toast('This message can’t be forwarded'); return; }
+  const author = m.fwd ?? { from: m.from, name: db.get(m.from)?.name };
+  openSheet('forward', {
+    title: 'Forward to',
+    items: forwardTargets(),
+    onPick: (chatId) => {
+      const copy = Object.fromEntries(FWD_FIELDS.filter((k) => m[k] !== undefined).map((k) => [k, structuredClone(m[k])]));
+      sendToChat(chatId, { ...copy, fwd: author });
+      toast('Message forwarded');
+      if (chatId === open.id) renderMessages({ scroll: true });
+    },
+  });
+}
+
+// Профиль по @username: человек, группа или канал
+function openMention(name) {
+  const u = Object.values(db.all()).find((x) => x.username === name);
+  if (u) { if (u.id !== state.acc.user.id) showUser(u.id); else toast('This is you'); return; }
+  const room = Object.values(chats.all()).find((x) => isRoom(x) && x.username === name);
+  if (room) { emit('kosmo:open-room', room.id); return; }
+  toast(`@${name} not found`);
 }
 
 document.addEventListener('click', (e) => {
@@ -998,6 +1192,19 @@ document.addEventListener('click', (e) => {
   if (jump) jumpTo(jump.dataset.jump);
   const r = e.target.closest('[data-react-toggle][data-msg]');
   if (r) toggleReaction(r.dataset.msg, r.dataset.reactToggle);
+  const who = e.target.closest('#messages [data-user-open]');
+  if (who) { if (who.dataset.userOpen !== state.acc.user.id && db.get(who.dataset.userOpen)) showUser(who.dataset.userOpen); return; }
+  const men = e.target.closest('[data-mention]');
+  if (men) { openMention(men.dataset.mention); return; }
+  const go = e.target.closest('[data-goto]');
+  if (go) {
+    if (!chats.get(go.dataset.goto)) { toast('This chat no longer exists'); return; }
+    openChat(go.dataset.goto);
+    if (go.dataset.gotoMsg) setTimeout(() => jumpTo(go.dataset.gotoMsg), 450);
+    return;
+  }
+  const cb = e.target.closest('#messages [data-call-back]');
+  if (cb && open.otherId) startCall(open.otherId, cb.dataset.callBack === 'video');
   const th = e.target.closest('[data-thread]');
   if (th) emit('kosmo:open-thread', { channel: open.id, post: th.dataset.thread });
   const post = e.target.closest('[data-open-post]');
@@ -1103,14 +1310,21 @@ function openMsgMenu(row) {
   wrap.className = `msg-menu ${mine && c?.type !== 'channel' ? 'is-mine' : ''}`;
   const myReaction = Object.entries(m.reactions ?? {}).find(([, u]) => u.includes(me))?.[0];
   const reactable = !(c?.type === 'channel' && c.settings?.reactions === false);
-  const textual = ['text', 'code'].includes(m.kind ?? 'text') || m.caption;
-  const editable = mine && ((m.kind ?? 'text') === 'text' || ['photo', 'video', 'code'].includes(m.kind));
+  const secret = isSecret(c);
+  const textual = !secret && (['text', 'code'].includes(m.kind ?? 'text') || m.caption);
+  const editable = mine && !m.fwd && ((m.kind ?? 'text') === 'text' || ['photo', 'video', 'code', 'album'].includes(m.kind));
   const canPin = !isRoom(c) || admin;
+  const forwardable = !secret && !['poll', 'invite', 'call'].includes(m.kind);
+  const voted = m.poll && Object.values(m.poll.votes).some((u) => u.includes(me));
   const actions = [
     canPost(c, me) && `<button class="menu-item" type="button" data-mm="reply">${ICON.reply}Reply</button>`,
+    forwardable && `<button class="menu-item" type="button" data-mm="forward">${ICON.forward}Forward</button>`,
     textual && `<button class="menu-item" type="button" data-mm="copy">${ICON.copy}Copy</button>`,
     editable && `<button class="menu-item" type="button" data-mm="edit">${ICON.edit}Edit</button>`,
     canPin && `<button class="menu-item" type="button" data-mm="pin">${c?.pinned === id ? ICON.unpin : ICON.pin}${c?.pinned === id ? 'Unpin' : 'Pin'}</button>`,
+    `<button class="menu-item" type="button" data-mm="remind">${ICON.bell}Remind me</button>`,
+    m.poll && voted && !m.poll.quiz && !m.poll.closed && `<button class="menu-item" type="button" data-mm="retract">${ICON.poll}Retract vote</button>`,
+    m.poll && !m.poll.closed && (mine || admin) && `<button class="menu-item" type="button" data-mm="stop-poll">${ICON.stop}Stop poll</button>`,
     `<button class="menu-item danger" type="button" data-mm="delete">${ICON.trash}Delete</button>`,
   ].filter(Boolean);
   wrap.innerHTML = `
@@ -1165,6 +1379,13 @@ document.addEventListener('click', (e) => {
   const c = curChat();
   switch (act.dataset.mm) {
     case 'reply': setCompose({ mode: 'reply', id }); break;
+    case 'forward': closeMsgMenu(); forwardMessage(m); return;
+    case 'remind':
+      closeMsgMenu();
+      pickTime('Remind me', (at) => addReminder(open.id, id, previewText(m) || 'Message', at));
+      return;
+    case 'retract': retractVote(open.id, id); break;
+    case 'stop-poll': closePoll(open.id, id); break;
     case 'copy':
       navigator.clipboard?.writeText(m.caption || m.text).then(() => toast('Copied'), () => toast('Could not copy'));
       break;
@@ -1220,21 +1441,68 @@ function deleteAnimated(id) {
 (() => {
   let timer = null;
   let start = null;
+  // свайп: влево — ответить, вправо — переслать
+  let swipe = null;
+  let swallowClick = 0;
+  messagesBox.addEventListener('click', (ev) => {
+    if (Date.now() < swallowClick) { ev.stopPropagation(); ev.preventDefault(); swallowClick = 0; }
+  }, true);
+  const SWIPE = 64;
   messagesBox.addEventListener('pointerdown', (e) => {
     const row = e.target.closest('.bubble-row');
-    if (!row || open.id === KOSMO || e.button > 0 || e.target.closest('button, video, a')) return;
-    start = { x: e.clientX, y: e.clientY };
+    if (!row || open.id === KOSMO || e.button > 0) return;
+    start = { x: e.clientX, y: e.clientY, row };
+    swipe = null;
+    if (e.target.closest('button, video, a, .poll')) return;
     row.classList.add('is-pressing');
     timer = setTimeout(() => {
       row.classList.remove('is-pressing');
+      start = null;
       openMsgMenu(row);
     }, 420);
   });
   const cancel = () => { clearTimeout(timer); $$('.bubble-row.is-pressing', messagesBox).forEach((r) => r.classList.remove('is-pressing')); };
-  messagesBox.addEventListener('pointermove', (e) => { if (start && Math.hypot(e.clientX - start.x, e.clientY - start.y) > 8) cancel(); });
-  messagesBox.addEventListener('pointerup', cancel);
-  messagesBox.addEventListener('pointerleave', cancel);
-  messagesBox.addEventListener('pointercancel', cancel);
+  messagesBox.addEventListener('pointermove', (e) => {
+    if (!start) return;
+    const dx = e.clientX - start.x;
+    const dy = e.clientY - start.y;
+    if (Math.hypot(dx, dy) > 8) cancel();
+    if (!swipe && Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy) * 1.4) {
+      swipe = { row: start.row, bubble: start.row.querySelector('.bubble') };
+      swipe.row.classList.add('is-swiping');
+      try { messagesBox.setPointerCapture(e.pointerId); } catch { /* */ }
+    }
+    if (!swipe) return;
+    // сопротивление после порога, как резинка
+    const lim = Math.sign(dx) * Math.min(Math.abs(dx), SWIPE + Math.sqrt(Math.max(0, Math.abs(dx) - SWIPE)) * 4);
+    swipe.dx = dx;
+    swipe.bubble.style.transform = `translateX(${lim}px)`;
+    swipe.row.style.setProperty('--swipe', Math.min(1, Math.abs(dx) / SWIPE));
+    swipe.row.dataset.swipe = dx < 0 ? 'reply' : 'fwd';
+    const armed = Math.abs(dx) >= SWIPE;
+    if (armed !== swipe.armed) { swipe.armed = armed; if (armed) navigator.vibrate?.(8); swipe.row.classList.toggle('is-armed', armed); }
+  });
+  const end = () => {
+    cancel();
+    start = null;
+    if (!swipe) return;
+    const { row, bubble, dx = 0, armed } = swipe;
+    swipe = null;
+    // после свайпа клик не должен открыть фото или ссылку
+    swallowClick = Date.now() + 400;
+    bubble.style.transition = 'transform 320ms cubic-bezier(0.34, 1.3, 0.64, 1)';
+    bubble.style.transform = '';
+    row.classList.remove('is-swiping', 'is-armed');
+    row.style.removeProperty('--swipe');
+    setTimeout(() => { bubble.style.transition = ''; }, 340);
+    if (!armed) return;
+    const m = chatMessages().find((x) => x.id === row.dataset.id);
+    if (!m) return;
+    if (dx < 0) { if (panel.dataset.composer === 'compose') setCompose({ mode: 'reply', id: m.id }); } else forwardMessage(m);
+  };
+  messagesBox.addEventListener('pointerup', end);
+  messagesBox.addEventListener('pointercancel', end);
+  messagesBox.addEventListener('pointerleave', (e) => { if (!swipe) cancel(); });
   messagesBox.addEventListener('contextmenu', (e) => {
     const row = e.target.closest('.bubble-row');
     if (!row || open.id === KOSMO) return;
@@ -1260,10 +1528,14 @@ const sendBtn = $('#send-btn');
 const attachMenu = $('#attach-menu');
 const picker = $('#emoji-picker');
 
+// voice ↔ round переключается долгим нажатием, как в Telegram
+let recordKind = 'voice';
 function setMode(mode) {
+  if (mode === 'voice' && recordKind === 'round') mode = 'round';
   sendBtn.dataset.mode = mode;
-  sendBtn.setAttribute('aria-label', mode === 'voice' ? 'Record voice message' : 'Send');
+  sendBtn.setAttribute('aria-label', mode === 'voice' ? 'Record voice message' : mode === 'round' ? 'Record video message' : 'Send');
 }
+const idleMode = () => (input.value.trim() || tray.length ? 'send' : 'voice');
 
 function autosize() {
   input.style.height = 'auto';
@@ -1273,13 +1545,14 @@ function autosize() {
 function resetComposer() {
   input.value = '';
   autosize();
+  clearTray();
   setMode('voice');
   setCompose(null);
 }
 
 input.addEventListener('input', () => {
   autosize();
-  if (!recorder) setMode(input.value.trim() ? 'send' : 'voice');
+  if (!recorder) setMode(idleMode());
 });
 input.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && matchMedia('(pointer: fine)').matches && state.acc.user.settings?.sendEnter !== false) {
@@ -1310,13 +1583,39 @@ composer.addEventListener('submit', (e) => {
     renderChatList();
     return;
   }
-  if (!text) { startRecording(); return; }
-  send({ text });
+  sendComposed();
+});
+
+// Отправить то, что в поле и в ленте вложений (сразу, отложенно или без звука)
+async function sendComposed(opts = {}) {
+  const text = input.value.trim();
+  if (!text && !tray.length) {
+    if (sendBtn.dataset.mode === 'round') openRoundRecorder((msg) => send(msg));
+    else startRecording();
+    return;
+  }
+  const items = tray.splice(0);
   input.value = '';
   autosize();
+  paintTray();
   setMode('voice');
   input.focus({ preventScroll: true });
-});
+  if (!items.length) { send({ text }, opts); return; }
+  const visual = items.filter((x) => x.type !== 'code');
+  const codes = items.filter((x) => x.type === 'code');
+  let caption = text;
+  try {
+    if (visual.length) {
+      const stored = await Promise.all(visual.map(storeTrayItem));
+      if (stored.length === 1) send({ ...stored[0], caption }, opts);
+      else send({ kind: 'album', items: stored.map(({ kind, ...rest }) => ({ type: kind, ...rest })), caption }, opts);
+      caption = '';
+    }
+  } catch {
+    toast('Could not send this file');
+  }
+  codes.forEach((cd, i) => send({ kind: 'code', text: cd.text, lang: cd.lang, caption: i === codes.length - 1 ? caption : '' }, opts));
+}
 
 /* ---------- Эмодзи ---------- */
 function closePicker() {
@@ -1329,14 +1628,31 @@ $('#emoji-btn').addEventListener('click', (e) => {
   e.stopPropagation();
   if (!picker.hidden) { closePicker(); return; }
   closeAttach();
-  picker.innerHTML = EMOJI_IDS.map((id, i) => `
-    <button class="emoji-opt" type="button" style="--i:${i}" data-send-emoji="${id}" aria-label="${EMOJI[id].label}">${emojiSvg(id)}</button>`).join('');
+  paintPicker();
   picker.hidden = false;
   refreshRefraction();
 });
+let pickerTab = 'emoji';
+function paintPicker() {
+  picker.innerHTML = `
+    <div class="picker-tabs" role="tablist">
+      <button type="button" role="tab" data-picker-tab="emoji" aria-selected="${pickerTab === 'emoji'}">Emoji</button>
+      <button type="button" role="tab" data-picker-tab="stickers" aria-selected="${pickerTab === 'stickers'}">Stickers</button>
+    </div>
+    <div class="picker-body">${pickerTab === 'emoji'
+    ? `<div class="emoji-grid">${EMOJI_IDS.map((id, i) => `
+        <button class="emoji-opt" type="button" style="--i:${i}" data-send-emoji="${id}" aria-label="${EMOJI[id].label}">${emojiSvg(id)}</button>`).join('')}</div>`
+    : stickerPickerHtml()}</div>`;
+}
 picker.addEventListener('click', (e) => {
+  const tab = e.target.closest('[data-picker-tab]');
+  // перерисовка отрывает цель клика от DOM — не даём «клику снаружи» закрыть выбор
+  if (tab) { e.stopPropagation(); pickerTab = tab.dataset.pickerTab; paintPicker(); return; }
+  const st = e.target.closest('[data-send-sticker]');
+  if (st) { closePicker(); send({ kind: 'sticker', sticker: stickerByRef(st.dataset.sendSticker) }); return; }
   const b = e.target.closest('[data-send-emoji]');
   if (!b) return;
+  // эмодзи вставляется в текст как знак, если уже что-то пишут; иначе отправляется большой
   closePicker();
   send({ kind: 'emoji', emoji: b.dataset.sendEmoji });
 });
@@ -1370,9 +1686,18 @@ attachMenu.addEventListener('click', (e) => {
   closeAttach();
   const kind = item.dataset.attach;
   if (kind === 'code') {
-    openSheet('code', { onSend: (text, lang, caption) => send({ kind: 'code', text, lang, caption }) });
+    openSheet('code', {
+      title: 'Attach code',
+      onSend: (text, lang, caption) => {
+        addToTray([{ type: 'code', text, lang }]);
+        if (caption && !input.value.trim()) { input.value = caption; autosize(); }
+        setMode(idleMode());
+      },
+    });
     return;
   }
+  if (kind === 'round') { openRoundRecorder((msg) => send(msg)); return; }
+  if (kind === 'poll') { openPollCreator((msg) => send(msg)); return; }
   $(`#pick-${kind}`).click();
 });
 
@@ -1386,25 +1711,72 @@ export async function storeMedia(file) {
   return { kind: 'photo', media: await putBlob(blob), w, h };
 }
 
+/* ---------- Лента вложений над полем ввода ---------- */
+const tray = [];   // { id, type: 'photo'|'video'|'code', file?, url?, text?, lang? }
+const trayEl = $('#attach-tray');
+const MAX_TRAY = 10;
+
+function addToTray(items) {
+  const room = MAX_TRAY - tray.length;
+  if (items.length > room) toast(`Up to ${MAX_TRAY} attachments at once`);
+  items.slice(0, room).forEach((it) => tray.push({ id: uid(), ...it }));
+  paintTray();
+  setMode(idleMode());
+  input.focus({ preventScroll: true });
+}
+
+function clearTray() {
+  tray.forEach((t) => t.url && URL.revokeObjectURL(t.url));
+  tray.length = 0;
+  paintTray();
+}
+
+function paintTray() {
+  const had = !trayEl.hidden;
+  trayEl.hidden = !tray.length;
+  panel.classList.toggle('has-tray', tray.length > 0);
+  if (!tray.length) return;
+  trayEl.innerHTML = `${tray.map((t) => `
+    <div class="tray-item${t.type === 'code' ? ' is-code' : ''}" data-tray="${t.id}">
+      ${t.type === 'photo' ? `<img src="${t.url}" alt="">` : t.type === 'video' ? `<video src="${t.url}" muted playsinline preload="metadata"></video><span class="tray-badge">${ICON.video}</span>`
+        : `<span class="tray-code">${ICON.code}<b>${escapeHtml(t.lang)}</b><small>${escapeHtml(t.text.split('\n')[0].slice(0, 24))}</small></span>`}
+      <button class="tray-remove" type="button" data-tray-remove="${t.id}" aria-label="Remove">${svg('<path d="M7 7l10 10M17 7L7 17"/>')}</button>
+    </div>`).join('')}
+    ${tray.length < MAX_TRAY ? `<button class="tray-add" type="button" data-tray-add aria-label="Add more">${svg('<path d="M12 5v14M5 12h14"/>')}</button>` : ''}
+    <span class="tray-count">${tray.length === 1 ? (input.value.trim() ? 'with caption' : 'Add a caption…') : `${tray.length} attachments`}</span>`;
+  if (!had) toBottom(true);
+}
+
+trayEl.addEventListener('click', (e) => {
+  const rm = e.target.closest('[data-tray-remove]');
+  if (rm) {
+    const i = tray.findIndex((t) => t.id === rm.dataset.trayRemove);
+    const [gone] = tray.splice(i, 1);
+    if (gone?.url) URL.revokeObjectURL(gone.url);
+    const el = rm.closest('.tray-item');
+    el.classList.add('is-removing');
+    setTimeout(() => { paintTray(); setMode(idleMode()); }, 180);
+    return;
+  }
+  if (e.target.closest('[data-tray-add]')) {
+    e.stopPropagation();
+    attachMenu.hidden = false;
+    $('#attach-btn').classList.add('is-open');
+  }
+});
+
+async function storeTrayItem(t) {
+  return storeMedia(t.file);
+}
+
 function pickVisual(e) {
   const files = [...e.target.files];
   e.target.value = '';
   if (!files.length) return;
-  const big = files.find((f) => f.size > MAX_FILE);
-  if (big) { toast('File is too large (max 50 MB)'); return; }
-  openSheet('media', {
-    files,
-    title: files.length > 1 ? `Send ${files.length} files` : files[0].type.startsWith('video/') ? 'Send video' : 'Send photo',
-    onSend: async (caption) => {
-      for (const [i, file] of files.entries()) {
-        try {
-          send({ ...(await storeMedia(file)), caption: i === 0 ? caption : '' });
-        } catch {
-          toast('Could not send this file');
-        }
-      }
-    },
-  });
+  if (files.some((f) => f.size > MAX_FILE)) toast('Files over 50 MB were skipped');
+  addToTray(files.filter((f) => f.size <= MAX_FILE).map((f) => ({
+    type: f.type.startsWith('video/') ? 'video' : 'photo', file: f, url: URL.createObjectURL(f),
+  })));
 }
 $('#pick-photo').addEventListener('change', pickVisual);
 $('#pick-video').addEventListener('change', pickVisual);
@@ -1510,3 +1882,231 @@ player.addEventListener('timeupdate', () => {
 
 // для home.js: закрыто ли что-то поверх чата
 export const chatOverlayOpen = () => Boolean(mm.el || ctx.el || overlayOpen());
+
+/* ---------------------------------------------------------------------------
+   Долгое нажатие на кнопку справа: голосовое ↔ кружок; при тексте —
+   «Отправить позже» и «Без звука»
+   --------------------------------------------------------------------------- */
+let quick = null;
+function closeQuick() {
+  if (!quick) return;
+  const el = quick;
+  quick = null;
+  el.classList.add('is-closing');
+  setTimeout(() => el.remove(), 160);
+}
+
+function openSendMenu() {
+  closeQuick();
+  const r = sendBtn.getBoundingClientRect();
+  quick = document.createElement('div');
+  quick.className = 'menu send-menu glass glass-text';
+  quick.innerHTML = `
+    <button class="menu-item" type="button" data-sm="schedule">${ICON.clock}Schedule message</button>
+    <button class="menu-item" type="button" data-sm="silent">${ICON.silent}Send without sound</button>`;
+  document.body.append(quick);
+  quick.style.right = `${Math.max(10, innerWidth - r.right)}px`;
+  quick.style.bottom = `${innerHeight - r.top + 10}px`;
+  refreshRefraction();
+}
+
+(() => {
+  let timer = null;
+  let fired = false;
+  sendBtn.addEventListener('pointerdown', (e) => {
+    if (e.button > 0 || recorder) return;
+    fired = false;
+    timer = setTimeout(() => {
+      fired = true;
+      navigator.vibrate?.(12);
+      if (sendBtn.dataset.mode === 'send') { openSendMenu(); return; }
+      recordKind = recordKind === 'voice' ? 'round' : 'voice';
+      setMode('voice');
+      toast(recordKind === 'round' ? 'Tap to record a video message' : 'Tap to record a voice message');
+    }, 450);
+  });
+  const cancel = () => clearTimeout(timer);
+  sendBtn.addEventListener('pointerup', cancel);
+  sendBtn.addEventListener('pointerleave', cancel);
+  sendBtn.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    if (sendBtn.dataset.mode === 'send' && !recorder) { fired = true; openSendMenu(); }
+  });
+  // клик после долгого нажатия не отправляет
+  sendBtn.addEventListener('click', (e) => { if (fired) { e.preventDefault(); e.stopImmediatePropagation(); fired = false; } }, true);
+})();
+
+document.addEventListener('click', (e) => {
+  if (quick && !e.target.closest('.send-menu')) closeQuick();
+  const sm = e.target.closest('[data-sm]');
+  if (!sm) return;
+  closeQuick();
+  if (sm.dataset.sm === 'silent') sendComposed({ silent: true });
+  else pickTime('Schedule message', (at) => sendComposed({ at }));
+});
+
+/* ---------- Отложенные: полоска над сообщениями ---------- */
+function paintScheduled() {
+  const n = open.id && open.id !== KOSMO ? myScheduled(curChat()).length : 0;
+  $('#sched-bar').hidden = !n;
+  if (n) $('#sched-text').textContent = n === 1 ? '1 scheduled message' : `${n} scheduled messages`;
+}
+$('#sched-bar').addEventListener('click', () => openScheduledList(open.id, previewText));
+
+/* ---------------------------------------------------------------------------
+   Меню чата «⋯»: поиск, звонки, секретный чат, автоудаление
+   --------------------------------------------------------------------------- */
+let more = null;
+function closeMore() {
+  if (!more) return;
+  const el = more;
+  more = null;
+  el.classList.add('is-closing');
+  setTimeout(() => el.remove(), 160);
+}
+
+$('#chat-more').addEventListener('click', (e) => {
+  e.stopPropagation();
+  if (more) { closeMore(); return; }
+  const c = curChat();
+  const me = state.acc.user.id;
+  const dm = !isRoom(c);
+  const canTimer = !isRoom(c) || isAdmin(c, me);
+  const ttl = c?.ttl ?? 0;
+  more = document.createElement('div');
+  more.className = 'menu chat-menu glass glass-text';
+  more.innerHTML = `
+    <button class="menu-item" type="button" data-cm="search">${ICON.search}Search</button>
+    ${dm && open.otherId ? `
+      <button class="menu-item" type="button" data-cm="call">${ICON.call}Voice call</button>
+      <button class="menu-item" type="button" data-cm="video">${ICON.video}Video call</button>
+      ${isSecret(c) ? '' : `<button class="menu-item" type="button" data-cm="secret">${ICON.lock}Start secret chat</button>`}` : ''}
+    ${isRoom(c) ? `<button class="menu-item" type="button" data-cm="info">${ICON.users}${c.type === 'channel' ? 'Channel info' : 'Group info'}</button>` : ''}
+    ${canTimer ? `
+      <div class="menu-sub"><span>${ICON.timer}Auto-delete</span>
+        <div class="segs segs-wrap">${TTL_OPTIONS.map(([v, l]) => `<button type="button" class="seg-btn" role="radio" data-ttl="${v}" aria-checked="${ttl === v}">${l}</button>`).join('')}</div>
+      </div>` : ''}`;
+  $('#app').append(more);
+  const r = $('#chat-more').getBoundingClientRect();
+  more.style.top = `${r.bottom + 8}px`;
+  more.style.right = `${Math.max(10, innerWidth - r.right)}px`;
+  more.style.transformOrigin = '100% 0';
+  refreshRefraction();
+});
+
+document.addEventListener('click', (e) => {
+  if (!more) return;
+  const ttl = e.target.closest('[data-ttl]');
+  if (ttl) {
+    const v = Number(ttl.dataset.ttl);
+    if (!curChat()) chats.save({ id: open.id, members: [state.acc.user.id, open.otherId], messages: [], read: {} });
+    chats.update(open.id, (c) => { c.ttl = v; });
+    $$('[data-ttl]', more).forEach((b) => b.setAttribute('aria-checked', String(b === ttl)));
+    toast(v ? `New messages will disappear after ${ttlLabel(v)}` : 'Auto-delete is off');
+    paintHeader();
+    return;
+  }
+  const act = e.target.closest('[data-cm]');
+  if (!act && !e.target.closest('.chat-menu')) { closeMore(); return; }
+  if (!act) return;
+  closeMore();
+  switch (act.dataset.cm) {
+    case 'search': openChatSearch(); break;
+    case 'call': startCall(open.otherId, false); break;
+    case 'video': startCall(open.otherId, true); break;
+    case 'secret': startSecret(open.otherId); break;
+    case 'info': emit('kosmo:open-room', open.id); break;
+    default:
+  }
+});
+
+// Секретный чат: отдельная переписка с замком, без пересылки и копирования
+export function startSecret(userId) {
+  const me = state.acc.user.id;
+  const id = secretIdFor(me, userId);
+  if (!chats.get(id)) {
+    chats.save({ id, secret: true, members: [me, userId], messages: [], read: { [me]: Date.now() }, ttl: 86400, createdAt: Date.now() });
+    toast('Secret chat created');
+  }
+  openChat(id);
+}
+document.addEventListener('kosmo:start-secret', (e) => startSecret(e.detail));
+document.addEventListener('kosmo:start-call', (e) => startCall(e.detail.user, e.detail.video));
+
+/* ---------------------------------------------------------------------------
+   Поиск по сообщениям внутри чата
+   --------------------------------------------------------------------------- */
+let searchQ = '';
+let searchHits = [];
+let searchAt = 0;
+
+function openChatSearch() {
+  $('#chat-search').hidden = false;
+  panel.classList.add('is-searching');
+  $('#chat-search-input').value = '';
+  setTimeout(() => $('#chat-search-input').focus(), 50);
+  refreshRefraction();
+}
+function closeChatSearch() {
+  $('#chat-search').hidden = true;
+  panel.classList.remove('is-searching');
+  searchQ = '';
+  searchHits = [];
+  $$('.bubble-row.is-match', messagesBox).forEach((r) => r.classList.remove('is-match'));
+}
+const msgText = (m) => [m.text, m.caption, m.poll?.question, m.name, m.sticker?.text].filter(Boolean).join(' ').toLowerCase();
+
+function markSearch() {
+  $$('.bubble-row', messagesBox).forEach((r) => r.classList.toggle('is-match', searchHits.includes(r.dataset.id)));
+}
+function runSearch() {
+  searchQ = $('#chat-search-input').value.trim().toLowerCase();
+  searchHits = searchQ ? chatMessages().filter((m) => msgText(m).includes(searchQ)).map((m) => m.id) : [];
+  searchAt = searchHits.length - 1;
+  markSearch();
+  showHit();
+}
+function showHit() {
+  $('#cs-count').textContent = searchQ ? (searchHits.length ? `${searchAt + 1} of ${searchHits.length}` : 'No results') : '';
+  if (searchHits.length) jumpTo(searchHits[searchAt]);
+}
+$('#chat-search-input').addEventListener('input', runSearch);
+$('#chat-search-input').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); $(e.shiftKey ? '#cs-down' : '#cs-up').click(); }
+  if (e.key === 'Escape') { e.stopPropagation(); closeChatSearch(); }
+});
+$('#cs-up').addEventListener('click', () => { if (searchHits.length) { searchAt = (searchAt - 1 + searchHits.length) % searchHits.length; showHit(); } });
+$('#cs-down').addEventListener('click', () => { if (searchHits.length) { searchAt = (searchAt + 1) % searchHits.length; showHit(); } });
+$('#cs-close').addEventListener('click', closeChatSearch);
+onPanelClose('chat', () => { closeChatSearch(); closeMore(); closeQuick(); clearTray(); });
+
+// Открыть чат и показать сообщение (из глобального поиска)
+export function openChatAt(chatId, msgId) {
+  openChat(chatId);
+  setTimeout(() => jumpTo(msgId), 450);
+}
+
+// Глобальный поиск по сообщениям и медиа всех моих чатов
+export function searchMessages(q) {
+  const me = state.acc.user.id;
+  const out = [];
+  for (const c of chats.forUser(me)) {
+    for (const m of mainMessages(c, me)) if (msgText(m).includes(q)) out.push({ c, m });
+  }
+  return out.sort((a, b) => b.m.at - a.m.at).slice(0, 50);
+}
+export function allMedia() {
+  const me = state.acc.user.id;
+  return chats.forUser(me).flatMap((c) => mediaOf(mainMessages(c, me), c).map((x) => ({ ...x, chat: c.id, at: c.messages.find((m) => x.id.startsWith(m.id))?.at ?? 0 })))
+    .sort((a, b) => b.at - a.at);
+}
+export function chatTitle(c) {
+  const me = state.acc.user.id;
+  if (isRoom(c)) return c.name;
+  return db.get(c.members.find((x) => x !== me) ?? me)?.name ?? 'Deleted account';
+}
+export function chatAvatar(c, cls = '') {
+  const me = state.acc.user.id;
+  if (isRoom(c)) return roomAvatar(c, cls);
+  return userAvatarHtml(publicUser(db.get(c.members.find((x) => x !== me) ?? me)) ?? { name: '?' }, cls);
+}

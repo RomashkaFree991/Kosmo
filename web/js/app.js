@@ -5,10 +5,12 @@ import { $, initTheme, initPress, initGuards, tab } from './core.js';
 import { initColor } from './color.js';
 import { initDesign } from './design.js';
 import { initEmoji } from './emoji.js';
+import { applyLang } from './i18n.js';
 import { initAuth, showAuth } from './auth.js';
 import { initHome, showApp } from './home.js';
 
 initEmoji();
+applyLang();
 initDesign();
 initTheme();
 initPress();

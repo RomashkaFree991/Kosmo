@@ -13,6 +13,7 @@
   <link rel="stylesheet" href="css/chat.css">
   <link rel="stylesheet" href="css/extras.css">
   <link rel="stylesheet" href="css/social.css">
+  <link rel="stylesheet" href="css/more.css">
   <!-- До первого кадра: тема, вошла ли эта вкладка, нужна ли заставка -->
   <script>
     (function () {
@@ -81,6 +82,9 @@
       </div>
     </header>
 
+    <button class="pill-btn auth-cancel glass" type="button" id="auth-cancel" data-refract="0.6" hidden>
+      <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 6l-6 6 6 6"/></svg>Back to Kosmo
+    </button>
     <button class="icon-btn glass back-btn" type="button" id="back-btn" aria-label="Back" data-refract="0.6" hidden>
       <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 6l-6 6 6 6"/></svg>
     </button>
@@ -240,6 +244,7 @@
             <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="M15.5 15.5L20 20"/></svg>
           </button>
         </header>
+        <div class="folders" id="folders" role="tablist" aria-label="Folders"></div>
         <ul class="chat-list" id="chat-list"></ul>
       </section>
 
@@ -252,6 +257,7 @@
             <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></svg>
           </button>
         </header>
+        <div class="stories" id="stories" aria-label="Stories"></div>
         <div class="feed" id="feed"></div>
       </section>
 
@@ -277,6 +283,11 @@
           <input type="search" id="search-input" placeholder="Search" aria-label="Search chats and people" autocomplete="off">
         </label>
       </header>
+      <div class="search-tabs" id="search-tabs" role="tablist">
+        <button type="button" role="tab" data-stab="all" aria-selected="true">Chats</button>
+        <button type="button" role="tab" data-stab="messages" aria-selected="false">Messages</button>
+        <button type="button" role="tab" data-stab="media" aria-selected="false">Media</button>
+      </div>
       <div class="panel-body" id="search-results"></div>
     </section>
 
@@ -293,8 +304,19 @@
           <span class="pill-title" id="chat-title"></span>
           <span class="pill-sub" id="chat-sub"></span>
         </button>
+        <button class="circle-btn glass chat-more" type="button" id="chat-more" aria-label="Chat options" aria-haspopup="menu" data-refract="0.7">
+          <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5.5" r="1.6" fill="currentColor"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/><circle cx="12" cy="18.5" r="1.6" fill="currentColor"/></svg>
+        </button>
         <button class="chat-head-avatar" type="button" id="chat-head-avatar" data-open-user aria-label="Profile"></button>
       </header>
+      <div class="chat-search glass" id="chat-search" data-refract="0.6" hidden>
+        <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="M15.5 15.5L20 20"/></svg>
+        <input type="search" id="chat-search-input" placeholder="Search in this chat" aria-label="Search in this chat">
+        <span class="cs-count" id="cs-count"></span>
+        <button class="icon-btn" type="button" id="cs-up" aria-label="Previous result"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 14.5l6-6 6 6"/></svg></button>
+        <button class="icon-btn" type="button" id="cs-down" aria-label="Next result"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9.5l6 6 6-6"/></svg></button>
+        <button class="icon-btn" type="button" id="cs-close" aria-label="Close search"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17"/></svg></button>
+      </div>
       <div class="pinned-bar glass" id="pinned-bar" data-refract="0.6" hidden>
         <button class="pinned-main" type="button" id="pinned-jump">
           <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4h6l-1 6 3 3v1H7v-1l3-3zM12 14v6"/></svg>
@@ -304,6 +326,10 @@
           <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17"/></svg>
         </button>
       </div>
+      <button class="sched-bar glass" type="button" id="sched-bar" data-refract="0.6" hidden>
+        <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>
+        <span id="sched-text"></span>
+      </button>
       <div class="messages" id="messages"></div>
       </div>
 
@@ -325,6 +351,9 @@
         </button>
       </div>
 
+      <!-- Прикреплённое: фото, видео, код — лента над полем ввода -->
+      <div class="attach-tray glass" id="attach-tray" data-refract="0.6" hidden></div>
+
       <!-- Личные чаты: «+» слева, поле, голосовое / отправить справа -->
       <form class="composer" id="composer" novalidate>
         <button class="circle-btn glass attach-btn" type="button" id="attach-btn" aria-label="Attach" aria-haspopup="menu" data-refract="0.7">
@@ -345,6 +374,7 @@
         <button class="circle-btn send-btn" type="submit" id="send-btn" data-mode="voice" aria-label="Record voice message">
           <svg class="i ic-mic" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg>
           <svg class="i ic-send" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M5.5 11.5L12 5l6.5 6.5"/></svg>
+          <svg class="i ic-round" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="3.5"/></svg>
         </button>
       </form>
       <div class="menu attach-menu glass glass-text" id="attach-menu" role="menu" hidden>
@@ -357,13 +387,19 @@
         <button class="menu-item" type="button" role="menuitem" data-attach="code">
           <span class="menu-ic ic-code"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M8.5 7.5L4 12l4.5 4.5M15.5 7.5L20 12l-4.5 4.5M13.5 5l-3 14"/></svg></span>Code
         </button>
+        <button class="menu-item" type="button" role="menuitem" data-attach="round">
+          <span class="menu-ic ic-round"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="3.5"/></svg></span>Video message
+        </button>
+        <button class="menu-item" type="button" role="menuitem" data-attach="poll" data-rooms-only>
+          <span class="menu-ic ic-poll"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20V10M12 20V4M19 20v-7"/></svg></span>Poll or quiz
+        </button>
         <button class="menu-item" type="button" role="menuitem" data-attach="audio">
           <span class="menu-ic ic-music"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18V6l11-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="17.5" cy="16" r="2.5"/></svg></span>Music
         </button>
       </div>
       <div class="menu emoji-picker glass glass-text" id="emoji-picker" role="dialog" aria-label="Emoji" hidden></div>
       <input type="file" id="pick-photo" accept="image/*" multiple hidden>
-      <input type="file" id="pick-video" accept="video/*" hidden>
+      <input type="file" id="pick-video" accept="video/*" multiple hidden>
       <input type="file" id="pick-audio" accept="audio/*" hidden>
     </section>
 
@@ -641,6 +677,7 @@
   <input type="file" id="photo-input" accept="image/*" hidden>
   <input type="file" id="post-media-input" accept="image/*,video/*" multiple hidden>
   <input type="file" id="room-avatar-input" accept="image/*" hidden>
+  <input type="file" id="story-input" accept="image/*,video/*" hidden>
 
   <!-- Нижняя панель: страна / QR -->
   <div class="scrim" id="scrim" hidden></div>
@@ -681,10 +718,11 @@
     </div>
     <div class="sheet-body" id="sheet-qr" hidden>
       <div class="qr-box" id="qr-box"></div>
+      <p class="qr-code" id="qr-code" aria-live="polite"></p>
       <ol class="qr-steps">
-        <li>Open Kosmo on your phone</li>
-        <li>Settings → Devices → Link device</li>
-        <li>Point the camera at this code</li>
+        <li>Open Kosmo on a device where you are signed in</li>
+        <li>Profile → Sessions → Link a device</li>
+        <li>Scan this QR code or type the code above</li>
       </ol>
     </div>
   </div>

@@ -11,6 +11,8 @@ import { state, openPanel } from './panels.js';
 import { putBlob, hydrateMedia, squareAvatar } from './media.js';
 import { ICON as CHAT_ICON, deviceIcon } from './chats.js';
 import { SICON } from './settings.js';
+import { accountsHtml, linkedAccounts } from './accounts.js';
+import './qrlogin.js';
 
 const svg = (d, cls = 'i') => `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true">${d}</svg>`;
 const ICON = {
@@ -58,7 +60,7 @@ const hiddenMark = '<span class="tile-hidden"><svg class="i" viewBox="0 0 24 24"
 let sig = '';
 export function renderProfile(force = false) {
   const u = state.acc.user;
-  const next = JSON.stringify([u.name, u.username, u.phone, u.bio, u.role, u.avatar, u.publicId, u.sessions.length, u.privacy, u.security?.lock]);
+  const next = JSON.stringify([u.name, u.username, u.phone, u.bio, u.role, u.avatar, u.publicId, u.sessions.length, u.privacy, u.security?.lock, linkedAccounts().map((a) => a.uid)]);
   if (next === sig && !force) return;
   sig = next;
   $('#profile').innerHTML = `
@@ -92,6 +94,7 @@ export function renderProfile(force = false) {
       ${row('data-open-settings="storage"', SICON.data, 'Data and storage', ICON.chevron, 'ic-orange')}
       ${row('data-open-sessions', ICON.devices, 'Sessions', `<span class="row-value">${u.sessions.length}</span>${ICON.chevron}`, 'ic-teal')}
     </section>
+    ${accountsHtml(u.id)}
     <section class="group settings-group" aria-label="More">
       ${row('data-open-settings="about"', SICON.info, 'About Kosmo', ICON.chevron, 'ic-blue')}
       <button class="group-row group-row-btn ripple-host danger" type="button" id="logout-btn">
@@ -308,7 +311,8 @@ export function renderSessions() {
     ${canManage() ? '' : `<div class="note">${ICON.info}<span>This device isn't trusted yet. A trusted device can trust it or terminate it.</span></div>`}
     <p class="section-label">Other sessions${others.length ? ` · ${others.length}` : ''}</p>
     ${others.length ? others.map(sessionCard).join('') : `<div class="note">${ICON.devices}<span>No other active sessions. Each new sign-in will appear here and in the Kosmo chat.</span></div>`}
-    ${removable ? '<button class="btn btn-danger" type="button" id="terminate-all">Terminate all other sessions</button>' : ''}`;
+    ${removable ? '<button class="btn btn-danger" type="button" id="terminate-all">Terminate all other sessions</button>' : ''}
+    <button class="btn btn-secondary glass" type="button" data-link-device>${ICON.devices}Link a device</button>`;
 }
 
 document.addEventListener('click', (e) => {

@@ -6,7 +6,8 @@ import {
   $, $$, root, wait, easing, toast, shake, refreshRefraction, paintAvatar,
   db, uid, hashPasscode, startSession, networkInfo, newPublicId,
 } from './core.js';
-import { createPhoneField, openSheet } from './phone.js';
+import { createPhoneField, openSheet, closeSheet } from './phone.js';
+import { showLoginQr, stopLoginQr } from './qrlogin.js';
 import { createOtp } from './otp.js';
 
 const auth = $('#auth');
@@ -117,7 +118,11 @@ $('#phone-form').addEventListener('submit', (e) => {
   }, 1000);
 });
 
-$('#qr-btn').addEventListener('click', () => openSheet('qr'));
+// Вход по QR: другая вкладка, где уже вошли, сканирует код и подтверждает
+$('#qr-btn').addEventListener('click', () => openSheet('qr', {
+  renderQr: () => showLoginQr((user) => { closeSheet(); signIn(user, false); }),
+  onClose: stopLoginQr,
+}));
 
 /* ---------------------------------------------------------------------------
    2. Код из SMS

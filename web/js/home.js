@@ -16,7 +16,10 @@ import { hydrateMedia } from './media.js';
 import { renderFeed, refreshFeed } from './feed.js';
 import { openCreate, searchRooms, roomPreview, refreshRoom } from './rooms.js';
 import { maybeLock, notify, refreshSettings } from './settings.js';
-import { isRoom, roomAvatar } from './chats.js';
+import { isRoom, roomAvatar, searchMessages, allMedia, chatTitle, chatAvatar, openChatAt } from './chats.js';
+import { openViewer } from './viewer.js';
+import { renderStories } from './stories.js';
+import { rememberAccount, forgetAccount, linkedAccounts, paintAuthCancel } from './accounts.js';
 
 const app = $('#app');
 const tabbar = $('#tabbar');
@@ -44,13 +47,20 @@ function highlight(text, query) {
   return safe.replace(re, '<mark>$1</mark>');
 }
 
+let searchTab = 'all';
+let mediaHits = [];
+
 function renderSearch(query) {
+  if (searchTab === 'messages') { renderMessageSearch(query); return; }
+  if (searchTab === 'media') { renderMediaSearch(query); return; }
   const q = query.trim().toLowerCase().replace(/^@/, '');
   const me = state.acc.user;
   const out = $('#search-results');
   const kosmo = !q || 'kosmo official'.includes(q);
-  const digits = q.replace(/\D/g, '');
-  const byPhone = (u) => digits.length >= 5 && u.privacy?.findByPhone !== false && u.phone.replace(/\D/g, '').includes(digits);
+  // по номеру находят, только если человек его не скрыл
+  const digits = q.replace(/[\s()+-]/g, '');
+  const byPhone = (u) => /^\d{4,}$/.test(digits) && !u.privacy?.hidePhone && u.privacy?.findByPhone !== false
+    && u.phone.replace(/\D/g, '').includes(digits);
   const people = Object.values(db.all())
     .filter((u) => u.id !== me.id && (!q || u.name.toLowerCase().includes(q) || (u.username && u.username.includes(q)) || u.publicId === q || byPhone(u)));
   const rooms = searchRooms(q);
@@ -96,7 +106,47 @@ onPanelClose('search', () => {
   setTimeout(() => { searchInput.value = ''; }, 400);
 });
 $('#search-btn').addEventListener('click', openSearch);
+function renderMessageSearch(query) {
+  const q = query.trim().toLowerCase();
+  const out = $('#search-results');
+  if (q.length < 2) { out.innerHTML = `<div class="search-empty">${ICON.empty}<span>Type at least 2 letters to search messages</span></div>`; return; }
+  const hits = searchMessages(q);
+  if (!hits.length) { out.innerHTML = `<div class="search-empty">${ICON.empty}<span>No messages found</span></div>`; return; }
+  out.innerHTML = `<ul class="chat-list">${hits.map(({ c, m }) => `
+    <li class="chat ripple-host" data-search-msg="${m.id}" data-search-in="${c.id}" tabindex="0" role="button">
+      ${chatAvatar(c)}
+      <div class="chat-top"><span class="chat-name">${escapeHtml(chatTitle(c))}</span></div>
+      <div class="chat-meta"><span class="chat-time">${new Date(m.at).toLocaleDateString()}</span></div>
+      <div class="chat-bottom"><span class="chat-text">${highlight(m.text ?? m.caption ?? m.poll?.question ?? '', query)}</span></div>
+    </li>`).join('')}</ul>`;
+  hydrateMedia(out);
+}
+
+function renderMediaSearch(query) {
+  const q = query.trim().toLowerCase();
+  const out = $('#search-results');
+  mediaHits = allMedia().filter((x) => !q || (x.caption ?? '').toLowerCase().includes(q) || (x.title ?? '').toLowerCase().includes(q));
+  if (!mediaHits.length) { out.innerHTML = `<div class="search-empty">${ICON.empty}<span>No photos or videos yet</span></div>`; return; }
+  out.innerHTML = `<div class="media-grid">${mediaHits.map((x, i) => `
+    <button class="media-cell" type="button" data-media-hit="${i}" aria-label="Open ${x.type}">
+      ${x.type === 'video' ? `<video data-media="${x.media}" muted playsinline preload="metadata"></video><span class="tray-badge"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l10.5-6.5z" fill="currentColor"/></svg></span>` : `<img data-media="${x.media}" alt="">`}
+    </button>`).join('')}</div>`;
+  hydrateMedia(out);
+}
+
+$('#search-tabs').addEventListener('click', (e) => {
+  const t = e.target.closest('[data-stab]');
+  if (!t) return;
+  searchTab = t.dataset.stab;
+  [...$('#search-tabs').children].forEach((b) => b.setAttribute('aria-selected', String(b === t)));
+  renderSearch(searchInput.value);
+});
+
 $('#search-results').addEventListener('click', (e) => {
+  const mh = e.target.closest('[data-media-hit]');
+  if (mh) { openViewer(mediaHits, Number(mh.dataset.mediaHit)); return; }
+  const sm = e.target.closest('[data-search-msg]');
+  if (sm) { closePanel({ instant: true }); openChatAt(sm.dataset.searchIn, sm.dataset.searchMsg); return; }
   const person = e.target.closest('[data-person]');
   const chat = e.target.closest('[data-search-chat]');
   if (!person && !chat) return;
@@ -213,6 +263,7 @@ export function sync() {
   if (app.hidden) return;
   const next = current();
   if (!next) {
+    forgetAccount(state.acc?.user.id);
     leave('This session was terminated from another device');
     return;
   }
@@ -240,6 +291,7 @@ export function sync() {
   renderChatList();
   renderProfile();
   refreshFeed();
+  renderStories();
   refreshRoom();
   refreshSettings();
   if (panelOpen() === 'sessions') renderSessions();
@@ -248,7 +300,35 @@ export function sync() {
 document.addEventListener('kosmo:changed', sync);
 document.addEventListener('kosmo:profile', () => { renderChatList(); renderFeed(); });
 document.addEventListener('kosmo:room-changed', () => { renderChatList(); refreshOpenChat(); });
-document.addEventListener('kosmo:account-deleted', () => leave('Your account was deleted'));
+document.addEventListener('kosmo:account-deleted', () => { forgetAccount(state.acc?.user.id); leave('Your account was deleted'); });
+
+// Переключение между аккаунтами этой вкладки
+document.addEventListener('kosmo:switch-account', (e) => {
+  tab.set(e.detail);
+  resetPanels();
+  leaveArchive();
+  $('#auth').hidden = true;
+  root.classList.add('has-session');
+  if (!showApp({ animate: false })) { forgetAccount(e.detail.uid); toast('This session was terminated'); return; }
+  app.animate([{ opacity: 0, transform: 'scale(0.97)' }, { opacity: 1, transform: 'none' }], { duration: 380, easing: 'cubic-bezier(0.2, 0, 0, 1)' });
+  toast(`Switched to ${state.acc.user.name}`);
+});
+
+// Ещё один аккаунт: вход, не выходя из текущих
+document.addEventListener('kosmo:add-account', async () => {
+  tab.clear();
+  resetPanels();
+  app.animate([{ opacity: 1 }, { opacity: 0, transform: 'scale(0.97)' }], { duration: 250, easing: 'ease-in', fill: 'forwards' });
+  await wait(250);
+  app.hidden = true;
+  app.getAnimations().forEach((a) => a.cancel());
+  root.classList.remove('in-app');
+  leaveArchive();
+  state.acc = null;
+  resetProfileCache();
+  onLogout();
+  paintAuthCancel();
+});
 
 // Отметка «был в сети» раз в минуту и при возвращении на вкладку
 function heartbeat() {
@@ -275,11 +355,15 @@ async function leave(message) {
   resetProfileCache();
   if (message) toast(message);
   onLogout();
+  paintAuthCancel();
 }
 
 document.addEventListener('click', (e) => {
   if (!e.target.closest('#logout-btn') || !state.acc) return;
   db.update(state.acc.user.id, (u) => { u.sessions = u.sessions.filter((s) => s.id !== state.acc.session.id); });
+  forgetAccount(state.acc.user.id);
+  const other = linkedAccounts()[0];
+  if (other) { document.dispatchEvent(new CustomEvent('kosmo:switch-account', { detail: other })); return; }
   leave();
 });
 
@@ -291,7 +375,9 @@ export function showApp({ animate = true } = {}) {
   resetProfileCache();
   seenMessages = snapshot();
   renderChatList();
+  rememberAccount();
   renderFeed(true);
+  renderStories();
   renderProfile(true);
   applyDesign();
   maybeLock();
@@ -313,6 +399,6 @@ export function showApp({ animate = true } = {}) {
 export function initHome({ logout }) {
   onLogout = logout;
   window.addEventListener('storage', (e) => {
-    if (e.key === 'kosmo:accounts' || e.key === 'kosmo:chats' || e.key === 'kosmo:feed') sync();
+    if (['kosmo:accounts', 'kosmo:chats', 'kosmo:feed', 'kosmo:stories'].includes(e.key)) sync();
   });
 }

@@ -2,7 +2,7 @@
 // пересылка в чаты, просмотры. Автор может изменить или удалить свой пост.
 
 import {
-  $, $$, db, toast, shake, escapeHtml, userAvatarHtml, cosmicBadge, formatTime, timeAgo, refreshRefraction,
+  $, $$, db, toast, shake, escapeHtml, userAvatarHtml, cosmicBadge, formatTime, timeAgo, refreshRefraction, patchList,
 } from './core.js';
 import { state, openPanel, closePanel, openOverlay, closeOverlay, overlayOpen } from './panels.js';
 import { putBlob, hydrateMedia, compressImage, mediaDuration } from './media.js';
@@ -53,7 +53,7 @@ function postCard(p, { full = false, i = 0 } = {}) {
   const author = publicUser(db.get(p.author)) ?? { id: null, name: 'Deleted account', avatar: {} };
   const mine = p.author === me;
   return `
-    <article class="post${full ? ' is-full' : ''}" data-post-card="${p.id}" style="--i:${i}">
+    <article class="post${full ? ' is-full' : ''}" data-post-card="${p.id}">
       <header class="post-head">
         <button class="post-author" type="button" data-post-author="${author.id ?? ''}">
           ${userAvatarHtml(author)}
@@ -97,7 +97,12 @@ export function renderFeed(force = false) {
       </div>`;
     return;
   }
-  box.innerHTML = list.map((p, i) => postCard(p, { i: Math.min(i, 8) })).join('');
+  // по ключам: после реакции или комментария меняется только этот пост,
+  // остальные не мигают и не проигрывают появление заново
+  if (!box.querySelector('[data-key]')) box.innerHTML = '';
+  let n = 0;
+  patchList(box, list.map((p) => { const html = postCard(p); return { key: p.id, sig: html, html }; }),
+    (el) => { el.classList.add('is-new'); el.style.setProperty('--i', Math.min(n++, 8)); });
   hydrateMedia(box);
   markViewed(list);
 }
@@ -287,11 +292,15 @@ function renderPost() {
   const p = posts.get(openPost);
   if (!p) { closeOverlay(); toast('This post was deleted'); return; }
   $('#post-title').textContent = p.comments.length ? plural(p.comments.length, 'comment') : 'Post';
-  $('#post-body').innerHTML = `
-    ${postCard(p, { full: true })}
-    <p class="section-label">${p.comments.length ? 'Comments' : 'No comments yet — be the first'}</p>
-    <ul class="comments">${p.comments.map((c) => commentHtml(c, p)).join('')}</ul>`;
-  hydrateMedia($('#post-body'));
+  const body = $('#post-body');
+  if (body.dataset.post !== p.id) {
+    body.dataset.post = p.id;
+    body.innerHTML = '<div class="post-slot"></div><p class="section-label"></p><ul class="comments"></ul>';
+  }
+  patchList($('.post-slot', body), [{ key: p.id, sig: postCard(p, { full: true }), get html() { return postCard(p, { full: true }); } }]);
+  $('.section-label', body).textContent = p.comments.length ? 'Comments' : 'No comments yet — be the first';
+  patchList($('.comments', body), p.comments.map((c) => { const html = commentHtml(c, p); return { key: c.id, sig: html, html }; }));
+  hydrateMedia(body);
 }
 
 export function showPost(id, focus = false) {

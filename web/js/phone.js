@@ -135,7 +135,7 @@ export function openSheet(kind, opts = {}) {
   sheet.hidden = false;
   scrim.hidden = false;
   if (kind === 'country') renderCountries('');
-  if (kind === 'qr') renderQr();
+  if (kind === 'qr') (opts.renderQr ?? renderQr)();
   if (kind === 'code') renderCode();
   if (kind === 'media') renderMedia(opts.files ?? []);
   if (kind === 'forward') $('#forward-list').innerHTML = opts.items ?? '';
@@ -150,11 +150,12 @@ export function openSheet(kind, opts = {}) {
   });
 }
 
-function closeSheet() {
+export function closeSheet() {
   if (sheet.hidden) return;
   sheet.classList.remove('is-open');
   scrim.classList.remove('is-open');
   sheet.style.removeProperty('transform');
+  sheetOpts.onClose?.();
   const done = () => {
     if (sheet.classList.contains('is-open')) return;
     sheet.hidden = true;
