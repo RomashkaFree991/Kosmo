@@ -3,6 +3,7 @@
 // чтобы показываться сразу, без скачивания.
 
 import { $$, tab } from './core.js';
+import { mediaKeys, openFile } from './e2ee.js';
 
 let dbPromise = null;
 function idb() {
@@ -25,7 +26,8 @@ function tx(mode, fn) {
 }
 
 // Загрузка на сервер; onProgress(0…1) — для полоски загрузки, onXhr — чтобы отменить
-export function putBlob(blob, { onProgress, onXhr, type } = {}) {
+// cacheAs — что положить в кеш устройства (у зашифрованного файла — оригинал)
+export function putBlob(blob, { onProgress, onXhr, type, cacheAs } = {}) {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open('POST', '/api/media');
@@ -36,7 +38,7 @@ export function putBlob(blob, { onProgress, onXhr, type } = {}) {
       let data = {};
       try { data = JSON.parse(xhr.responseText); } catch { /* */ }
       if (xhr.status < 200 || xhr.status >= 300) { reject(new Error(data.message || 'Upload failed')); return; }
-      await tx('readwrite', (st) => st.put(blob, data.id)).catch(() => {});
+      await tx('readwrite', (st) => st.put(cacheAs ?? blob, data.id)).catch(() => {});
       resolve(data.id);
     };
     xhr.onerror = () => reject(new Error('No connection to the server'));
@@ -50,7 +52,19 @@ const urls = new Map();
 export async function mediaUrl(id) {
   if (!id) return null;
   if (urls.has(id)) return urls.get(id);
-  const blob = await tx('readonly', (s) => s.get(id)).catch(() => null);
+  let blob = await tx('readonly', (s) => s.get(id)).catch(() => null);
+  // зашифрованный файл: скачать, расшифровать ключом из сообщения, сохранить на устройстве
+  const sealed = mediaKeys.get(id);
+  if (!blob && sealed && /^[a-f0-9]{32}$/.test(id)) {
+    try {
+      const res = await fetch(`/media/${id}`);
+      if (res.ok) {
+        blob = await openFile(await res.arrayBuffer(), sealed.key, sealed.mime);
+        tx('readwrite', (s) => s.put(blob, id)).catch(() => {});
+      }
+    } catch { /* нет связи — попробуем позже */ }
+    if (!blob) return null;
+  }
   // своё — из кеша, чужое — прямо с сервера
   const url = blob ? URL.createObjectURL(blob) : /^[a-f0-9]{32}$/.test(id) ? `/media/${id}` : null;
   if (url) urls.set(id, url);

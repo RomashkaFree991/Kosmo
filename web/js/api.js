@@ -5,6 +5,9 @@
 
 import { store, tab, setWriteHook, toast } from './core.js';
 import { COLLECTIONS, diffCollection, applyToCollection } from './patch.js';
+import {
+  loadKeys, chatKey, groupKeysFor, sealMessage, openMessage, openChatDoc, sealAccountPatch, openAccount, isPublicRoom,
+} from './e2ee.js';
 
 const clone = (v) => (v == null ? v : JSON.parse(JSON.stringify(v)));
 const shadow = {};            // последнее известное серверу состояние коллекций
@@ -56,17 +59,73 @@ function writeRaw(col, value) {
 export async function loadSnapshot() {
   const snap = await api('GET', '/api/sync');
   me = snap.me;
-  for (const col of COLLECTIONS) {
+  await loadKeys(me);
+  // сначала профили (в них публичные ключи), потом расшифровка переписки
+  if (snap.accounts[me]) snap.accounts[me] = await openAccount(snap.accounts[me]);
+  writeRaw('accounts', snap.accounts);
+  shadow.accounts = clone(snap.accounts);
+  snap.chats = Object.fromEntries(await Promise.all(Object.entries(snap.chats).map(async ([id, c]) => [id, await openChatDoc(c).catch(() => c)])));
+  for (const col of COLLECTIONS.filter((x) => x !== 'accounts')) {
     writeRaw(col, snap[col]);
     shadow[col] = clone(snap[col]);
   }
   return snap;
 }
 
+/* ---------- Сквозное шифрование патчей ---------- */
+async function sealPatch(p) {
+  try {
+    if (p.col === 'accounts') return p.id === me ? await sealAccountPatch(p) : p;
+    if (p.col !== 'chats' || p.op === 'del') return p;
+    let c = store.getJSON('chats', {})[p.id] ?? { id: p.id, ...(p.set ?? {}) };
+    if (!c.members || isPublicRoom(c)) return p;
+    // группа: ключ участникам (создать при первом сообщении, выдать новым)
+    const ekeys = await groupKeysFor(c);
+    if (ekeys) {
+      p = { ...p, set: { ...(p.set ?? {}), ekeys } };
+      c = { ...c, ekeys };
+      const all = store.getJSON('chats', {});
+      if (all[p.id]) { all[p.id].ekeys = ekeys; writeRaw('chats', all); if (shadow.chats?.[p.id]) shadow.chats[p.id].ekeys = clone(ekeys); }
+    }
+    const key = await chatKey(c);
+    if (!key) return p;
+    const out = { ...p };
+    if (p.msgs?.up?.length) out.msgs = { ...p.msgs, up: await Promise.all(p.msgs.up.map((m) => sealMessage(key, m))) };
+    if (p.set?.scheduled) out.set = { ...out.set, scheduled: await Promise.all(p.set.scheduled.map((x) => sealMessage(key, x))) };
+    return out;
+  } catch (e) {
+    console.error('e2ee seal', e);
+    return p;
+  }
+}
+
+async function openPatch(p) {
+  try {
+    if (p.col === 'accounts') {
+      if (p.id !== me || !p.set) return p;
+      const opened = await openAccount({ chatPrefs: p.set.chatPrefs, bookmarks: p.set.bookmarks });
+      return { ...p, set: { ...p.set, ...(p.set.chatPrefs ? { chatPrefs: opened.chatPrefs } : {}), ...(p.set.bookmarks ? { bookmarks: opened.bookmarks } : {}) } };
+    }
+    if (p.col !== 'chats' || p.op === 'del') return p;
+    const base = p.replace ? p.set : { ...(store.getJSON('chats', {})[p.id] ?? {}), ...(p.set ?? {}) };
+    const key = await chatKey(base).catch(() => null);
+    if (!key) return p;
+    const out = { ...p };
+    if (p.msgs?.up?.length) out.msgs = { ...p.msgs, up: await Promise.all(p.msgs.up.map((m) => openMessage(key, m))) };
+    if (p.set?.messages) out.set = { ...out.set, messages: await Promise.all(p.set.messages.map((m) => openMessage(key, m))) };
+    if (p.set?.scheduled) out.set = { ...out.set, scheduled: await Promise.all(p.set.scheduled.map((x) => openMessage(key, x))) };
+    return out;
+  } catch (e) {
+    console.error('e2ee open', e);
+    return p;
+  }
+}
+
 // Вход в аккаунт этой вкладкой: снимок + живое соединение
 export async function boot() {
   await loadSnapshot();
   connect();
+  document.dispatchEvent(new CustomEvent('kosmo:booted'));
   return true;
 }
 
@@ -96,7 +155,8 @@ async function flush() {
   if (!queue.length) return;
   const batch = queue.splice(0, 100);
   try {
-    const { results } = await api('POST', '/api/sync', { patches: batch, conn: connId });
+    const sealed = await Promise.all(batch.map(sealPatch));
+    const { results } = await api('POST', '/api/sync', { patches: sealed, conn: connId });
     const failed = results.filter((r) => !r.ok);
     if (failed.length) toast(failed[0].message || 'Could not save the change');
     const ids = myMsgIds(batch);
@@ -131,7 +191,13 @@ function remoteChanged() {
   remoteTimer = requestAnimationFrame(() => document.dispatchEvent(new CustomEvent('kosmo:remote')));
 }
 
+// изменения с сервера расшифровываются по очереди — порядок сохраняется
+let remoteChain = Promise.resolve();
 function applyRemote(patch) {
+  remoteChain = remoteChain.then(() => applyRemoteNow(patch)).catch((e) => console.error('remote patch', e));
+}
+async function applyRemoteNow(raw) {
+  const patch = await openPatch(raw);
   const col = patch.col;
   if (!COLLECTIONS.includes(col)) return;
   writeRaw(col, applyToCollection(col, store.getJSON(col, col === 'feed' || col === 'stories' ? [] : {}), patch));

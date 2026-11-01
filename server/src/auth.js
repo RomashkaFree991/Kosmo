@@ -174,6 +174,8 @@ export function project(user, viewerId) {
     official: Boolean(user.official),
     premium: Boolean(user.premium),
     bot: Boolean(user.bot),
+    // для сквозного шифрования другим нужен только публичный ключ
+    e2ee: user.e2ee?.pub ? { pub: user.e2ee.pub } : null,
     // статус «эмодзи + текст» до времени until
     status: user.status && (!user.status.until || user.status.until > Date.now()) ? user.status : null,
     createdAt: user.createdAt,

@@ -799,3 +799,11 @@ html[data-theme="material"] .avatar.avatar-room { clip-path: none !important; bo
 /* «печатает…» */
 .typing-label { color: var(--c-accent); font-weight: 500; }
 #chat-sub.is-typing { color: var(--c-accent); }
+
+/* ---------- Сквозное шифрование ---------- */
+.e2ee-hero { width: 64px; height: 64px; display: grid; place-items: center; align-self: center; border-radius: 50%; background: color-mix(in srgb, #34c759 18%, transparent); color: #34c759; }
+.e2ee-hero .i { width: 32px; height: 32px; }
+.e2ee-key { display: block; padding: 14px; border-radius: 14px; background: rgba(var(--ink), 0.07); font-size: 17px; font-weight: 600; letter-spacing: 0.06em; text-align: center; word-break: break-all; -webkit-user-select: all; user-select: all; }
+.b-sealed { display: flex; align-items: center; gap: 6px; opacity: 0.7; font-style: italic; }
+.b-sealed .i { width: 16px; height: 16px; flex: none; }
+#chat-sub.is-e2ee::before { content: ""; display: inline-block; width: 11px; height: 11px; margin-right: 4px; vertical-align: -1px; background: currentColor; -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='5' y='10.5' width='14' height='9.5' rx='2.5'/%3E%3Cpath d='M8 10.5V8a4 4 0 0 1 8 0v2.5' fill='none' stroke='%23000' stroke-width='2.4'/%3E%3C/svg%3E") center / contain no-repeat; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='5' y='10.5' width='14' height='9.5' rx='2.5'/%3E%3Cpath d='M8 10.5V8a4 4 0 0 1 8 0v2.5' fill='none' stroke='%23000' stroke-width='2.4'/%3E%3C/svg%3E") center / contain no-repeat; }

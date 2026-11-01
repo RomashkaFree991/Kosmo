@@ -391,7 +391,8 @@ const mediaPath = (id) => path.join(config.dataDir, 'media', id);
 async function uploadMedia(req, res) {
   const s = auth(req);
   const mime = String(req.headers['content-type'] ?? 'application/octet-stream').split(';')[0].slice(0, 80);
-  if (!/^(image|video|audio)\//.test(mime)) throw new ApiError(415, 'bad_type', 'Unsupported file type');
+  // зашифрованные файлы приходят как application/octet-stream — сервер их не видит
+  if (!/^(image|video|audio)\//.test(mime) && mime !== 'application/octet-stream') throw new ApiError(415, 'bad_type', 'Unsupported file type');
   const len = Number(req.headers['content-length'] ?? 0);
   if (len > config.maxUpload) throw new ApiError(413, 'too_large', 'File is too large');
   const id = crypto.randomBytes(16).toString('hex');

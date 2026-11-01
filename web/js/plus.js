@@ -10,6 +10,7 @@ import { api } from './api.js';
 import { EMOJI, emojiSvg } from './emoji.js';
 import { qrSvg, qrReady } from './qrlogin.js';
 import { lang } from './i18n.js';
+import { e2eeReady, myPub, createKeys, unlockWith, rotateRecovery, fingerprint } from './e2ee.js';
 
 const svg = (d) => `<svg class="i" viewBox="0 0 24 24" aria-hidden="true">${d}</svg>`;
 export const PI = {
@@ -612,4 +613,94 @@ export function startTranscriber() {
       setTimeout(() => resolve(text.trim()), 1500);
     }),
   };
+}
+
+/* ---------------------------------------------------------------------------
+   Сквозное шифрование: настройка, ключ восстановления, разблокировка
+   --------------------------------------------------------------------------- */
+let e2eeAsked = '';
+// Вызывается после входа: ключей нет — создать; есть на сервере, но не на этом устройстве — спросить ключ восстановления
+export async function ensureE2EE(onUnlocked) {
+  const u = me();
+  if (!u || u.bot || e2eeAsked === u.id) return;
+  e2eeAsked = u.id;
+  if (e2eeReady() && myPub()?.x === u.e2ee?.pub?.x) return;
+  if (!u.e2ee?.pub) {
+    const { e2ee, recoveryKey } = await createKeys();
+    saveMe((x) => { x.e2ee = e2ee; });
+    showRecoveryKey(recoveryKey, true);
+    return;
+  }
+  openUnlock(onUnlocked);
+}
+
+function showRecoveryKey(rk, first = false) {
+  const wrap = openModal(first ? 'Your chats are encrypted' : 'New recovery key', `
+    <div class="e2ee-hero">${PI.lock}</div>
+    <p class="pm-note">${first ? 'Messages and files are end-to-end encrypted: only you and the people you talk to can read them. Not even the server owner can.' : 'The old recovery key no longer works.'}</p>
+    <span class="modal-label">Recovery key — save it somewhere safe</span>
+    <code class="e2ee-key" id="rk-text">${escapeHtml(rk)}</code>
+    <button class="btn btn-secondary glass" type="button" data-rk-copy>${PI.copy}Copy key</button>
+    <p class="pm-note">You’ll need it to read your chats on a new device. If you lose it, nobody can recover your old encrypted messages.</p>
+    <button class="btn btn-primary" type="button" data-pm-close>I saved it</button>`, {
+    onClick: (e) => { if (e.target.closest('[data-rk-copy]')) navigator.clipboard?.writeText(rk).then(() => toast('Key copied')); },
+  });
+  return wrap;
+}
+
+export function openUnlock(onUnlocked) {
+  const wrap = openModal('Unlock encrypted chats', `
+    <div class="e2ee-hero">${PI.lock}</div>
+    <p class="pm-note">This device doesn’t have your encryption key yet. Enter the recovery key you saved when you first set up Kosmo.</p>
+    <label class="modal-field"><input type="text" id="rk-input" autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="XXXX-XXXX-XXXX-XXXX-XXXX-XXXX"></label>
+    <button class="btn btn-primary" type="button" data-rk-unlock>Unlock</button>
+    <button class="link-btn" type="button" data-rk-reset>Lost the key? Start over</button>`, {
+    onClick: async (e) => {
+      if (e.target.closest('[data-rk-unlock]')) {
+        try {
+          await unlockWith($('#rk-input', wrap).value, me().e2ee);
+          closeModal();
+          toast('Encrypted chats unlocked');
+          onUnlocked?.();
+        } catch { toast('Wrong recovery key'); }
+      }
+      if (e.target.closest('[data-rk-reset]')) {
+        if (!confirm('Create a new encryption key? Old encrypted messages will stay unreadable on all devices.')) return;
+        const { e2ee, recoveryKey } = await createKeys();
+        saveMe((x) => { x.e2ee = e2ee; });
+        showRecoveryKey(recoveryKey, true);
+        onUnlocked?.();
+      }
+    },
+  });
+}
+
+// Профиль → «Шифрование»
+export async function openEncryption(onUnlocked) {
+  const u = me();
+  const ready = e2eeReady() && myPub()?.x === u.e2ee?.pub?.x;
+  const fp = ready ? await fingerprint(myPub()) : '';
+  openModal('Encryption', `
+    <div class="e2ee-hero${ready ? ' is-on' : ''}">${PI.lock}</div>
+    <p class="pm-note">${ready ? 'End-to-end encryption is on for private chats, groups and Saved Messages. Public groups and channels are open to everyone and are not encrypted.' : 'Encrypted chats are locked on this device.'}</p>
+    ${ready ? `<span class="modal-label">Your key fingerprint</span><code class="e2ee-key">${fp.match(/.{4}/g).join(' ')}</code>
+      <button class="btn btn-secondary glass" type="button" data-e2ee-rotate>Create a new recovery key</button>`
+    : '<button class="btn btn-primary" type="button" data-e2ee-unlock>Enter recovery key</button>'}`, {
+    onClick: async (e) => {
+      if (e.target.closest('[data-e2ee-unlock]')) { closeModal(); openUnlock(onUnlocked); }
+      if (e.target.closest('[data-e2ee-rotate]')) {
+        const { e2ee, recoveryKey } = await rotateRecovery(u.e2ee);
+        saveMe((x) => { x.e2ee = e2ee; });
+        showRecoveryKey(recoveryKey);
+      }
+    },
+  });
+}
+
+// Код проверки собеседника: одинаковый у обоих, если ключи никто не подменил
+export async function safetyCode(a, b) {
+  if (!a?.x || !b?.x) return '';
+  const [x, y] = [`${a.x}.${a.y}`, `${b.x}.${b.y}`].sort();
+  const h = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`${x}|${y}`)));
+  return Array.from(h.slice(0, 10), (n) => String(n % 100).padStart(2, '0')).join('').match(/.{5}/g).join(' ');
 }

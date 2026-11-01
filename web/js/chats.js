@@ -28,6 +28,7 @@ import { pollHtml, openPollCreator, closePoll, retractVote } from './polls.js';
 import { roundHtml, openRoundRecorder } from './round.js';
 import { startCall } from './calls.js';
 import { isPending, onServerMessage, sendTyping } from './api.js';
+import { chatKey, sealFile, isSealed, isEncryptedChat } from './e2ee.js';
 import { pickTime, schedule, myScheduled, openScheduledList, addReminder, TTL_OPTIONS, ttlLabel } from './schedule.js';
 
 export const KOSMO = 'kosmo';
@@ -257,6 +258,7 @@ function kosmoUnread() {
    --------------------------------------------------------------------------- */
 export function previewText(m) {
   if (!m) return '';
+  if (isSealed(m.text) || isSealed(m.caption)) return 'Encrypted message';
   const cap = m.caption ? ` · ${m.caption}` : '';
   switch (m.kind) {
     case 'photo': return m.viewOnce ? 'View-once photo' : `Photo${cap}`;
@@ -786,6 +788,9 @@ function paintHeader() {
     avatar = userAvatarHtml(other ?? { name: '?' }, 'avatar-head');
   }
   if (c?.ttl) sub += ` · auto-delete ${ttlLabel(c.ttl)}`;
+  // сквозное шифрование: замок в шапке
+  const secure = c ? isEncryptedChat(c) : isSavedOpen() || (open.otherId && isEncryptedChat({ id: open.id, members: [state.acc.user.id, open.otherId] }));
+  $('#chat-sub').classList.toggle('is-e2ee', Boolean(secure) && !typingIn(open.id));
   const ty = typingIn(open.id);
   if (ty) sub = ty;
   $('#chat-sub').classList.toggle('is-typing', Boolean(ty));
@@ -1003,6 +1008,7 @@ export function mediaBody(m, chatId = null) {
       </button>`;
     }
     default: {
+      if (isSealed(m.text)) return `<p class="b-text b-sealed">${PI.lock}Encrypted message · unlock encryption to read</p>`;
       const tr = translationOf(m.id);
       return `<p class="b-text">${linkify(m.text)}</p>${tr ? `<p class="b-translation">${PI.translate}<span>${escapeHtml(tr.text)}</span><button type="button" data-untranslate="${m.id}">Show original</button></p>` : ''}`;
     }
@@ -2459,17 +2465,32 @@ async function runUpload(u) {
   u.status = 'up';
   u.p = 0;
   u.xhrs = [];
-  const total = u.parts.reduce((t, x) => t + (x.blob.size || 1), 0);
+  try {
+    // зашифрованный чат: файл шифруется на устройстве, сервер получает шифротекст
+    if (!u.sealed) {
+      const c = chats.get(u.ctx.chatId) ?? { id: u.ctx.chatId, members: u.ctx.members, saved: u.ctx.saved };
+      const key = await chatKey(c).catch(() => null);
+      u.sealed = key ? await Promise.all(u.parts.map((x) => sealFile(x.blob))) : u.parts.map(() => null);
+    }
+  } catch { u.sealed = u.parts.map(() => null); }
+  const send = u.parts.map((x, i) => u.sealed[i]?.blob ?? x.blob);
+  const total = send.reduce((t, x) => t + (x.size || 1), 0);
   const done = u.parts.map(() => 0);
   try {
-    const ids = await Promise.all(u.parts.map((part, i) => putBlob(part.blob, {
-      type: part.type,
+    const ids = await Promise.all(u.parts.map((part, i) => putBlob(send[i], {
+      type: u.sealed[i] ? 'application/octet-stream' : part.type,
+      cacheAs: part.blob,
       onXhr: (x) => u.xhrs.push(x),
-      onProgress: (f) => { done[i] = f * (part.blob.size || 1); u.p = done.reduce((a, b) => a + b, 0) / total; paintUpload(u); },
+      onProgress: (f) => { done[i] = f * (send[i].size || 1); u.p = done.reduce((a, b) => a + b, 0) / total; paintUpload(u); },
     })));
     uploads.delete(u.id);
     (u.thumb.revoke ?? []).forEach((url) => url && URL.revokeObjectURL(url));
-    deliver(u.ctx, u.build(ids), u.opts);
+    // ключи файлов — внутрь сообщения (оно само зашифруется при отправке)
+    const msg = u.build(ids);
+    const keyOf = (i) => (u.sealed[i] ? { mk: u.sealed[i].mk, mime: u.sealed[i].mime } : {});
+    if (msg.kind === 'album') msg.items = msg.items.map((it, i) => ({ ...it, ...keyOf(i) }));
+    else Object.assign(msg, keyOf(0));
+    deliver(u.ctx, msg, u.opts);
   } catch (e) {
     if (e.aborted) uploads.delete(u.id);
     else { u.status = 'fail'; toast(e.message || 'Could not send this file'); }

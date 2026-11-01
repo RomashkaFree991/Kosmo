@@ -20,8 +20,8 @@ import { isRoom, roomAvatar, searchMessages, allMedia, chatTitle, chatAvatar, op
 import { openViewer } from './viewer.js';
 import { renderStories } from './stories.js';
 import { rememberAccount, forgetAccount, linkedAccounts, paintAuthCancel } from './accounts.js';
-import { handleJoinLink } from './plus.js';
-import { api, boot, shutdown } from './api.js';
+import { handleJoinLink, ensureE2EE } from './plus.js';
+import { api, boot, shutdown, loadSnapshot } from './api.js';
 
 const app = $('#app');
 const tabbar = $('#tabbar');
@@ -355,6 +355,12 @@ document.addEventListener('kosmo:add-account', async () => {
   onLogout();
   paintAuthCancel();
 });
+
+// после загрузки данных: ключи шифрования (создать или разблокировать)
+document.addEventListener('kosmo:booted', () => setTimeout(() => {
+  if (!state.reload()) return;
+  ensureE2EE(async () => { await loadSnapshot(); document.dispatchEvent(new CustomEvent('kosmo:remote')); });
+}, 300));
 
 // ссылка-приглашение открыта, когда сайт уже запущен
 window.addEventListener('hashchange', () => { if (state.acc) handleJoinLink((id) => { renderChatList(); openChat(id); }); });

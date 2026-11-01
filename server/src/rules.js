@@ -1,6 +1,7 @@
 // Проверка изменений от клиента: что пользователь вправе менять.
 // Возвращает «очищенный» патч (лишнее отброшено) или бросает ApiError.
 
+import crypto from 'node:crypto';
 import { ApiError } from './auth.js';
 import { users, chats as chatsDb } from './db.js';
 
@@ -8,7 +9,9 @@ const isRoom = (c) => c?.type === 'group' || c?.type === 'channel';
 const isAdmin = (c, uid) => c?.owner === uid || (c?.admins ?? []).includes(uid);
 const deny = (msg) => { throw new ApiError(403, 'forbidden', msg); };
 const USERNAME_RE = /^(?=.*[a-z])[a-z0-9]{3,32}$/;
-const LIMIT_TEXT = 8000;
+const LIMIT_TEXT = 16000;
+// отпечаток публичного ключа (тот же, что считает клиент)
+const pubFingerprint = (pub) => (pub?.x ? crypto.createHash('sha256').update(`${pub.x}.${pub.y}`).digest('hex').slice(0, 32) : '');   // с запасом под шифротекст (e1:…)
 
 function checkUsername(name, exceptId) {
   if (!name) return;
@@ -42,7 +45,7 @@ const strip = (m) => {
 /* ---------------------------------------------------------------------------
    Пользователь (только свой документ)
    --------------------------------------------------------------------------- */
-const SELF_FIELDS = ['name', 'username', 'bio', 'avatar', 'privacy', 'chatPrefs', 'settings', 'security', 'reminders', 'messages', 'bookmarks', 'status'];
+const SELF_FIELDS = ['name', 'username', 'bio', 'avatar', 'privacy', 'chatPrefs', 'settings', 'security', 'reminders', 'messages', 'bookmarks', 'status', 'e2ee'];
 
 export function checkAccount(me, patch, current) {
   if (patch.id !== me) deny('You can only change your own profile');
@@ -158,6 +161,20 @@ export function checkChat(me, patch, old) {
       set.members = [...after];
       continue;
     }
+    // ключ группы, зашифрованный для каждого участника (сквозное шифрование):
+    // добавить можно только недостающие записи или заменить устаревшую
+    // (участник сменил ключ) — чужие действующие записи не трогаются
+    if (k === 'ekeys') {
+      if (!member) deny('You are not a member of this chat');
+      const cur = { ...(old.ekeys ?? {}) };
+      for (const [u, entry] of Object.entries(v ?? {})) {
+        if (!old.members.includes(u) || !entry || typeof entry.k !== 'string' || entry.by !== me && cur[u]?.k !== entry.k) continue;
+        const fp = pubFingerprint(users.get(u)?.e2ee?.pub);
+        if (!cur[u] || (cur[u].to !== fp && entry.to === fp)) cur[u] = { by: me, k: entry.k.slice(0, 400), iv: String(entry.iv ?? '').slice(0, 40), to: entry.to };
+      }
+      set.ekeys = cur;
+      continue;
+    }
     if (k === 'owner') {
       if (old.owner !== me) deny('Only the owner can transfer the chat');
       set.owner = v;
@@ -236,7 +253,7 @@ export function checkChat(me, patch, old) {
       if (prev.todo.open !== false) {
         for (const n of newItems) {
           if (oldItems.some((x) => x.id === n.id) || items.length >= 50) continue;
-          items.push({ id: String(n.id).slice(0, 40), text: String(n.text ?? '').slice(0, 200), by: me, done: (n.done ?? []).includes(me) ? [me] : [] });
+          items.push({ id: String(n.id).slice(0, 40), text: String(n.text ?? '').slice(0, 2000), by: me, done: (n.done ?? []).includes(me) ? [me] : [] });
         }
       }
       next.todo = { ...prev.todo, items };
