@@ -3,6 +3,7 @@
 
 import { $, initTheme, initPress, initGuards, initKeyboard, tab, toast } from './core.js';
 import { boot } from './api.js';
+import { initGlisse } from './glisse.js';
 import { initColor } from './color.js';
 import { initDesign } from './design.js';
 import { initEmoji } from './emoji.js';
@@ -14,6 +15,7 @@ initEmoji();
 applyLang();
 initDesign();
 initTheme();
+initGlisse();
 initPress();
 initGuards();
 initKeyboard();

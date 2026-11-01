@@ -22,5 +22,6 @@
 | remotion-animation | github.com/ncklrs/startup-os-skills @9162596 | skills/remotion-animation | MIT |
 | motion-design-principles | github.com/LottieFiles/motion-design-skill @f9a8a04 | skills/motion-design (переименован: было `motion-design`) | MIT |
 | motion-design-promo | github.com/howseen-ai/claude-motion-design @3d90d34 | skill/motion-design (переименован: было `motion-design`) | MIT |
+| glisse | github.com/0kzh/glisse @46be5ba | src/ (React-библиотека; SKILL.md написан для Kosmo, порт — web/js/glisse.js) | MIT |
 
 Чтобы обновить скилл — заново скопировать папку из исходного репозитория.
