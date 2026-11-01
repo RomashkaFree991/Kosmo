@@ -2,7 +2,7 @@
 // синхронизация между вкладками (новые сообщения, входы, завершённые сессии).
 
 import {
-  $, $$, root, db, tab, current, wait, toast, escapeHtml, userAvatarHtml, kosmoAvatar, cosmicBadge, refreshRefraction,
+  $, $$, root, db, tab, current, wait, toast, escapeHtml, userAvatarHtml, kosmoAvatar, cosmicBadge, userBadge, refreshRefraction,
 } from './core.js';
 import { state, openPanel, closePanel, panelOpen, onPanelClose, resetPanels } from './panels.js';
 import {
@@ -67,8 +67,13 @@ function renderSearch(query) {
       if (r.id && searchInput.value.trim().toLowerCase() === q) renderSearch(searchInput.value);
     }).catch(() => {});
   }
-  const people = Object.values(db.all())
-    .filter((u) => u.id !== me.id && (!q || u.name.toLowerCase().includes(q) || (u.username && u.username.includes(q)) || u.publicId === q || (emailHit.q === q && emailHit.id === u.id)));
+  // люди — только по запросу: начало @username, начало слова в имени, точный ID или почта
+  const people = !q ? [] : Object.values(db.all())
+    .filter((u) => u.id !== me.id && ((u.username && u.username.startsWith(q))
+      || u.name.toLowerCase().split(/\s+/).some((w) => w.startsWith(q))
+      || u.publicId === q || (emailHit.q === q && emailHit.id === u.id)))
+    .sort((a, b) => (b.username === q) - (a.username === q) || Boolean(b.official) - Boolean(a.official) || (a.username ?? '').length - (b.username ?? '').length)
+    .slice(0, 30);
   const rooms = searchRooms(q);
   if (!kosmo && !people.length && !rooms.length) {
     out.innerHTML = `<div class="search-empty">${ICON.empty}<span>No results</span></div>`;
@@ -92,9 +97,9 @@ function renderSearch(query) {
     people.length && `<p class="section-label">People</p><ul class="chat-list">${people.map((u) => `
       <li class="chat ripple-host" data-person="${u.id}" tabindex="0" role="button">
         ${userAvatarHtml(u)}
-        <div class="chat-top"><span class="chat-name name-with-badge">${highlight(u.name, query)}${u.role === 'owner' ? cosmicBadge('owner') : ''}</span></div>
+        <div class="chat-top"><span class="chat-name name-with-badge"><span>${highlight(u.name, query)}</span>${userBadge(u)}</span></div>
         <div class="chat-meta"></div>
-        <div class="chat-bottom"><span class="chat-text">${u.username ? `@${highlight(u.username, query)}` : `ID ${escapeHtml(u.publicId)}`}</span></div>
+        <div class="chat-bottom"><span class="chat-text">${u.username ? `@${highlight(u.username, query)}` : `ID ${escapeHtml(u.publicId)}`}${u.official ? ' · official account' : ''}</span></div>
       </li>`).join('')}</ul>`,
   ].filter(Boolean).join('');
   hydrateMedia(out);
@@ -363,7 +368,7 @@ document.addEventListener('kosmo:session-ended', () => {
 });
 
 async function leave(message) {
-  shutdown();
+  shutdown({ wipe: true });
   tab.clear();
   resetPanels();
   $('#lock').hidden = true;

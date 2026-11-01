@@ -15,7 +15,7 @@ const CODE_TTL = 5 * 60_000;
 const TICKET_TTL = 15 * 60_000;
 
 export class ApiError extends Error {
-  constructor(status, code, message) { super(message ?? code); this.status = status; this.code = code; }
+  constructor(status, code, message, extra) { super(message ?? code); this.status = status; this.code = code; this.extra = extra; }
 }
 
 export const normPhone = (p) => {
@@ -86,12 +86,29 @@ export function useTicket(id, purpose, consume = true) {
 export function hashPass(code, salt = crypto.randomBytes(16).toString('hex')) {
   return { salt, hash: crypto.scryptSync(String(code), salt, 32).toString('hex') };
 }
+// 3 неверных попытки подряд — ввод код-пароля закрыт на 5 минут (на всех устройствах).
+// Неверный код — ошибка wrong_passcode с числом оставшихся попыток.
+const PASS_TRIES = 3;
+const PASS_LOCK = 5 * 60_000;
+const lockedError = (until) => new ApiError(429, 'passcode_locked', 'Too many wrong passcodes. Try again later', { retryAt: until });
+
 export function verifyPass(userId, code) {
   const r = users.row(userId);
   if (!r) return false;
-  if (!rateLimit(`pass:${userId}`, 10, 15 * 60_000)) throw new ApiError(429, 'too_many', 'Too many attempts, try in 15 minutes');
+  const key = `passfail:${userId}`;
+  const now = Date.now();
+  const fail = sql.prepare('SELECT count, reset FROM rate WHERE key = ?').get(key);
+  const fails = fail && fail.reset > now ? fail.count : 0;
+  if (fails >= PASS_TRIES) throw lockedError(fail.reset);
   const { hash } = hashPass(code, r.pass_salt);
-  return crypto.timingSafeEqual(Buffer.from(hash, 'hex'), Buffer.from(r.pass_hash, 'hex'));
+  if (crypto.timingSafeEqual(Buffer.from(hash, 'hex'), Buffer.from(r.pass_hash, 'hex'))) {
+    sql.prepare('DELETE FROM rate WHERE key = ?').run(key);
+    return true;
+  }
+  const n = fails + 1;
+  sql.prepare('INSERT OR REPLACE INTO rate (key, count, reset) VALUES (?, ?, ?)').run(key, n, now + PASS_LOCK);
+  if (n >= PASS_TRIES) throw lockedError(now + PASS_LOCK);
+  throw new ApiError(401, 'wrong_passcode', 'Wrong passcode', { left: PASS_TRIES - n });
 }
 export function setPass(userId, code) {
   if (!/^\d{4}$/.test(String(code))) throw new ApiError(400, 'bad_passcode', 'Passcode must be 4 digits');
@@ -154,6 +171,7 @@ export function project(user, viewerId) {
     avatar: p.avatar === 'nobody' ? { ...(user.avatar ?? {}), photo: null } : user.avatar ?? {},
     publicId: user.publicId,
     role: user.role,
+    official: Boolean(user.official),
     createdAt: user.createdAt,
     // почта скрыта, пока человек сам не откроет её в приватности
     email: p.showEmail ? user.email : '',

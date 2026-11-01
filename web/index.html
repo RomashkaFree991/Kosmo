@@ -25,7 +25,7 @@
       try { mode = localStorage.getItem('kosmo:scheme') || 'dark'; } catch (e) {}
       root.dataset.scheme = mode === 'auto' ? (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark') : mode;
       var signedIn = false;
-      try { signedIn = Boolean(localStorage.getItem('kosmo:auth')); } catch (e) {}
+      try { signedIn = Boolean(sessionStorage.getItem('kosmo:auth') || localStorage.getItem('kosmo:auth')); } catch (e) {}
       if (signedIn) root.classList.add('has-session');
       else if (!matchMedia('(prefers-reduced-motion: reduce)').matches) root.classList.add('is-intro');
     })();
@@ -162,6 +162,7 @@
         <div class="pass-cells" id="pass-cells" role="img" aria-label="0 of 4 digits entered">
           <span class="pass-cell"></span><span class="pass-cell"></span><span class="pass-cell"></span><span class="pass-cell"></span>
         </div>
+        <p class="pass-hint" id="pass-hint" aria-live="polite"></p>
         <div class="keypad" id="keypad" aria-label="Keypad">
           <button type="button" class="key" data-key="1"><span class="key-num">1</span><span class="key-sub">&nbsp;</span></button>
           <button type="button" class="key" data-key="2"><span class="key-num">2</span><span class="key-sub">ABC</span></button>

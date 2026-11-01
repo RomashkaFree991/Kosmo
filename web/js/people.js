@@ -1,7 +1,7 @@
 // Профиль собеседника: открывается из чата поверх него.
 // Номер и био показываются, только если человек их не скрыл.
 
-import { $, db, toast, escapeHtml, userAvatarHtml, cosmicBadge } from './core.js';
+import { $, db, toast, escapeHtml, userAvatarHtml, cosmicBadge, userBadge } from './core.js';
 import { openOverlay, closeOverlay, state } from './panels.js';
 import { hydrateMedia } from './media.js';
 
@@ -41,7 +41,8 @@ export function showUser(userId) {
         <span class="hero-orbit" aria-hidden="true"></span>
         ${userAvatarHtml(shownUser, 'avatar-hero')}
       </div>
-      <h2 class="profile-name"><span>${escapeHtml(u.name)}</span>${u.role === 'owner' ? cosmicBadge('owner') : ''}</h2>
+      <h2 class="profile-name"><span>${escapeHtml(u.name)}</span>${userBadge(u)}</h2>
+      ${u.official ? '<p class="official-note">Official account</p>' : ''}
       <div class="hero-actions">
         <button class="pill-btn" type="button" data-user-message>${ICON.chat}Message</button>
         <button class="pill-btn" type="button" data-user-call="voice" aria-label="Voice call">${ICON.call}Call</button>

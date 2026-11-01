@@ -431,7 +431,7 @@ const server = http.createServer(async (req, res) => {
     }
     return serveStatic(req, res, pathname);
   } catch (e) {
-    if (e instanceof ApiError) return send(res, e.status, { error: e.code, message: e.message });
+    if (e instanceof ApiError) return send(res, e.status, { ...(e.extra ?? {}), error: e.code, message: e.message });
     console.error(e);
     return send(res, 500, { error: 'server_error', message: 'Something went wrong' });
   }

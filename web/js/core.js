@@ -8,10 +8,18 @@ export const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 export const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 export const uid = () => (crypto.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`);
 
+// Кеш данных аккаунта (chats, feed…) лежит под ключом этого аккаунта:
+// вкладки с разными аккаунтами не перетирают друг другу переписку.
+const SCOPED = new Set(['accounts', 'chats', 'feed', 'stories']);
+const fullKey = (key) => {
+  const u = SCOPED.has(key) && tab.get()?.uid;
+  return u ? `kosmo:${u}:${key}` : `kosmo:${key}`;
+};
+
 export const store = {
-  get(key) { try { return localStorage.getItem(`kosmo:${key}`); } catch { return null; } },
-  set(key, value) { try { localStorage.setItem(`kosmo:${key}`, value); } catch { /* приватный режим */ } },
-  remove(key) { try { localStorage.removeItem(`kosmo:${key}`); } catch { /* приватный режим */ } },
+  get(key) { try { return localStorage.getItem(fullKey(key)); } catch { return null; } },
+  set(key, value) { try { localStorage.setItem(fullKey(key), value); } catch { /* приватный режим */ } },
+  remove(key) { try { localStorage.removeItem(fullKey(key)); } catch { /* приватный режим */ } },
   getJSON(key, fallback) {
     try { return JSON.parse(this.get(key)) ?? fallback; } catch { return fallback; }
   },
@@ -263,6 +271,9 @@ export function kosmoAvatar(cls = '') {
   </span>`;
 }
 
+// Значок рядом с именем: официальный аккаунт (выдаётся только на сервере) или владелец
+export const userBadge = (u) => (u?.official ? cosmicBadge('official') : u?.role === 'owner' ? cosmicBadge('owner') : '');
+
 // «Космическая» галочка: планета с кольцом и галочкой.
 // official — официальные аккаунты (фиолетовая), owner — владелец (золотая)
 export function cosmicBadge(kind = 'official') {
@@ -351,10 +362,30 @@ export const db = {
 };
 
 // Вход этого браузера: { uid, sid, token } — остаётся после перезапуска
+// Вход этой вкладки (sessionStorage): в разных вкладках могут быть разные
+// аккаунты. Последний вход запоминается в localStorage — новая вкладка
+// и следующий запуск сайта открываются в нём.
+const readJSON = (s, k) => { try { return JSON.parse(s.getItem(k)); } catch { return null; } };
 export const tab = {
-  get() { try { return JSON.parse(localStorage.getItem('kosmo:auth')); } catch { return null; } },
-  set(value) { try { localStorage.setItem('kosmo:auth', JSON.stringify(value)); } catch { /* приватный режим */ } },
-  clear() { try { localStorage.removeItem('kosmo:auth'); } catch { /* приватный режим */ } },
+  get() {
+    const own = readJSON(sessionStorage, 'kosmo:auth');
+    if (own) return own;
+    const last = readJSON(localStorage, 'kosmo:auth');
+    if (last) try { sessionStorage.setItem('kosmo:auth', JSON.stringify(last)); } catch { /* */ }
+    return last;
+  },
+  set(value) {
+    const v = JSON.stringify(value);
+    try { sessionStorage.setItem('kosmo:auth', v); localStorage.setItem('kosmo:auth', v); } catch { /* приватный режим */ }
+  },
+  clear() {
+    const own = readJSON(sessionStorage, 'kosmo:auth');
+    try {
+      sessionStorage.removeItem('kosmo:auth');
+      // «последний вход» забываем, только если это он и есть
+      if (!own || readJSON(localStorage, 'kosmo:auth')?.sid === own.sid) localStorage.removeItem('kosmo:auth');
+    } catch { /* приватный режим */ }
+  },
 };
 
 // Текущий вошедший аккаунт, если его сессия есть в данных

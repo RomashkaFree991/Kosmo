@@ -2,7 +2,7 @@
 // пересылка в чаты, просмотры. Автор может изменить или удалить свой пост.
 
 import {
-  $, $$, db, store, toast, shake, escapeHtml, userAvatarHtml, cosmicBadge, formatTime, timeAgo, refreshRefraction, patchList,
+  $, $$, db, store, toast, shake, escapeHtml, userAvatarHtml, cosmicBadge, userBadge, formatTime, timeAgo, refreshRefraction, patchList,
 } from './core.js';
 import { state, openPanel, closePanel, openOverlay, closeOverlay, overlayOpen } from './panels.js';
 import { putBlob, hydrateMedia, compressImage, mediaDuration } from './media.js';
@@ -57,7 +57,7 @@ function postCard(p, { full = false, i = 0 } = {}) {
       <header class="post-head">
         <button class="post-author" type="button" data-post-author="${author.id ?? ''}">
           ${userAvatarHtml(author)}
-          <span class="post-who"><b class="name-with-badge">${escapeHtml(author.name)}${author.role === 'owner' ? cosmicBadge('owner') : ''}</b>
+          <span class="post-who"><b class="name-with-badge">${escapeHtml(author.name)}${userBadge(author)}</b>
           <span>${timeAgo(p.at)}${p.edited ? ' · edited' : ''}</span></span>
         </button>
         ${mine ? `<button class="icon-btn post-more-btn" type="button" data-post-menu="${p.id}" aria-label="Post options">${I.more}</button>` : ''}
@@ -281,7 +281,7 @@ function commentHtml(c, p) {
     <li class="comment" data-c="${c.id}">
       <button class="comment-avatar" type="button" data-post-author="${db.get(c.from) ? c.from : ''}">${userAvatarHtml(u, 'avatar-xs')}</button>
       <div class="comment-body">
-        <span class="comment-name">${escapeHtml(u.name)}${u.role === 'owner' ? cosmicBadge('owner') : ''}${c.from === p.author ? '<span class="role-chip">Author</span>' : ''}<time>${formatTime(c.at)}</time></span>
+        <span class="comment-name">${escapeHtml(u.name)}${userBadge(u)}${c.from === p.author ? '<span class="role-chip">Author</span>' : ''}<time>${formatTime(c.at)}</time></span>
         <p class="comment-text">${escapeHtml(c.text).replace(/\n/g, '<br>')}</p>
       </div>
       ${canDel ? `<button class="comment-del" type="button" data-del-pc="${c.id}" aria-label="Delete comment">${ICON.trash}</button>` : ''}

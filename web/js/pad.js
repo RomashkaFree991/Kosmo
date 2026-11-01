@@ -3,6 +3,31 @@
 
 import { wait, shake } from './core.js';
 
+// Ввод закрыт после 3 неверных попыток: «Try again in 4:59» до времени until
+export function lockCountdown(hintEl, until, onDone) {
+  clearInterval(hintEl._t);
+  const paint = () => {
+    const left = Math.max(0, Math.ceil((until - Date.now()) / 1000));
+    hintEl.textContent = `Too many attempts. Try again in ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`;
+    hintEl.classList.add('is-locked');
+    if (!left) {
+      clearInterval(hintEl._t);
+      hintEl.textContent = '';
+      hintEl.classList.remove('is-locked');
+      onDone?.();
+    }
+  };
+  paint();
+  hintEl._t = setInterval(paint, 1000);
+}
+
+// Подпись под ячейками после неверного кода
+export function attemptsHint(hintEl, left) {
+  clearInterval(hintEl._t);
+  hintEl.classList.remove('is-locked');
+  hintEl.textContent = left === 1 ? 'Wrong passcode. 1 attempt left' : `Wrong passcode. ${left} attempts left`;
+}
+
 const KEYS = [
   ['1', ' '], ['2', 'ABC'], ['3', 'DEF'], ['4', 'GHI'], ['5', 'JKL'], ['6', 'MNO'],
   ['7', 'PQRS'], ['8', 'TUV'], ['9', 'WXYZ'],
@@ -12,6 +37,7 @@ const DEL = '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5
 export function createPad(el, { length = 4, onComplete }) {
   el.innerHTML = `
     <div class="pass-cells" role="img" aria-label="0 of ${length} digits entered">${'<span class="pass-cell"></span>'.repeat(length)}</div>
+    <p class="pass-hint" aria-live="polite"></p>
     <div class="keypad">
       ${KEYS.map(([n, s]) => `<button type="button" class="key" data-k="${n}"><span class="key-num">${n}</span><span class="key-sub">${s.trim() || '&nbsp;'}</span></button>`).join('')}
       <span class="key-spacer" aria-hidden="true"></span>
@@ -24,6 +50,7 @@ export function createPad(el, { length = 4, onComplete }) {
   cells.forEach((c, i) => c.style.setProperty('--i', i));
   let code = '';
   let busy = false;
+  let disabled = false;
 
   function render() {
     cells.forEach((c, i) => {
@@ -35,7 +62,7 @@ export function createPad(el, { length = 4, onComplete }) {
   }
 
   async function press(k) {
-    if (busy) return;
+    if (busy || disabled) return;
     if (k === 'del') code = code.slice(0, -1);
     else if (code.length < length) code += k;
     render();
@@ -70,6 +97,17 @@ export function createPad(el, { length = 4, onComplete }) {
 
   const api = {
     reset() { code = ''; busy = false; cellsBox.classList.remove('is-done', 'is-error'); render(); },
+    disable(on) { disabled = on; el.classList.toggle('is-disabled', on); },
+    hint: el.querySelector('.pass-hint'),
+    // ошибка проверки на сервере: неверный код (осталось N попыток) или ввод закрыт на 5 минут
+    async fail(err) {
+      if (err?.code === 'passcode_locked') {
+        api.disable(true);
+        lockCountdown(api.hint, err.data.retryAt, () => api.disable(false));
+      } else if (err?.code === 'wrong_passcode') attemptsHint(api.hint, err.data.left);
+      await api.error();
+    },
+    clearHint() { clearInterval(api.hint._t); api.hint.textContent = ''; api.hint.classList.remove('is-locked'); },
     async error() {
       shake(cellsBox);
       await wait(500);

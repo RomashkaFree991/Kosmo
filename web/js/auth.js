@@ -9,6 +9,7 @@ import { api, boot } from './api.js';
 import { openSheet, closeSheet } from './phone.js';
 import { showLoginQr, stopLoginQr } from './qrlogin.js';
 import { createOtp } from './otp.js';
+import { lockCountdown, attemptsHint } from './pad.js';
 
 const auth = $('#auth');
 const backBtn = $('#back-btn');
@@ -227,6 +228,9 @@ function openPasscode(mode) {
   passCells.classList.remove('is-done', 'is-error');
   $('#pass-title').textContent = { create: 'Create passcode', enter: 'Enter passcode', reset: 'New passcode' }[mode];
   $('#forgot-btn').hidden = mode !== 'enter';
+  clearInterval($('#pass-hint')._t);
+  $('#pass-hint').textContent = '';
+  $('#pass-hint').classList.remove('is-locked');
   renderPass();
   const fromBack = $('.auth .screen.is-active')?.id === 'screen-name';
   showScreen('screen-pass', fromBack ? 'back' : 'forward');
@@ -255,7 +259,13 @@ async function submitPass() {
       pass = '';
       renderPass();
       passBusy = false;
-      if (err.code !== 'wrong_passcode' || attempts >= 3) toast(err.message);
+      // 3 неверных попытки — сервер закрывает ввод на 5 минут
+      if (err.code === 'wrong_passcode') attemptsHint($('#pass-hint'), err.data.left);
+      else if (err.code === 'passcode_locked') {
+        passBusy = true;
+        $('#screen-pass').classList.add('is-disabled');
+        lockCountdown($('#pass-hint'), err.data.retryAt, () => { passBusy = false; $('#screen-pass').classList.remove('is-disabled'); });
+      } else toast(err.message);
       if (err.code === 'bad_ticket') showScreen('screen-email', 'back');
       return;
     }

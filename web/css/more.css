@@ -564,3 +564,23 @@ html[data-theme="material"] .search-tabs [aria-selected="true"] { background: va
 .field-input::placeholder { color: var(--c-text-3); font-weight: 400; }
 .forgot-btn { margin-top: 10px; color: var(--c-text-2); font-weight: 500; font-size: 15px; }
 .code-spam { display: block; margin-top: 4px; color: var(--c-text-3); font-size: 13px; }
+
+/* ---------- Подсказка под код-паролем: попытки и блокировка ---------- */
+.pass-hint { min-height: 20px; margin: 14px 0 0; color: var(--c-error); font-size: 14px; font-weight: 500; text-align: center; font-variant-numeric: tabular-nums; }
+.pass-hint:empty { visibility: hidden; }
+.pass-hint.is-locked { color: var(--c-text-2); }
+.is-disabled .keypad, .is-disabled .pass-cells { opacity: 0.4; pointer-events: none; transition: opacity 200ms ease; }
+.official-note { margin: -4px 0 10px; color: var(--c-accent); font-size: 14px; font-weight: 600; text-align: center; }
+
+/* Пустой чат: большой стикер-приветствие */
+.hello-sticker { display: flex; flex-direction: column; align-items: center; gap: 6px; margin-top: 14px; padding: 12px 18px; border: 0; border-radius: 24px; background: none; color: var(--c-text-2); font-size: 14px; font-weight: 500; transition: scale 200ms var(--spring); }
+.hello-sticker .sticker { width: 120px; height: 120px; }
+.hello-sticker:active { scale: 0.94; }
+.hello-sticker:disabled { opacity: 0.5; }
+
+/* Каналы и группы: аватар везде — закруглённый квадрат (список, шапка, профиль,
+   «Переслать», поиск), в обоих стилях; без круглой орбиты в профиле */
+.avatar.avatar-room,
+html[data-theme="material"] .avatar.avatar-room { clip-path: none !important; border-radius: 30% !important; }
+.hero-avatar:has(.avatar-room) .hero-orbit { display: none; }
+.hero-avatar:has(.avatar-room) .avatar-room { box-shadow: 0 12px 34px color-mix(in srgb, var(--c-accent) 35%, transparent); }

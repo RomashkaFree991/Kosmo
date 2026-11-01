@@ -19,7 +19,7 @@ const msgHandlers = new Set();
 
 /* ---------- REST ---------- */
 export class ApiError extends Error {
-  constructor(status, code, message) { super(message || code); this.status = status; this.code = code; }
+  constructor(status, code, message, data = {}) { super(message || code); this.status = status; this.code = code; this.data = data; }
 }
 
 export async function api(method, path, body, { auth = true } = {}) {
@@ -35,7 +35,7 @@ export async function api(method, path, body, { auth = true } = {}) {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     if (res.status === 401 && data.error === 'unauthorized') document.dispatchEvent(new CustomEvent('kosmo:session-ended'));
-    throw new ApiError(res.status, data.error, data.message);
+    throw new ApiError(res.status, data.error, data.message, data);
   }
   return data;
 }
@@ -65,11 +65,12 @@ export async function boot() {
   return true;
 }
 
-export function shutdown() {
+// wipe — стереть кеш аккаунта (выход из аккаунта); при переключении кеш остаётся
+export function shutdown({ wipe = false } = {}) {
   me = null;
   queue = [];
   if (ws) { ws.onclose = null; ws.close(); ws = null; }
-  for (const col of COLLECTIONS) { delete shadow[col]; store.remove(col); }
+  for (const col of COLLECTIONS) { delete shadow[col]; if (wipe) store.remove(col); }
 }
 
 /* ---------- Запись в кеш → патчи на сервер ---------- */
@@ -104,8 +105,9 @@ async function flush() {
 
 // Другая вкладка этого браузера записала кеш — она же и отправила изменения
 window.addEventListener('storage', (e) => {
-  const col = e.key?.replace(/^kosmo:/, '');
-  if (COLLECTIONS.includes(col) && col in shadow) {
+  const m = e.key?.match(/^kosmo:([^:]+):(\w+)$/);
+  const col = m?.[2];
+  if (m && m[1] === me && COLLECTIONS.includes(col) && col in shadow) {
     try { shadow[col] = JSON.parse(e.newValue); } catch { /* */ }
   }
 });

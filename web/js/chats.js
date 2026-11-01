@@ -8,7 +8,7 @@
 // Демо: переписка хранится в localStorage этого браузера, файлы — в IndexedDB.
 
 import {
-  $, $$, db, store, uid, toast, escapeHtml, userAvatarHtml, kosmoAvatar, cosmicBadge,
+  $, $$, db, store, uid, toast, escapeHtml, userAvatarHtml, kosmoAvatar, cosmicBadge, userBadge,
   formatDate, formatTime, refreshRefraction, timeAgo, patchList,
 } from './core.js';
 import { formatPhone, openSheet } from './phone.js';
@@ -164,7 +164,7 @@ const shortTime = (t) => (new Date(t).toDateString() === new Date().toDateString
 export const fmtDur = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
 export function displayName(u) {
-  return `<span class="name-with-badge">${escapeHtml(u.name)}${u.role === 'owner' ? cosmicBadge('owner') : ''}</span>`;
+  return `<span class="name-with-badge">${escapeHtml(u.name)}${userBadge(u)}</span>`;
 }
 
 export function roomAvatar(c, cls = '') {
@@ -669,6 +669,7 @@ function markOpenRead() {
 // Онлайн / был(а) недавно — с учётом приватности
 function lastSeen(u) {
   if (!u) return '';
+  if (u.official) return 'official account';
   if (u.privacy?.lastSeen === 'nobody') return 'last seen recently';
   const t = Math.max(...u.sessions.map((s) => s.lastActive ?? 0), 0);
   if (Date.now() - t < 120_000) return 'online';
@@ -970,7 +971,7 @@ function emptyState() {
       </div>
       <h3>No messages yet</h3>
       <p>Send ${first} a message, a photo or a voice note.</p>
-      ${panel.dataset.composer === 'compose' ? `<button class="btn btn-secondary glass" type="button" data-say-hello>${emojiSvg('heart', 'emoji-inline')}Say hello</button>` : ''}
+      ${panel.dataset.composer === 'compose' ? `<button class="hello-sticker" type="button" data-say-hello aria-label="Send a greeting">${stickerHtml(stickerByRef('words:0'))}<span>Tap to say hi</span></button>` : ''}
     </div>`;
 }
 
@@ -1179,7 +1180,9 @@ function openMention(name) {
 }
 
 document.addEventListener('click', (e) => {
-  if (e.target.closest('[data-say-hello]')) send({ kind: 'emoji', emoji: 'heart' });
+  // пустой чат: приветствие стикером «Hi!» (один раз — кнопка сразу исчезает)
+  const hello = e.target.closest('[data-say-hello]');
+  if (hello && !hello.disabled) { hello.disabled = true; send({ kind: 'sticker', sticker: stickerByRef('words:0') }); }
   const copyBtn = e.target.closest('[data-copy-code]');
   if (copyBtn) {
     navigator.clipboard?.writeText(copyBtn.closest('.b-code').querySelector('code').textContent)

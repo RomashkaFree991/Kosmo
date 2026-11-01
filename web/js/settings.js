@@ -234,12 +234,16 @@ function startPasscode(mode) {
   openOverlay('passcode');
 }
 
-// код-пароль проверяет сервер (хранится там только хешем)
-async function checkCode(code) {
+// код-пароль проверяет сервер (хранится там только хешем). После 3 неверных
+// попыток сервер закрывает ввод на 5 минут — блок показывает обратный отсчёт.
+async function checkCode(code, padApi) {
   try {
-    return (await serverApi('POST', '/api/passcode/verify', { code })).ok;
+    await serverApi('POST', '/api/passcode/verify', { code });
+    padApi.clearHint();
+    return true;
   } catch (err) {
-    toast(err.message);
+    if (err.code === 'wrong_passcode' || err.code === 'passcode_locked') await padApi.fail(err);
+    else { toast(err.message); await padApi.error(); }
     return false;
   }
 }
@@ -247,7 +251,7 @@ async function checkCode(code) {
 async function onPasscode(code, api) {
   if (!pc) return;
   if (pc.step === 'current') {
-    if (!(await checkCode(code))) { toast('Wrong passcode'); await api.error(); return; }
+    if (!(await checkCode(code, api))) return;
     pc.current = code;
     await api.success();
     if (pc.mode === 'delete') { api.reset(); confirmDelete(); return; }
@@ -316,16 +320,17 @@ document.addEventListener('click', async (e) => {
 /* ---------------------------------------------------------------------------
    Экран блокировки
    --------------------------------------------------------------------------- */
+// Разблокировка живёт только в памяти: каждый запуск (открытие или
+// перезагрузка сайта) снова спрашивает код-пароль. Автоблокировка — после
+// N минут без действий или вне вкладки.
 const lockEl = $('#lock');
-const LOCK_KEY = 'kosmo:unlocked';
+let unlocked = false;
 let hiddenAt = 0;
+let lastActivity = Date.now();
 
 const lockPad = createPad($('#lock-pad'), {
   onComplete: async (code, api) => {
-    if (!(await checkCode(code))) {
-      api.error();
-      return;
-    }
+    if (!(await checkCode(code, api))) return;
     await api.success();
     unlock();
   },
@@ -338,14 +343,15 @@ export function lock() {
   hydrateMedia($('#lock-avatar'));
   $('#lock-title').textContent = `Hi, ${u.name.split(/\s+/)[0]}`;
   lockPad.reset();
-  try { sessionStorage.removeItem(LOCK_KEY); } catch { /* */ }
+  unlocked = false;
   lockEl.hidden = false;
   lockEl.classList.remove('is-leaving');
   document.activeElement?.blur?.();
 }
 
 function unlock() {
-  try { sessionStorage.setItem(LOCK_KEY, '1'); } catch { /* */ }
+  unlocked = true;
+  lastActivity = Date.now();
   lockEl.classList.add('is-leaving');
   setTimeout(() => { lockEl.hidden = true; lockEl.classList.remove('is-leaving'); }, 420);
 }
@@ -353,19 +359,25 @@ function unlock() {
 // Вызывается при показе приложения: нужна ли блокировка
 export function maybeLock() {
   const s = me().security ?? {};
-  let unlocked = false;
-  try { unlocked = sessionStorage.getItem(LOCK_KEY) === '1'; } catch { /* */ }
   if (s.lock && !unlocked) lock();
   else lockEl.hidden = true;
 }
 
+const awayTooLong = (since) => {
+  const s = me().security ?? {};
+  return s.lock && s.autoLock && unlocked && Date.now() - since > s.autoLock * 60_000;
+};
 document.addEventListener('visibilitychange', () => {
   if (!state.acc || $('#app').hidden) return;
-  const s = me().security ?? {};
-  if (!s.lock) return;
   if (document.visibilityState === 'hidden') { hiddenAt = Date.now(); return; }
-  if (s.autoLock && hiddenAt && Date.now() - hiddenAt > s.autoLock * 60_000) lock();
+  if (hiddenAt && awayTooLong(hiddenAt)) lock();
+  hiddenAt = 0;
+  lastActivity = Date.now();
 });
+['pointerdown', 'keydown', 'wheel', 'touchstart'].forEach((t) => document.addEventListener(t, () => { lastActivity = Date.now(); }, { passive: true, capture: true }));
+setInterval(() => {
+  if (state.acc && !$('#app').hidden && lockEl.hidden && awayTooLong(lastActivity)) lock();
+}, 10_000);
 
 $('#lock-logout').addEventListener('click', () => {
   lockEl.hidden = true;
@@ -501,7 +513,7 @@ document.addEventListener('change', (e) => {
   const key = s.dataset.sw;
   const on = s.checked;
   if (['findByEmail', 'readReceipts'].includes(key)) savePrivacy({ [key]: on });
-  else if (key === 'lock' || key === 'loginAlerts') { saveSecurity({ [key]: on }); if (key === 'lock') { renderSecurity(); if (on) { try { sessionStorage.setItem(LOCK_KEY, '1'); } catch { /* */ } toast('Passcode lock is on'); } } }
+  else if (key === 'lock' || key === 'loginAlerts') { saveSecurity({ [key]: on }); if (key === 'lock') { renderSecurity(); if (on) { unlocked = true; toast('Passcode lock is on'); } } }
   else if (key.startsWith('notify.')) saveSettings({ notify: { ...(sets().notify ?? {}), [key.slice(7)]: on } });
   else if (key === 'saveMedia') saveSettings({ compress: on });
   else saveSettings({ [key]: on });

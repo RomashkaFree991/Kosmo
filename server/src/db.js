@@ -122,6 +122,7 @@ export function tx(fn) {
 }
 
 /* ---------- Пользователи ---------- */
+const RESERVED = /^(kosmo|kosmoteam|kosmochat|kosmosupport|official|admin|administrator|support|help|security|system|moderator|root)$/;
 export const users = {
   get(id) {
     const r = sql.prepare('SELECT * FROM users WHERE id = ?').get(id);
@@ -141,6 +142,9 @@ export const users = {
   },
   usernameTaken(name, exceptId) {
     if (!name) return false;
+    // имена официальных аккаунтов: их может носить только аккаунт с флагом official
+    // (флаг ставится вручную в базе на сервере, через API его не получить)
+    if (RESERVED.test(name) && !this.get(exceptId ?? '')?.official) return true;
     if (sql.prepare('SELECT 1 FROM users WHERE username = ? AND id <> ?').get(name, exceptId ?? '')) return true;
     return Boolean(sql.prepare("SELECT 1 FROM chats WHERE json_extract(data, '$.username') = ? AND id <> ?").get(name, exceptId ?? ''));
   },

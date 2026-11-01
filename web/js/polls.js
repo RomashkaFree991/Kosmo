@@ -1,7 +1,7 @@
 // Опросы и викторины в группах и каналах: создание, голосование,
 // результаты с полосками; в викторине — правильный ответ и пояснение.
 
-import { $, $$, toast, shake, escapeHtml, uid, refreshRefraction } from './core.js';
+import { $, $$, store, toast, shake, escapeHtml, uid, refreshRefraction } from './core.js';
 import { state } from './panels.js';
 import { chats } from './chats.js';
 
@@ -56,7 +56,7 @@ export function pollHtml(m, chatId) {
 
 function voterNames(p) {
   const ids = [...new Set(Object.values(p.votes).flat())].slice(0, 3);
-  const db = JSON.parse(localStorage.getItem('kosmo:accounts') || '{}');
+  const db = store.getJSON('accounts', {});
   return ids.map((id) => escapeHtml(db[id]?.name.split(/\s+/)[0] ?? '')).join(', ');
 }
 

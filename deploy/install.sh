@@ -401,7 +401,7 @@ case "\${1:-}" in
   mail-test)
            [ -n "\${2:-}" ] || { echo "Использование: kosmo mail-test адрес@почта"; exit 1; }
            set -a; . $ENV_FILE; set +a; cd $APP_DIR/server
-           exec node --no-warnings=ExperimentalWarning --input-type=module -e "const m = await import('./src/mailer.js'); try { await m.codeMail(process.argv[1], '123456', 'login'); console.log('OK: письмо отправлено, проверьте почту (и папку «Спам»)'); } catch (e) { console.error('Ошибка:', e.message); process.exit(1); }" "\$2" ;;
+           exec node --no-warnings=ExperimentalWarning --input-type=module -e "const m = await import('./src/mailer.js'); for (const l of await m.diagnose()) console.log(l); try { await m.codeMail(process.argv[1], '123456', 'login'); console.log('OK: письмо отправлено, проверьте почту (и папку «Спам»)'); } catch (e) { console.error('Ошибка:', e.message); process.exit(1); }" "\$2" ;;
   sms)     KOSMO_SMS_SETUP=1 exec bash $APP_DIR/deploy/install.sh "$DOMAIN" "$EMAIL" ;;
   sms-key) . $ENV_FILE; echo "Приложение: https://$DOMAIN/kosmo-sms.apk"; echo "Сервер: $DOMAIN"; echo "Ключ:   \$GATEWAY_KEY"
            echo "Телефонов в сети: \$(curl -fsS http://127.0.0.1:$PORT/api/gateway | grep -o '[0-9]*')" ;;

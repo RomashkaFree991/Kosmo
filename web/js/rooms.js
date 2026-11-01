@@ -3,7 +3,7 @@
 // Комментарии хранятся в привязанной группе как сообщения с threadOf.
 
 import {
-  $, db, toast, shake, escapeHtml, userAvatarHtml, cosmicBadge, formatTime, formatDate, refreshRefraction,
+  $, db, toast, shake, escapeHtml, userAvatarHtml, cosmicBadge, userBadge, formatTime, formatDate, refreshRefraction,
 } from './core.js';
 import { state, openPanel, closePanel, openOverlay, closeOverlay, overlayOpen } from './panels.js';
 import { putBlob, hydrateMedia, squareAvatar } from './media.js';
@@ -580,7 +580,7 @@ export function commentRow(m, g, scope = 'comment') {
     <li class="comment" data-${scope}="${m.id}">
       <button class="comment-avatar" type="button" data-member-open="${m.from}">${userAvatarHtml(u, 'avatar-xs')}</button>
       <div class="comment-body">
-        <span class="comment-name">${escapeHtml(u.name)}${u.role === 'owner' ? cosmicBadge('owner') : ''}<time>${formatTime(m.at)}</time></span>
+        <span class="comment-name">${escapeHtml(u.name)}${userBadge(u)}<time>${formatTime(m.at)}</time></span>
         <p class="comment-text">${escapeHtml(m.text).replace(/\n/g, '<br>')}</p>
       </div>
       ${canDel ? `<button class="comment-del" type="button" data-del-${scope}="${m.id}" aria-label="Delete comment">${I.trash}</button>` : ''}
@@ -633,8 +633,9 @@ $('#thread-body').addEventListener('click', (e) => {
 // Для поиска: публичные группы и каналы (с @username) и те, где я состою
 export function searchRooms(q) {
   const me = state.acc.user.id;
-  return Object.values(chats.all()).filter((c) => isRoom(c) && (c.username || c.members.includes(me))
-    && (!q || c.name.toLowerCase().includes(q) || c.username?.includes(q)));
+  // свои — всегда; публичные чужие — только по запросу (начало @username или слова в названии)
+  return Object.values(chats.all()).filter((c) => isRoom(c) && (c.members.includes(me) || (q && c.username))
+    && (!q || c.name.toLowerCase().split(/\s+/).some((w) => w.startsWith(q)) || c.username?.startsWith(q)));
 }
 
 export const roomPreview = (c) => (c.username ? `@${c.username}` : '') + (c.username ? ' · ' : '') + plural(c.members.length, c.type === 'channel' ? 'subscriber' : 'member');

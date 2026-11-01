@@ -2,7 +2,7 @@
 // (фото / цвет / буквы аватарки, имя, @username, био), сессии, смена номера.
 
 import {
-  $, $$, db, wait, toast, shake, escapeHtml, userAvatarHtml, cosmicBadge, AVATAR_COLORS,
+  $, $$, db, wait, toast, shake, escapeHtml, userAvatarHtml, cosmicBadge, userBadge, AVATAR_COLORS,
   timeAgo, refreshRefraction, initials,
 } from './core.js';
 import { createOtp } from './otp.js';
@@ -72,7 +72,8 @@ export function renderProfile(force = false) {
         ${userAvatarHtml(u, 'avatar-hero')}
         <span class="hero-edit" aria-hidden="true">${ICON.camera}</span>
       </button>
-      <h2 class="profile-name"><span>${escapeHtml(u.name)}</span>${u.role === 'owner' ? cosmicBadge('owner') : ''}</h2>
+      <h2 class="profile-name"><span>${escapeHtml(u.name)}</span>${userBadge(u)}</h2>
+      ${u.official ? '<p class="official-note">Official account</p>' : ''}
       <button class="pill-btn" type="button" data-open-edit>${ICON.edit}Edit profile</button>
     </section>
 

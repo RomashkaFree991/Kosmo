@@ -8,12 +8,11 @@ const isRoom = (c) => c?.type === 'group' || c?.type === 'channel';
 const isAdmin = (c, uid) => c?.owner === uid || (c?.admins ?? []).includes(uid);
 const deny = (msg) => { throw new ApiError(403, 'forbidden', msg); };
 const USERNAME_RE = /^(?=.*[a-z])[a-z0-9]{3,32}$/;
-const RESERVED = ['kosmo', 'admin', 'support', 'settings', 'official'];
 const LIMIT_TEXT = 8000;
 
 function checkUsername(name, exceptId) {
   if (!name) return;
-  if (!USERNAME_RE.test(name) || RESERVED.includes(name)) throw new ApiError(400, 'bad_username', 'Invalid username');
+  if (!USERNAME_RE.test(name)) throw new ApiError(400, 'bad_username', 'Invalid username');
   if (users.usernameTaken(name, exceptId)) throw new ApiError(409, 'username_taken', 'This username is taken');
 }
 
