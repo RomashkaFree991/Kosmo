@@ -15,7 +15,8 @@ import { smsChannel } from './sms.js';
 import { noticeMail } from './mailer.js';
 import { handleGatewayUpgrade, gatewayStatus } from './gateway.js';
 import { startBot } from './tgbot.js';
-import { snapshot, applyPatches, broadcastUser, housekeeping } from './sync.js';
+import { snapshot, applyPatches, broadcastUser, housekeeping, findInvite, joinByInvite } from './sync.js';
+import * as bots from './bots.js';
 import { attachRealtime, kickSession, qrDeliver, sendTo } from './realtime.js';
 
 const MIME = {
@@ -232,6 +233,42 @@ route('POST', '/api/passcode/change', async (req) => {
   broadcastUser(s.userId);
   return { ok: true };
 });
+
+// Приглашение в группу/канал по ссылке: превью и вход
+route('GET', '/api/invite/:code', (req, p) => {
+  auth(req);
+  const { c, inv } = findInvite(p.code);
+  return { id: c.id, type: c.type, name: c.name, bio: c.bio ?? '', avatar: c.avatar ?? {}, members: c.members.length, expires: inv.expires ?? null };
+});
+route('POST', '/api/join', async (req) => {
+  const s = auth(req);
+  const { code } = await readBody(req);
+  if (!rateLimit(`join:${s.userId}`, 30, 3_600_000)) throw new ApiError(429, 'too_many', 'Too many requests, try later');
+  return { id: joinByInvite(s.userId, String(code ?? '')) };
+});
+
+// Боты: создать, список, новый токен, удалить
+route('GET', '/api/bots', (req) => ({ bots: bots.myBots(auth(req).userId) }));
+route('POST', '/api/bots', async (req) => {
+  const s = auth(req);
+  const { name, username } = await readBody(req);
+  return bots.createBot(s.userId, name, username);
+});
+route('POST', '/api/bots/:id/token', (req, p) => ({ token: bots.newToken(auth(req).userId, p.id) }));
+route('DELETE', '/api/bots/:id', (req, p) => { bots.deleteBot(auth(req).userId, p.id); return { ok: true }; });
+
+// API бота: /api/bot/<токен>/<метод>, параметры — в JSON или в строке запроса
+for (const method of ['GET', 'POST']) {
+  route(method, '/api/bot/:token/:method', async (req, p) => {
+    const bot = bots.botByToken(p.token);
+    const q = Object.fromEntries(new URL(req.url, 'http://x').searchParams);
+    const body = method === 'POST' ? { ...q, ...(await readBody(req)) } : q;
+    if (p.method === 'getMe') return { ok: true, result: bots.getMe(bot) };
+    if (p.method === 'getUpdates') return { ok: true, result: await bots.getUpdates(bot, Number(body.offset) || 0, body.timeout) };
+    if (p.method === 'sendMessage') return { ok: true, result: bots.sendMessage(bot, body) };
+    throw new ApiError(404, 'unknown_method', 'Unknown method');
+  });
+}
 
 // Смена почты: код на старую почту → код на новую
 route('POST', '/api/email/code', async (req) => {

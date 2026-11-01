@@ -5,6 +5,7 @@ import { applyToDoc } from '../../web/js/patch.js';
 import { users, chats, posts, stories, tx } from './db.js';
 import { project, ApiError } from './auth.js';
 import { checkAccount, checkChat, checkPost, checkStory } from './rules.js';
+import { noteMessages } from './bots.js';
 import { sendTo, sendAll, connectedUsers } from './realtime.js';
 
 const DAY = 24 * 3600 * 1000;
@@ -35,6 +36,7 @@ export function broadcastUser(userId, exceptConn) {
 }
 
 function broadcastChat(patch, before, after, exceptConn) {
+  noteMessages(patch, before, after);   // входящие для ботов-участников
   const audience = new Set([...(before?.members ?? []), ...(after?.members ?? [])]);
   // публичные группы и каналы видят все
   if (isPublicRoom(before) || isPublicRoom(after)) connectedUsers().forEach((u) => audience.add(u));
@@ -128,8 +130,20 @@ export function housekeeping() {
   for (const c of chats.all()) {
     const due = (c.scheduled ?? []).filter((s) => s.sendAt <= now);
     const expired = (c.messages ?? []).filter((m) => m.expiresAt && m.expiresAt <= now).map((m) => m.id);
-    if (!due.length && !expired.length) continue;
+    // опросы с дедлайном: закрыть и написать итог в чат
+    const ended = (c.messages ?? []).filter((m) => m.poll && !m.poll.closed && m.poll.closesAt && m.poll.closesAt <= now);
+    if (!due.length && !expired.length && !ended.length) continue;
     const up = due.map((s) => ({ ...s.msg, id: s.id, at: now, scheduledAt: s.sendAt, ...(c.ttl ? { expiresAt: now + c.ttl * 1000 } : {}) }));
+    for (const m of ended) {
+      up.push({ ...m, poll: { ...m.poll, closed: true } });
+      const counts = m.poll.options.map((o) => ({ text: o.text, n: m.poll.votes?.[o.id]?.length ?? 0 }));
+      const top = Math.max(0, ...counts.map((x) => x.n));
+      up.push({
+        id: `${m.id}-result`, at: now, from: m.from, kind: 'poll-result', pollOf: m.id, question: m.poll.question,
+        total: new Set(Object.values(m.poll.votes ?? {}).flat()).size,
+        winners: top ? counts.filter((x) => x.n === top).map((x) => x.text) : [], top,
+      });
+    }
     const p = { col: 'chats', id: c.id, op: 'put', set: { scheduled: (c.scheduled ?? []).filter((s) => s.sendAt > now) }, msgs: { up, del: expired } };
     if (due.length) p.set.read = { ...(c.read ?? {}), ...Object.fromEntries(due.map((s) => [s.from, now])) };
     const after = applyToDoc('chats', c, p);
@@ -139,4 +153,28 @@ export function housekeeping() {
   for (const s of stories.all()) {
     if (now - s.at >= DAY) { stories.remove(s.id); sendAll({ t: 'patch', patch: { col: 'stories', id: s.id, op: 'del' } }); }
   }
+}
+
+/* ---------- Вход в группу или канал по ссылке-приглашению ---------- */
+const inviteOf = (c, code) => (c.invites ?? []).find((i) => i.code === code);
+export function findInvite(code) {
+  const c = chats.all().find((x) => inviteOf(x, code));
+  if (!c) throw new ApiError(404, 'invite_not_found', 'Invite link not found');
+  const inv = inviteOf(c, code);
+  if (inv.expires && inv.expires < Date.now()) throw new ApiError(410, 'invite_expired', 'This invite link has expired');
+  if (inv.limit && (inv.used ?? 0) >= inv.limit) throw new ApiError(410, 'invite_expired', 'This invite link has expired');
+  return { c, inv };
+}
+
+export function joinByInvite(uid, code) {
+  const { c, inv } = findInvite(code);
+  if (c.members.includes(uid)) return c.id;
+  const p = {
+    col: 'chats', id: c.id, op: 'put',
+    set: { members: [...c.members, uid], invites: c.invites.map((i) => (i === inv ? { ...i, used: (i.used ?? 0) + 1 } : i)) },
+  };
+  const after = applyToDoc('chats', c, p);
+  chats.save(after);
+  broadcastChat(p, c, after);
+  return c.id;
 }

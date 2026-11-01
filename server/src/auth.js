@@ -94,7 +94,7 @@ const lockedError = (until) => new ApiError(429, 'passcode_locked', 'Too many wr
 
 export function verifyPass(userId, code) {
   const r = users.row(userId);
-  if (!r) return false;
+  if (!r?.pass_hash) return false;   // у ботов нет код-пароля
   const key = `passfail:${userId}`;
   const now = Date.now();
   const fail = sql.prepare('SELECT count, reset FROM rate WHERE key = ?').get(key);
@@ -172,6 +172,10 @@ export function project(user, viewerId) {
     publicId: user.publicId,
     role: user.role,
     official: Boolean(user.official),
+    premium: Boolean(user.premium),
+    bot: Boolean(user.bot),
+    // статус «эмодзи + текст» до времени until
+    status: user.status && (!user.status.until || user.status.until > Date.now()) ? user.status : null,
     createdAt: user.createdAt,
     // почта скрыта, пока человек сам не откроет её в приватности
     email: p.showEmail ? user.email : '',

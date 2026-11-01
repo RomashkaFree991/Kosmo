@@ -19,6 +19,11 @@ import { showUser } from './people.js';
 import { openViewer } from './viewer.js';
 import { posts } from './feeddata.js';
 import { stickerHtml, stickerPickerHtml, stickerByRef } from './stickers.js';
+import {
+  PI, savedId, isSavedChat, savedAvatar, isBookmarked, toggleBookmark, translate, translationOf, clearTranslation,
+  openQuote, statusHtml, openTodoCreator, todoHtml, pollResultHtml, openLocation, locationHtml, stopLive, viewOnceHtml,
+  topicsBarHtml, openTopicCreator, GENERAL, startTranscriber,
+} from './plus.js';
 import { pollHtml, openPollCreator, closePoll, retractVote } from './polls.js';
 import { roundHtml, openRoundRecorder } from './round.js';
 import { startCall } from './calls.js';
@@ -164,7 +169,7 @@ const shortTime = (t) => (new Date(t).toDateString() === new Date().toDateString
 export const fmtDur = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
 export function displayName(u) {
-  return `<span class="name-with-badge">${escapeHtml(u.name)}${userBadge(u)}</span>`;
+  return `<span class="name-with-badge">${escapeHtml(u.name)}${userBadge(u)}${statusHtml(u)}</span>`;
 }
 
 export function roomAvatar(c, cls = '') {
@@ -251,7 +256,7 @@ export function previewText(m) {
   if (!m) return '';
   const cap = m.caption ? ` · ${m.caption}` : '';
   switch (m.kind) {
-    case 'photo': return `Photo${cap}`;
+    case 'photo': return m.viewOnce ? 'View-once photo' : `Photo${cap}`;
     case 'video': return `Video${cap}`;
     case 'voice': return `Voice message · ${fmtDur(m.duration ?? 0)}`;
     case 'audio': return m.name ?? 'Music';
@@ -264,6 +269,9 @@ export function previewText(m) {
     case 'poll': return `${m.poll.quiz ? 'Quiz' : 'Poll'}: ${m.poll.question}`;
     case 'invite': return 'Invitation';
     case 'call': return `${m.video ? 'Video call' : 'Call'}${m.duration ? ` · ${fmtDur(m.duration)}` : ''}`;
+    case 'todo': return `Checklist: ${m.todo.title || m.todo.items[0]?.text || ''}`;
+    case 'poll-result': return `Poll results: ${m.question}`;
+    case 'location': return m.location?.live ? 'Live location' : 'Location';
     default: return m.text;
   }
 }
@@ -291,7 +299,7 @@ function listItems() {
   for (const c of chats.forUser(me)) {
     const p = prefs(c.id);
     const msgs = mainMessages(c, me);
-    if (!msgs.length && !isRoom(c) && !isSecret(c)) continue;
+    if (!msgs.length && !isRoom(c) && !isSecret(c) && !p.draft) continue;
     const last = msgs[msgs.length - 1];
     const lastAt = last?.at ?? c.createdAt ?? 0;
     const unread = msgs.filter((m) => m.from !== me && m.at > (c.read[me] ?? 0)).length;
@@ -303,6 +311,13 @@ function listItems() {
       });
       continue;
     }
+    if (isSavedChat(c)) {
+      items.push({
+        id: c.id, saved: true, lastAt, unread: 0, pinned: p.pinned ?? 0, archived: p.archived,
+        preview: last ? escapeHtml(previewText(last)) : 'Save messages here',
+      });
+      continue;
+    }
     const otherId = c.members.find((x) => x !== me) ?? me;
     const other = publicUser(db.get(otherId)) ?? { id: otherId, name: 'Deleted account', username: '', avatar: {} };
     items.push({
@@ -311,6 +326,11 @@ function listItems() {
       mineRead: last?.from === me && isRead(c, last),
       mine: last?.from === me,
     });
+  }
+  // черновики: недописанное сообщение видно в списке
+  for (const it of items) {
+    const d = prefs(it.id).draft;
+    if (d?.text) { it.preview = `<span class="draft-label">Draft:</span> ${escapeHtml(d.text)}`; it.lastAt = Math.max(it.lastAt, d.at ?? 0); it.mine = false; }
   }
   return items.sort((a, b) => (b.pinned || 0) - (a.pinned || 0) || b.lastAt - a.lastAt);
 }
@@ -324,8 +344,8 @@ function isRead(c, m) {
 }
 
 function chatRow(it, i) {
-  const avatar = it.kosmo ? kosmoAvatar() : it.room ? roomAvatar(it.room) : userAvatarHtml(it.other);
-  const name = it.kosmo ? KOSMO_NAME : it.room ? roomName(it.room)
+  const avatar = it.kosmo ? kosmoAvatar() : it.saved ? savedAvatar() : it.room ? roomAvatar(it.room) : userAvatarHtml(it.other);
+  const name = it.kosmo ? KOSMO_NAME : it.saved ? '<span class="name-with-badge">Saved Messages</span>' : it.room ? roomName(it.room)
     : it.secret ? `<span class="name-with-badge is-secret"><span class="room-icon">${ICON.lock}</span>${escapeHtml(it.other.name)}</span>` : displayName(it.other);
   const status = it.unread ? `<span class="badge">${it.unread}</span>` : it.pinned ? svg('<path d="M9 4h6l-1 6 3 3v1H7v-1l3-3zM12 14v6"/>', 'i pin') : '';
   return `
@@ -630,10 +650,18 @@ export function openChat(id) {
   } else {
     const c = chats.get(id);
     open.id = id;
-    open.otherId = c && !isRoom(c) ? c.members.find((x) => x !== state.acc.user.id) ?? null : null;
+    open.otherId = c && !isRoom(c) && !isSavedChat(c) ? c.members.find((x) => x !== state.acc.user.id) ?? null : null;
   }
   showChat();
 }
+
+// «Избранное»: чат с самим собой (создаётся при первом сообщении)
+export function openSaved() {
+  open.id = savedId();
+  open.otherId = null;
+  showChat();
+}
+const isSavedOpen = () => open.id && open.id === `saved_${state.acc.user.id}`;
 
 // Личный чат с человеком (даже если сообщений ещё нет)
 export function openDm(userId) {
@@ -651,7 +679,61 @@ document.addEventListener('kosmo:open-dm', (e) => {
 function chatMessages() {
   if (open.id === KOSMO) return kosmoMessages();
   const c = curChat();
-  return c ? mainMessages(c, state.acc.user.id) : [];
+  if (!c) return [];
+  const all = mainMessages(c, state.acc.user.id);
+  if (!hasTopics(c)) return all;
+  return all.filter((m) => (m.topic ?? GENERAL) === topic);
+}
+
+/* ---------- Темы (форум) в группах ---------- */
+let topic = GENERAL;
+const hasTopics = (c) => c?.type === 'group' && c.settings?.topics;
+function paintTopics() {
+  const c = curChat();
+  const bar = $('#topics-bar');
+  bar.hidden = !hasTopics(c);
+  if (bar.hidden) return;
+  if (topic !== GENERAL && !(c.topics ?? []).some((t) => t.id === topic)) topic = GENERAL;
+  bar.innerHTML = topicsBarHtml(c, topic, isAdmin(c, state.acc.user.id));
+}
+document.addEventListener('click', (e) => {
+  const chip = e.target.closest('[data-topic]');
+  if (chip) { topic = chip.dataset.topic; paintTopics(); known = new Set(); renderMessages({ scroll: true }); return; }
+  if (e.target.closest('[data-topic-new]')) {
+    openTopicCreator((t) => {
+      chats.update(open.id, (x) => { x.topics = [...(x.topics ?? []), t]; });
+      topic = t.id;
+      paintTopics();
+      renderMessages();
+    });
+  }
+});
+
+/* ---------- Медленный режим ---------- */
+const slowUntil = new Map();
+let slowTick = null;
+function paintSlow() {
+  clearInterval(slowTick);
+  const left = () => Math.ceil(((slowUntil.get(open.id) ?? 0) - Date.now()) / 1000);
+  const paint = () => {
+    const n = left();
+    composer.classList.toggle('is-slow', n > 0);
+    input.placeholder = n > 0 ? `Slow mode · ${n} s` : 'Message';
+    if (n <= 0) clearInterval(slowTick);
+  };
+  paint();
+  if (left() > 0) slowTick = setInterval(paint, 1000);
+}
+
+/* ---------- Черновики: недописанное сообщение сохраняется в чате ---------- */
+let draftTimer = null;
+function saveDraft(text) {
+  clearTimeout(draftTimer);
+  if (!open.id || open.id === KOSMO) return;
+  const cur = prefs(open.id).draft?.text ?? '';
+  if (cur === text) return;
+  setPref(open.id, { draft: text ? { text: text.slice(0, 2000), at: Date.now() } : null });
+  renderChatList();
 }
 
 function markOpenRead() {
@@ -667,9 +749,13 @@ function markOpenRead() {
 }
 
 // Онлайн / был(а) недавно — с учётом приватности
+// статус человека вместо «был(а) в сети», пока он не истёк
+const statusOf2 = (u) => (u.status?.text && (!u.status.until || u.status.until > Date.now()) ? u.status.text : null);
+
 function lastSeen(u) {
   if (!u) return '';
   if (u.official) return 'official account';
+  if (u.bot) return 'bot';
   if (u.privacy?.lastSeen === 'nobody') return 'last seen recently';
   const t = Math.max(...u.sessions.map((s) => s.lastActive ?? 0), 0);
   if (Date.now() - t < 120_000) return 'online';
@@ -683,6 +769,8 @@ function paintHeader() {
   let avatar;
   if (open.id === KOSMO) {
     title = KOSMO_NAME; sub = 'official account'; avatar = kosmoAvatar('avatar-head');
+  } else if (isSavedOpen()) {
+    title = 'Saved Messages'; sub = 'only you can see this chat'; avatar = savedAvatar('avatar-head');
   } else if (isRoom(c)) {
     title = roomName(c);
     sub = c.type === 'channel' ? `${c.members.length} subscriber${c.members.length === 1 ? '' : 's'}` : `${c.members.length} member${c.members.length === 1 ? '' : 's'}`;
@@ -691,7 +779,7 @@ function paintHeader() {
     const other = publicUser(db.get(open.otherId));
     title = isSecret(c) ? `<span class="name-with-badge is-secret"><span class="room-icon">${ICON.lock}</span>${escapeHtml(other?.name ?? 'Deleted account')}</span>`
       : displayName(other ?? { name: 'Deleted account' });
-    sub = other ? lastSeen(other) : '';
+    sub = other ? (statusOf2(other) ?? lastSeen(other)) : '';
     if (isSecret(c)) sub = 'secret chat';
     avatar = userAvatarHtml(other ?? { name: '?' }, 'avatar-head');
   }
@@ -709,7 +797,9 @@ function paintComposer() {
   const c = curChat();
   let mode = 'compose';
   let text = '';
-  if (open.id === KOSMO) { mode = 'ro'; text = 'Only Kosmo can send messages here'; } else if (isRoom(c)) {
+  if (open.id === KOSMO) { mode = 'ro'; text = 'Only Kosmo can send messages here'; } else if (isSavedOpen()) {
+    mode = 'compose';
+  } else if (isRoom(c)) {
     if (!roleOf(c, me)) mode = 'join';
     else if (!canPost(c, me)) { mode = 'ro'; text = 'Only admins can post in this channel'; }
   } else {
@@ -759,6 +849,12 @@ function showChat() {
   reactMemo.clear();
   markOpenRead();
   resetComposer();
+  topic = GENERAL;
+  paintTopics();
+  paintSlow();
+  // черновик этого чата
+  const draft = prefs(open.id).draft?.text;
+  if (draft) { input.value = draft; autosize(); setMode('send'); }
   renderMessages();
   renderChatList();
   openPanel('chat');
@@ -768,6 +864,7 @@ function showChat() {
 }
 
 onPanelClose('chat', () => {
+  saveDraft(compose?.mode === 'edit' ? '' : input.value.trim());
   stopRecording(false);
   closeAttach();
   closePicker();
@@ -786,7 +883,7 @@ function quoteHtml(m, all) {
   const target = all.find((x) => x.id === m.replyTo);
   if (!target) return '<div class="b-reply is-gone"><b>Deleted message</b></div>';
   const who = target.from === state.acc.user.id ? 'You' : escapeHtml(db.get(target.from)?.name ?? 'Deleted account');
-  return `<button class="b-reply" type="button" data-jump="${target.id}"><b>${who}</b><span>${escapeHtml(previewText(target))}</span></button>`;
+  return `<button class="b-reply${m.quote ? ' is-quote' : ''}" type="button" data-jump="${target.id}"><b>${who}</b><span>${escapeHtml(m.quote ? `“${m.quote}”` : previewText(target))}</span></button>`;
 }
 
 export function reactionsHtml(m, scope = 'msg', anim = false) {
@@ -850,6 +947,9 @@ function callHtml(m) {
 
 export function mediaBody(m, chatId = null) {
   switch (m.kind) {
+    case 'todo': return todoHtml(m, chatId);
+    case 'poll-result': return pollResultHtml(m);
+    case 'location': return locationHtml(m);
     case 'album': return albumHtml(m);
     case 'round': return roundHtml(m);
     case 'sticker': return stickerHtml(m.sticker, 'sticker-big');
@@ -857,6 +957,7 @@ export function mediaBody(m, chatId = null) {
     case 'invite': return inviteHtml(m);
     case 'call': return callHtml(m);
     case 'photo':
+      if (m.viewOnce) return viewOnceHtml(m);
       return `<button class="b-photo-btn" type="button" data-view-media="${m.id}" aria-label="Open photo"><img class="b-photo" data-media="${m.media}" alt="Photo" style="aspect-ratio:${m.w || 4}/${m.h || 3}"></button>`;
     case 'video':
       return `<button class="b-video-btn" type="button" data-view-media="${m.id}" aria-label="Play video">
@@ -873,7 +974,9 @@ export function mediaBody(m, chatId = null) {
             ${m.kind === 'voice' ? `<div class="b-wave-wrap"><div class="b-wave">${waveBars(m)}</div><div class="b-wave b-wave-fill">${waveBars(m)}</div></div>` : `<div class="b-name">${escapeHtml(m.name ?? 'Audio')}</div><div class="b-progress"><span></span></div>`}
             <span class="b-dur">${fmtDur(m.duration ?? 0)}</span>
           </div>
-        </div>`;
+          ${m.transcript ? `<button class="b-transcribe" type="button" data-transcript="${m.id}" aria-label="Show text">Aa</button>` : ''}
+        </div>
+        ${m.transcript ? `<p class="b-transcript" data-transcript-text="${m.id}" hidden>${escapeHtml(m.transcript)}</p>` : ''}`;
     case 'code':
       return `
         <div class="b-code">
@@ -894,8 +997,10 @@ export function mediaBody(m, chatId = null) {
         <span class="b-post-foot">${ICON.forward}Shared from Feed</span>
       </button>`;
     }
-    default:
-      return `<p class="b-text">${linkify(m.text)}</p>`;
+    default: {
+      const tr = translationOf(m.id);
+      return `<p class="b-text">${linkify(m.text)}</p>${tr ? `<p class="b-translation">${PI.translate}<span>${escapeHtml(tr.text)}</span><button type="button" data-untranslate="${m.id}">Show original</button></p>` : ''}`;
+    }
   }
 }
 
@@ -929,7 +1034,8 @@ function bubble(m, all, c, anim = false) {
   const fwdUser = m.fwd && db.get(m.fwd.from);
   const fwd = m.fwd ? `<span class="b-fwd">${ICON.forward}Forwarded from&nbsp;${fwdUser ? `<button type="button" data-user-open="${m.fwd.from}">${escapeHtml(fwdUser.name)}</button>` : `<b>${escapeHtml(m.fwd.name ?? 'Hidden user')}</b>`}</span>` : '';
   const reactions = reactionsHtml(m, 'msg', anim);
-  const meta = `<span class="b-meta">${m.expiresAt ? `<span class="b-ttl" title="Disappears ${formatDate(m.expiresAt)}">${ICON.timer}</span>` : ''}${m.silent ? `<span class="b-ttl">${ICON.silent}</span>` : ''}${signature ? `<em class="b-sign">${escapeHtml(signature)}</em>` : ''}${m.edited ? '<em>edited</em>' : ''}${channel ? `${ICON.eye}${views}&nbsp;` : ''}${formatTime(m.at)}${mine && !channel ? ticks(read, tickCls) : ''}</span>`;
+  const marked = isBookmarked(c?.id ?? open.id, m.id) ? `<span class="b-ttl b-bm">${PI.bookmark}</span>` : '';
+  const meta = `<span class="b-meta">${marked}${m.expiresAt ? `<span class="b-ttl" title="Disappears ${formatDate(m.expiresAt)}">${ICON.timer}</span>` : ''}${m.silent ? `<span class="b-ttl">${ICON.silent}</span>` : ''}${signature ? `<em class="b-sign">${escapeHtml(signature)}</em>` : ''}${m.edited ? '<em>edited</em>' : ''}${channel ? `${ICON.eye}${views}&nbsp;` : ''}${formatTime(m.at)}${mine && !channel ? ticks(read, tickCls) : ''}</span>`;
   const html = `
     <div class="bubble-row ${side}" data-id="${m.id}">
       ${sender ? `<button class="b-avatar" type="button" data-user-open="${m.from}" aria-label="${escapeHtml(sender.name)}">${userAvatarHtml(sender, 'avatar-xs')}</button>` : ''}
@@ -988,6 +1094,7 @@ function paintPinned() {
 
 export function renderMessages({ scroll = false } = {}) {
   if (!open.id) return;
+  paintTopics();
   const msgs = chatMessages();
   const c = curChat();
   paintPinned();
@@ -1058,9 +1165,13 @@ let compose = null;   // { mode: 'reply' | 'edit', id }
 
 function send(msg, { at = null, silent = false } = {}) {
   const me = state.acc.user.id;
-  const extra = compose?.mode === 'reply' ? { replyTo: compose.id } : {};
+  const extra = compose?.mode === 'reply' ? { replyTo: compose.id, ...(compose.quote ? { quote: compose.quote } : {}) } : {};
+  if (isSavedOpen() && !curChat()) chats.save({ id: open.id, saved: true, members: [me], messages: [], read: {}, createdAt: Date.now() });
   const c = curChat();
   const members = c?.members ?? [me, open.otherId];
+  // тема форума: сообщение уходит в выбранную тему
+  if (hasTopics(c) && topic !== GENERAL) extra.topic = topic;
+  saveDraft('');
   // отложенная отправка
   if (at) {
     schedule(open.id, members, { ...extra, ...msg, ...(silent ? { silent: true } : {}) }, at);
@@ -1069,6 +1180,7 @@ function send(msg, { at = null, silent = false } = {}) {
     return;
   }
   const m = chats.send(open.id, members, { from: me, kind: 'text', ...extra, ...msg, ...(silent ? { silent: true } : {}) });
+  if (c?.settings?.slowMode && c.type === 'group' && !isAdmin(c, me)) slowUntil.set(open.id, Date.now() + c.settings.slowMode * 1000);
   // исчезающие сообщения: таймер чата
   if (c?.ttl) chats.update(open.id, (x) => { const y = x.messages.find((z) => z.id === m.id); if (y) y.expiresAt = y.at + x.ttl * 1000; });
   // удалённый или архивный чат возвращается в список
@@ -1078,6 +1190,8 @@ function send(msg, { at = null, silent = false } = {}) {
   state.reload();
   renderMessages({ scroll: true });
   renderChatList();
+  paintSlow();
+  return { chatId: open.id, id: m.id };
 }
 
 // Отправить в любой чат (пересылка постов из ленты и сообщений)
@@ -1085,7 +1199,10 @@ export function sendToChat(chatId, msg) {
   const me = state.acc.user.id;
   const c = chats.get(chatId);
   if (c?.ttl) msg = { ...msg, expiresAt: Date.now() + c.ttl * 1000 };
-  if (chatId.startsWith('dm:')) {
+  if (chatId === `saved_${me}` && !c) {
+    chats.send(chatId, [me], { from: me, ...msg });
+    chats.update(chatId, (x) => { x.saved = true; });
+  } else if (chatId.startsWith('dm:')) {
     const other = chatId.slice(3);
     chats.send(chats.idFor(me, other), [me, other], { from: me, ...msg });
   } else if (c) {
@@ -1099,7 +1216,7 @@ export function forwardTargets() {
   const me = state.acc.user.id;
   const rows = [];
   for (const c of chats.forUser(me)) {
-    if (isSecret(c)) continue;
+    if (isSecret(c) || isSavedChat(c)) continue;
     if (isRoom(c)) {
       if (!canPost(c, me)) continue;
       rows.push({ id: c.id, html: `${roomAvatar(c)}<div class="chat-top"><span class="chat-name">${roomName(c)}</span></div><div class="chat-meta"></div><div class="chat-bottom"><span class="chat-text">${c.type}</span></div>` });
@@ -1109,6 +1226,7 @@ export function forwardTargets() {
       rows.push({ id: c.id, html: `${userAvatarHtml(other)}<div class="chat-top"><span class="chat-name">${displayName(other)}</span></div><div class="chat-meta"></div><div class="chat-bottom"><span class="chat-text">${other.username ? `@${escapeHtml(other.username)}` : `ID ${escapeHtml(other.publicId)}`}</span></div>` });
     }
   }
+  rows.unshift({ id: `saved_${me}`, html: `${savedAvatar()}<div class="chat-top"><span class="chat-name">Saved Messages</span></div><div class="chat-meta"></div><div class="chat-bottom"><span class="chat-text">only you</span></div>` });
   return rows.map((r) => `<li class="chat ripple-host" data-forward="${r.id}" tabindex="0" role="button">${r.html}</li>`).join('')
     || '<li class="list-empty"><span>No chats to share to yet</span></li>';
 }
@@ -1124,7 +1242,7 @@ function setCompose(next) {
   $('#cb-icon').innerHTML = next.mode === 'edit' ? ICON.edit : ICON.reply;
   $('#cb-title').textContent = next.mode === 'edit' ? 'Edit message'
     : `Reply to ${m.from === state.acc.user.id ? 'yourself' : db.get(m.from)?.name ?? 'message'}`;
-  $('#cb-preview').textContent = previewText(m);
+  $('#cb-preview').textContent = next.quote ? `“${next.quote}”` : previewText(m);
   if (next.mode === 'edit') {
     input.value = m.caption ?? m.text ?? '';
     autosize();
@@ -1145,7 +1263,7 @@ export function mediaOf(msgs, c) {
   for (const m of msgs) {
     const title = c?.type === 'channel' ? c.name : m.from === state.acc.user.id ? 'You' : db.get(m.from)?.name ?? '';
     const base = { caption: m.caption, title, sub: formatDate(m.at) };
-    if (m.kind === 'photo' || m.kind === 'video') out.push({ ...base, id: m.id, type: m.kind, media: m.media });
+    if ((m.kind === 'photo' || m.kind === 'video') && !m.viewOnce) out.push({ ...base, id: m.id, type: m.kind, media: m.media });
     if (m.kind === 'album') m.items.forEach((it, i) => out.push({ ...base, id: `${m.id}:${i}`, type: it.type, media: it.media }));
   }
   return out;
@@ -1319,10 +1437,14 @@ function openMsgMenu(row) {
   const textual = !secret && (['text', 'code'].includes(m.kind ?? 'text') || m.caption);
   const editable = mine && !m.fwd && ((m.kind ?? 'text') === 'text' || ['photo', 'video', 'code', 'album'].includes(m.kind));
   const canPin = !isRoom(c) || admin;
-  const forwardable = !secret && !['poll', 'invite', 'call'].includes(m.kind);
+  const forwardable = !secret && !m.viewOnce && !['poll', 'invite', 'call', 'poll-result'].includes(m.kind);
+  const marked = isBookmarked(open.id, id);
   const voted = m.poll && Object.values(m.poll.votes).some((u) => u.includes(me));
   const actions = [
     canPost(c, me) && `<button class="menu-item" type="button" data-mm="reply">${ICON.reply}Reply</button>`,
+    canPost(c, me) && textual && `<button class="menu-item" type="button" data-mm="quote">${PI.quote}Quote</button>`,
+    textual && (m.kind ?? 'text') === 'text' && `<button class="menu-item" type="button" data-mm="translate">${PI.translate}${translationOf(id) ? 'Show original' : 'Translate'}</button>`,
+    `<button class="menu-item" type="button" data-mm="bookmark">${PI.bookmark}${marked ? 'Remove bookmark' : 'Bookmark'}</button>`,
     forwardable && `<button class="menu-item" type="button" data-mm="forward">${ICON.forward}Forward</button>`,
     textual && `<button class="menu-item" type="button" data-mm="copy">${ICON.copy}Copy</button>`,
     editable && `<button class="menu-item" type="button" data-mm="edit">${ICON.edit}Edit</button>`,
@@ -1335,7 +1457,9 @@ function openMsgMenu(row) {
   wrap.innerHTML = `
     ${reactable ? `<div class="react-bar glass glass-text" role="group" aria-label="Reactions">
       ${REACTIONS.map((e, i) => `<button class="react-opt${e === myReaction ? ' is-mine' : ''}" type="button" style="--i:${i}" data-react-pick="${e}" aria-label="${EMOJI[e].label}">${emojiSvg(e)}</button>`).join('')}
-    </div>` : ''}
+      <button class="react-opt react-more" type="button" style="--i:${REACTIONS.length}" data-react-more aria-label="More reactions">${PI.plus}</button>
+    </div>
+    <div class="react-grid glass glass-text" hidden>${Object.keys(EMOJI).filter((e) => !REACTIONS.includes(e)).map((e) => `<button class="react-opt${e === myReaction ? ' is-mine' : ''}" type="button" data-react-pick="${e}" aria-label="${EMOJI[e].label}">${emojiSvg(e)}</button>`).join('')}</div>` : ''}
     <div class="menu msg-actions glass glass-text" role="menu">${actions.join('')}</div>`;
   $('#app').append(scrim, clone, wrap);
   mm.el = wrap;
@@ -1369,6 +1493,14 @@ function closeMsgMenu() {
 
 document.addEventListener('click', (e) => {
   if (!mm.el) return;
+  // все анимированные эмодзи как реакции
+  if (e.target.closest('[data-react-more]')) {
+    const grid = mm.el.querySelector('.react-grid');
+    grid.hidden = !grid.hidden;
+    mm.el.querySelector('.msg-actions').hidden = !grid.hidden;
+    refreshRefraction();
+    return;
+  }
   const pick = e.target.closest('[data-react-pick]');
   if (pick) {
     const id = mm.id;
@@ -1384,6 +1516,21 @@ document.addEventListener('click', (e) => {
   const c = curChat();
   switch (act.dataset.mm) {
     case 'reply': setCompose({ mode: 'reply', id }); break;
+    case 'quote':
+      closeMsgMenu();
+      openQuote(m.caption || m.text || '', (quote) => setCompose({ mode: 'reply', id, quote }));
+      return;
+    case 'translate':
+      closeMsgMenu();
+      if (translationOf(id)) { clearTranslation(id); renderMessages(); return; }
+      translate(id, m.text).then(() => renderMessages(), () => toast('Translation is not available right now'));
+      return;
+    case 'bookmark': {
+      const who = m.from === me ? 'You' : db.get(m.from)?.name ?? '';
+      toggleBookmark(open.id, m, `${who ? `${who}: ` : ''}${previewText(m) ?? ''}`);
+      renderMessages();
+      break;
+    }
     case 'forward': closeMsgMenu(); forwardMessage(m); return;
     case 'remind':
       closeMsgMenu();
@@ -1558,6 +1705,8 @@ function resetComposer() {
 input.addEventListener('input', () => {
   autosize();
   if (!recorder) setMode(idleMode());
+  clearTimeout(draftTimer);
+  if (compose?.mode !== 'edit') draftTimer = setTimeout(() => saveDraft(input.value.trim()), 900);
 });
 input.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && matchMedia('(pointer: fine)').matches && state.acc.user.settings?.sendEnter !== false) {
@@ -1612,7 +1761,7 @@ async function sendComposed(opts = {}) {
   try {
     if (visual.length) {
       const stored = await Promise.all(visual.map(storeTrayItem));
-      if (stored.length === 1) send({ ...stored[0], caption }, opts);
+      if (stored.length === 1) send({ ...stored[0], caption, ...(visual[0].once && stored[0].kind === 'photo' ? { viewOnce: true } : {}) }, opts);
       else send({ kind: 'album', items: stored.map(({ kind, ...rest }) => ({ type: kind, ...rest })), caption }, opts);
       caption = '';
     }
@@ -1703,6 +1852,14 @@ attachMenu.addEventListener('click', (e) => {
   }
   if (kind === 'round') { openRoundRecorder((msg) => send(msg)); return; }
   if (kind === 'poll') { openPollCreator((msg) => send(msg)); return; }
+  if (kind === 'todo') { openTodoCreator((msg) => send(msg)); return; }
+  if (kind === 'location') {
+    openLocation((msg) => send(msg), (chatId, msgId, loc) => {
+      chats.update(chatId, (x) => { const y = x.messages.find((z) => z.id === msgId); if (y) y.location = { ...y.location, ...loc }; });
+      if (chatId === open.id) renderMessages();
+    });
+    return;
+  }
   $(`#pick-${kind}`).click();
 });
 
@@ -1748,11 +1905,13 @@ function paintTray() {
       <button class="tray-remove" type="button" data-tray-remove="${t.id}" aria-label="Remove">${svg('<path d="M7 7l10 10M17 7L7 17"/>')}</button>
     </div>`).join('')}
     ${tray.length < MAX_TRAY ? `<button class="tray-add" type="button" data-tray-add aria-label="Add more">${svg('<path d="M12 5v14M5 12h14"/>')}</button>` : ''}
+    ${tray.length === 1 && tray[0].type === 'photo' ? `<button class="tray-once${tray[0].once ? ' is-on' : ''}" type="button" data-tray-once aria-pressed="${Boolean(tray[0].once)}">${PI.fire}<span>View once</span></button>` : ''}
     <span class="tray-count">${tray.length === 1 ? (input.value.trim() ? 'with caption' : 'Add a caption…') : `${tray.length} attachments`}</span>`;
   if (!had) toBottom(true);
 }
 
 trayEl.addEventListener('click', (e) => {
+  if (e.target.closest('[data-tray-once]')) { tray[0].once = !tray[0].once; paintTray(); return; }
   const rm = e.target.closest('[data-tray-remove]');
   if (rm) {
     const i = tray.findIndex((t) => t.id === rm.dataset.trayRemove);
@@ -1819,6 +1978,7 @@ async function startRecording() {
     return;
   }
   recChunks = [];
+  const transcriber = startTranscriber();   // текст голосового — пока говорят
   recorder = new MediaRecorder(recStream);
   recorder.ondataavailable = (e) => { if (e.data.size) recChunks.push(e.data); };
   recorder.onstop = async () => {
@@ -1830,10 +1990,11 @@ async function startRecording() {
     composer.classList.remove('is-recording');
     clearInterval(recTimer);
     setMode(input.value.trim() ? 'send' : 'voice');
-    if (!shouldSend || elapsed < 0.5) return;
+    if (!shouldSend || elapsed < 0.5) { transcriber?.stop(); return; }
     // настоящая волна и точная длина — из самой записи
     const info = await analyzeAudio(blob);
-    send({ kind: 'voice', media: await putBlob(blob), duration: info?.duration || elapsed, wave: info?.wave });
+    const transcript = transcriber ? await transcriber.stop() : '';
+    send({ kind: 'voice', media: await putBlob(blob), duration: info?.duration || elapsed, wave: info?.wave, ...(transcript ? { transcript } : {}) });
   };
   recorder.start();
   recStart = Date.now();
@@ -2114,4 +2275,88 @@ export function chatAvatar(c, cls = '') {
   const me = state.acc.user.id;
   if (isRoom(c)) return roomAvatar(c, cls);
   return userAvatarHtml(publicUser(db.get(c.members.find((x) => x !== me) ?? me)) ?? { name: '?' }, cls);
+}
+
+/* ---------------------------------------------------------------------------
+   Kosmo+: списки дел, одноразовые фото, геопозиция, перевод, расшифровка
+   --------------------------------------------------------------------------- */
+function updateMsg(chatId, msgId, fn) {
+  chats.update(chatId, (x) => { const y = x.messages.find((z) => z.id === msgId); if (y) fn(y); });
+  if (chatId === open.id) renderMessages();
+}
+
+document.addEventListener('click', (e) => {
+  // список дел: своя галочка
+  const tg = e.target.closest('[data-todo-toggle]');
+  if (tg) {
+    const box = tg.closest('[data-todo]');
+    const me = state.acc.user.id;
+    updateMsg(box.dataset.chat, box.dataset.todo, (m) => {
+      const it = m.todo.items.find((i) => i.id === tg.dataset.todoToggle);
+      if (!it) return;
+      const done = new Set(it.done ?? []);
+      if (done.has(me)) done.delete(me); else done.add(me);
+      it.done = [...done];
+    });
+    navigator.vibrate?.(8);
+    return;
+  }
+  // перевод: обратно к оригиналу
+  const un = e.target.closest('[data-untranslate]');
+  if (un) { clearTranslation(un.dataset.untranslate); renderMessages(); return; }
+  // текст голосового
+  const tr = e.target.closest('[data-transcript]');
+  if (tr) {
+    const p = $(`[data-transcript-text="${tr.dataset.transcript}"]`);
+    p.hidden = !p.hidden;
+    tr.classList.toggle('is-on', !p.hidden);
+    return;
+  }
+  // геопозиция: остановить трансляцию
+  const ls = e.target.closest('[data-loc-stop]');
+  if (ls) {
+    const id = ls.dataset.locStop;
+    stopLive(id);
+    updateMsg(open.id, id, (m) => { m.location = { ...m.location, until: Date.now() }; });
+    return;
+  }
+  // одноразовое фото
+  const vo = e.target.closest('[data-view-once]');
+  if (vo) openViewOnce(vo.dataset.viewOnce);
+});
+
+document.addEventListener('submit', (e) => {
+  const f = e.target.closest('[data-todo-add]');
+  if (!f) return;
+  e.preventDefault();
+  const inputEl = f.querySelector('input');
+  const text = inputEl.value.trim();
+  if (!text) return;
+  const box = f.closest('[data-todo]');
+  updateMsg(box.dataset.chat, box.dataset.todo, (m) => { m.todo.items.push({ id: uid(), text, by: state.acc.user.id, done: [] }); });
+});
+
+// Одноразовое фото: полный экран, без сохранения; после закрытия — «открыто»
+async function openViewOnce(msgId) {
+  const m = chatMessages().find((x) => x.id === msgId);
+  if (!m) return;
+  const chatId = open.id;
+  const ov = document.createElement('div');
+  ov.className = 'vo-viewer';
+  ov.innerHTML = `<img alt="" draggable="false" data-media="${m.media}"><p class="vo-note">${PI.fire}This photo will disappear when you close it</p><button class="icon-btn vo-close" type="button" aria-label="Close">${PI.close}</button>`;
+  document.body.append(ov);
+  hydrateMedia(ov);
+  ov.addEventListener('contextmenu', (ev) => ev.preventDefault());
+  // в фоне и при переключении окна фото скрывается
+  const hide = () => ov.classList.toggle('is-hidden', document.visibilityState !== 'visible' || !document.hasFocus());
+  document.addEventListener('visibilitychange', hide);
+  window.addEventListener('blur', hide);
+  window.addEventListener('focus', hide);
+  ov.querySelector('.vo-close').addEventListener('click', () => {
+    document.removeEventListener('visibilitychange', hide);
+    window.removeEventListener('blur', hide);
+    window.removeEventListener('focus', hide);
+    ov.remove();
+    updateMsg(chatId, msgId, (x) => { x.viewedBy = [...new Set([...(x.viewedBy ?? []), state.acc.user.id])]; });
+  });
 }

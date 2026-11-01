@@ -52,6 +52,9 @@
       <linearGradient id="cb-official" x1="0" y1="0" x2="1" y2="1">
         <stop offset="0" stop-color="#5ac8fa"/><stop offset="0.55" stop-color="#7d5cff"/><stop offset="1" stop-color="#bf5af2"/>
       </linearGradient>
+      <linearGradient id="cb-premium" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#ff7ad9"/><stop offset="0.5" stop-color="#b15cff"/><stop offset="1" stop-color="#5b8cff"/>
+      </linearGradient>
       <linearGradient id="cb-owner" x1="0" y1="0" x2="1" y2="1">
         <stop offset="0" stop-color="#ffe066"/><stop offset="0.5" stop-color="#ff9f0a"/><stop offset="1" stop-color="#ff5e3a"/>
       </linearGradient>
@@ -311,6 +314,7 @@
         <button class="icon-btn" type="button" id="cs-down" aria-label="Next result"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9.5l6 6 6-6"/></svg></button>
         <button class="icon-btn" type="button" id="cs-close" aria-label="Close search"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17"/></svg></button>
       </div>
+      <div class="topics-bar" id="topics-bar" role="tablist" aria-label="Topics" hidden></div>
       <div class="pinned-bar glass" id="pinned-bar" data-refract="0.6" hidden>
         <button class="pinned-main" type="button" id="pinned-jump">
           <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4h6l-1 6 3 3v1H7v-1l3-3zM12 14v6"/></svg>
@@ -386,6 +390,12 @@
         </button>
         <button class="menu-item" type="button" role="menuitem" data-attach="poll" data-rooms-only>
           <span class="menu-ic ic-poll"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20V10M12 20V4M19 20v-7"/></svg></span>Poll or quiz
+        </button>
+        <button class="menu-item" type="button" role="menuitem" data-attach="todo">
+          <span class="menu-ic ic-todo"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6.5l1.5 1.5L8.5 5M4 12.5l1.5 1.5 3-3M4 18.5l1.5 1.5 3-3M11.5 7h8.5M11.5 13h8.5M11.5 19h8.5"/></svg></span>Checklist
+        </button>
+        <button class="menu-item" type="button" role="menuitem" data-attach="location">
+          <span class="menu-ic ic-location"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-6.5-6.2-6.5-11a6.5 6.5 0 0 1 13 0c0 4.8-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.4"/></svg></span>Location
         </button>
         <button class="menu-item" type="button" role="menuitem" data-attach="audio">
           <span class="menu-ic ic-music"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18V6l11-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="17.5" cy="16" r="2.5"/></svg></span>Music

@@ -1,7 +1,7 @@
 // Опросы и викторины в группах и каналах: создание, голосование,
 // результаты с полосками; в викторине — правильный ответ и пояснение.
 
-import { $, $$, store, toast, shake, escapeHtml, uid, refreshRefraction } from './core.js';
+import { $, $$, store, toast, shake, escapeHtml, uid, refreshRefraction, formatDate } from './core.js';
 import { state } from './panels.js';
 import { chats } from './chats.js';
 
@@ -43,7 +43,7 @@ export function pollHtml(m, chatId) {
   return `
     <div class="poll${p.quiz ? ' is-quiz' : ''}" data-poll="${m.id}">
       <p class="poll-q">${escapeHtml(p.question)}</p>
-      <span class="poll-type">${type}${p.multiple ? ' · multiple answers' : ''}${p.closed ? ' · final results' : ''}</span>
+      <span class="poll-type">${type}${p.multiple ? ' · multiple answers' : ''}${p.closed ? ' · final results' : p.closesAt ? ` · closes ${formatDate(p.closesAt)}` : ''}</span>
       <div class="poll-opts">${opts}</div>
       ${p.quiz && showResults && p.explanation ? `<p class="poll-expl">${I.bulb}<span>${escapeHtml(p.explanation)}</span></p>` : ''}
       <div class="poll-foot">
@@ -121,6 +121,8 @@ document.addEventListener('click', (e) => {
    --------------------------------------------------------------------------- */
 let dlg = null;
 
+const DEADLINES = [[0, 'Never'], [3_600_000, '1 hour'], [86_400_000, '1 day'], [7 * 86_400_000, '1 week']];
+
 export function openPollCreator(onSend) {
   closeCreator();
   dlg = document.createElement('div');
@@ -138,6 +140,8 @@ export function openPollCreator(onSend) {
         <label class="switch-row"><span>Multiple answers</span><input type="checkbox" class="switch" id="poll-multi"></label>
         <label class="switch-row"><span class="sw-text">Quiz mode<small>One correct answer. Tap the circle to mark it.</small></span><input type="checkbox" class="switch" id="poll-quiz"></label>
       </div>
+      <span class="modal-label">Close automatically</span>
+      <div class="segs segs-wrap" role="radiogroup" aria-label="Close automatically">${DEADLINES.map(([v, l], i) => `<button type="button" class="seg-btn" role="radio" data-poll-deadline="${v}" aria-checked="${i === 0}">${l}</button>`).join('')}</div>
       <label class="modal-field" id="poll-expl-field" hidden><span>Explanation (shown after answering)</span><textarea id="poll-expl" rows="2" maxlength="200" placeholder="Why is this the right answer?"></textarea></label>
       <button class="btn btn-primary" type="submit">Create</button>
     </form>`;
@@ -171,6 +175,8 @@ export function openPollCreator(onSend) {
     }
     const del = e.target.closest('[data-poll-del]');
     if (del) { state2.options = state2.options.filter((o) => o.id !== del.dataset.pollDel); paint(); }
+    const dl = e.target.closest('[data-poll-deadline]');
+    if (dl) $$('[data-poll-deadline]', dlg).forEach((b) => b.setAttribute('aria-checked', String(b === dl)));
     const mark = e.target.closest('[data-poll-correct]');
     if (mark) { state2.correct = mark.dataset.pollCorrect; paint(); }
   });
@@ -189,6 +195,8 @@ export function openPollCreator(onSend) {
         explanation: quiz ? $('#poll-expl').value.trim() : '',
         anonymous: $('#poll-anon').checked, multiple: !quiz && $('#poll-multi').checked,
         votes: {}, closed: false,
+        // дедлайн: сервер сам закроет опрос и напишет итог в чат
+        ...(Number($('[data-poll-deadline][aria-checked="true"]', dlg).dataset.pollDeadline) ? { closesAt: Date.now() + Number($('[data-poll-deadline][aria-checked="true"]', dlg).dataset.pollDeadline) } : {}),
       },
     });
     closeCreator();

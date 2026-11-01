@@ -12,6 +12,15 @@ const I = {
   send: svg('<path d="M12 19V5M5.5 11.5L12 5l6.5 6.5"/>'),
   flip: svg('<path d="M4 9a8 8 0 0 1 14-3l2 2M20 15a8 8 0 0 1-14 3l-2-2M20 4v4h-4M4 20v-4h4"/>'),
 };
+// Фильтры кружка: CSS-фильтр canvas; «Портрет» — размытый фон
+const FILTERS = [
+  ['none', 'Normal', 'none'],
+  ['portrait', 'Portrait', 'none'],
+  ['warm', 'Warm', 'sepia(0.25) saturate(1.35) hue-rotate(-8deg)'],
+  ['cool', 'Cool', 'saturate(1.1) hue-rotate(14deg) brightness(1.05)'],
+  ['vivid', 'Vivid', 'saturate(1.7) contrast(1.1)'],
+  ['mono', 'Mono', 'grayscale(1) contrast(1.15)'],
+];
 const fmt = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 const R = 47;
 const C = 2 * Math.PI * R;
@@ -88,10 +97,11 @@ export async function openRoundRecorder(onSend) {
   el.innerHTML = `
     <div class="round-rec-bg"></div>
     <div class="round-rec-stage">
-      <div class="round-rec-circle"><video muted playsinline autoplay></video></div>
+      <div class="round-rec-circle"><video class="rr-src" muted playsinline autoplay></video><canvas width="480" height="480"></canvas></div>
       <svg class="round-rec-ring" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="${R}" style="stroke-dasharray:${C};stroke-dashoffset:${C}"/></svg>
     </div>
     <div class="round-rec-time"><span class="rec-dot"></span><span id="round-time">0:00</span></div>
+    <div class="round-filters" role="radiogroup" aria-label="Filter">${FILTERS.map(([id, label], i) => `<button class="rf-chip" type="button" role="radio" data-rf="${id}" aria-checked="${i === 0}">${label}</button>`).join('')}</div>
     <div class="round-rec-actions">
       <button class="v-btn" type="button" data-rr="cancel" aria-label="Cancel">${I.close}</button>
       <button class="round-rec-send" type="button" data-rr="send" aria-label="Send">${I.send}</button>
@@ -100,6 +110,49 @@ export async function openRoundRecorder(onSend) {
   document.body.append(el);
   const video = el.querySelector('video');
   video.srcObject = stream;
+  // кадр с камеры → canvas с фильтром → запись (звук — с микрофона)
+  const canvas = el.querySelector('canvas');
+  const ctx = canvas.getContext('2d');
+  const soft = document.createElement('canvas');
+  soft.width = soft.height = 480;
+  const sctx = soft.getContext('2d');
+  let filter = 'none';
+  let raf = 0;
+  const draw = () => {
+    raf = requestAnimationFrame(draw);
+    const vw = video.videoWidth;
+    const vh = video.videoHeight;
+    if (!vw) return;
+    const side = Math.min(vw, vh);
+    const sx = (vw - side) / 2;
+    const sy = (vh - side) / 2;
+    const f = FILTERS.find(([id]) => id === filter)?.[2] ?? 'none';
+    canvas.classList.toggle('is-mirror', facing === 'user');
+    if (filter === 'portrait') {
+      // фон размыт, в центре (лицо) — резко, с мягким краем
+      ctx.filter = 'blur(12px) saturate(1.1)';
+      ctx.drawImage(video, sx, sy, side, side, -12, -12, 504, 504);
+      sctx.globalCompositeOperation = 'source-over';
+      sctx.filter = 'saturate(1.08)';
+      sctx.clearRect(0, 0, 480, 480);
+      sctx.drawImage(video, sx, sy, side, side, 0, 0, 480, 480);
+      sctx.filter = 'none';
+      sctx.globalCompositeOperation = 'destination-in';
+      const g = sctx.createRadialGradient(240, 225, 90, 240, 225, 215);
+      g.addColorStop(0, 'rgba(0,0,0,1)');
+      g.addColorStop(1, 'rgba(0,0,0,0)');
+      sctx.fillStyle = g;
+      sctx.fillRect(0, 0, 480, 480);
+      ctx.filter = 'none';
+      ctx.drawImage(soft, 0, 0);
+    } else {
+      ctx.filter = f;
+      ctx.drawImage(video, sx, sy, side, side, 0, 0, 480, 480);
+      ctx.filter = 'none';
+    }
+  };
+  draw();
+  const recStream = () => new MediaStream([...canvas.captureStream(30).getVideoTracks(), ...stream.getAudioTracks()]);
   const ring = el.querySelector('circle');
   let chunks = [];
   let rec = null;
@@ -110,12 +163,13 @@ export async function openRoundRecorder(onSend) {
   const startRec = () => {
     chunks = [];
     const type = ['video/webm;codecs=vp9,opus', 'video/webm', 'video/mp4'].find((t) => MediaRecorder.isTypeSupported?.(t));
-    rec = new MediaRecorder(stream, type ? { mimeType: type } : undefined);
+    rec = new MediaRecorder(canvas.captureStream ? recStream() : stream, type ? { mimeType: type } : undefined);
     rec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
     rec.onstop = async () => {
       const elapsed = (Date.now() - started) / 1000;
       stream.getTracks().forEach((t) => t.stop());
       clearInterval(timer);
+      cancelAnimationFrame(raf);
       el.classList.add('is-closing');
       setTimeout(() => el.remove(), 220);
       if (!send || elapsed < 0.6) return;
@@ -134,6 +188,12 @@ export async function openRoundRecorder(onSend) {
   }, 100);
 
   el.addEventListener('click', async (e) => {
+    const chip = e.target.closest('[data-rf]');
+    if (chip) {
+      filter = chip.dataset.rf;
+      el.querySelectorAll('[data-rf]').forEach((x) => x.setAttribute('aria-checked', String(x === chip)));
+      return;
+    }
     const b = e.target.closest('[data-rr]');
     if (!b) return;
     if (b.dataset.rr === 'cancel') { send = false; rec.stop(); }

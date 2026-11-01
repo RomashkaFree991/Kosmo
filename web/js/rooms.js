@@ -3,7 +3,7 @@
 // Комментарии хранятся в привязанной группе как сообщения с threadOf.
 
 import {
-  $, db, toast, shake, escapeHtml, userAvatarHtml, cosmicBadge, userBadge, formatTime, formatDate, refreshRefraction,
+  $, $$, db, toast, shake, escapeHtml, userAvatarHtml, cosmicBadge, userBadge, formatTime, formatDate, refreshRefraction,
 } from './core.js';
 import { state, openPanel, closePanel, openOverlay, closeOverlay, overlayOpen } from './panels.js';
 import { putBlob, hydrateMedia, squareAvatar } from './media.js';
@@ -12,6 +12,7 @@ import {
   renderChatList, renderMessages, leaveRoom, previewText,
 } from './chats.js';
 import { USERNAME_RE, RESERVED } from './profile.js';
+import { PI, openInvites } from './plus.js';
 import { showUser } from './people.js';
 
 const svg = (d, cls = 'i') => `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true">${d}</svg>`;
@@ -179,6 +180,8 @@ $('#panel-create').addEventListener('submit', (e) => {
   renderMembersStep();
 });
 
+const SLOW = [[0, 'Off'], [10, '10 s'], [30, '30 s'], [60, '1 min'], [300, '5 min'], [3600, '1 h']];
+
 /* ---------- Общие обработчики: фото, @username, выбор людей ---------- */
 let photoTarget = null;   // draft создания или черновик правки
 
@@ -331,7 +334,12 @@ function renderRoom() {
             <label class="switch-row"><span>Sign posts with author name</span><input type="checkbox" class="switch" id="rs-signatures" role="switch" ${s.signatures ? 'checked' : ''}></label>
             <label class="switch-row"><span>Allow reactions</span><input type="checkbox" class="switch" id="rs-reactions" role="switch" ${s.reactions !== false ? 'checked' : ''}></label>` : `
             <label class="switch-row"><span>Members can add people</span><input type="checkbox" class="switch" id="rs-invite" role="switch" ${s.invite !== false ? 'checked' : ''}></label>
-            <label class="switch-row"><span>Members can send media</span><input type="checkbox" class="switch" id="rs-media" role="switch" ${s.media !== false ? 'checked' : ''}></label>`}
+            <label class="switch-row"><span>Members can send media</span><input type="checkbox" class="switch" id="rs-media" role="switch" ${s.media !== false ? 'checked' : ''}></label>
+            <label class="switch-row"><span>Topics (forum)</span><input type="checkbox" class="switch" id="rs-topics" role="switch" ${s.topics ? 'checked' : ''}></label>
+            <div class="choice-row choice-col">
+              <span class="sw-text">Slow mode<small>Members can send one message per interval. Admins are not limited.</small></span>
+              <div class="segs segs-wrap" role="radiogroup" aria-label="Slow mode">${SLOW.map(([v, l]) => `<button type="button" class="seg-btn" role="radio" data-slow="${v}" aria-checked="${(s.slowMode ?? 0) === v}">${l}</button>`).join('')}</div>
+            </div>`}
         </section>
         <button class="btn btn-primary" type="submit">Save</button>
         <button class="btn btn-secondary glass" type="button" data-room-mode="info">Cancel</button>
@@ -403,6 +411,7 @@ function renderRoom() {
       <p class="section-label">${ch ? 'Subscribers' : 'Members'} · ${members.length}</p>
       <section class="group">
         ${canInvite ? rowBtn('data-room-mode="add"', I.plus, ch ? 'Add subscribers' : 'Add members') : ''}
+        ${admin ? rowBtn('data-room-invites', PI.link, 'Invite links and QR code') : ''}
         <ul class="members">${members.map((u) => memberRow(c, u)).join('')}</ul>
       </section>` : ''}
     <section class="group">
@@ -432,7 +441,7 @@ $('#room-body').addEventListener('submit', (e) => {
   const ch = edit.type === 'channel';
   const settings = ch
     ? { signatures: $('#rs-signatures').checked, reactions: $('#rs-reactions').checked }
-    : { invite: $('#rs-invite').checked, media: $('#rs-media').checked };
+    : { invite: $('#rs-invite').checked, media: $('#rs-media').checked, topics: $('#rs-topics').checked, slowMode: Number($('[data-slow][aria-checked="true"]')?.dataset.slow ?? 0) };
   const d = edit;
   mode = 'info';
   edit = null;
@@ -443,6 +452,12 @@ $('#room-body').addEventListener('submit', (e) => {
 
 $('#room-body').addEventListener('click', (e) => {
   const me = state.acc.user.id;
+  const sl = e.target.closest('[data-slow]');
+  if (sl) { $$('[data-slow]').forEach((b) => b.setAttribute('aria-checked', String(b === sl))); return; }
+  if (e.target.closest('[data-room-invites]')) {
+    openInvites(() => chats.get(roomId), (invites) => mutate((c) => { c.invites = invites; }));
+    return;
+  }
   const t = e.target;
   const m = t.closest('[data-room-mode]');
   if (m) {

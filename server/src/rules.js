@@ -42,7 +42,7 @@ const strip = (m) => {
 /* ---------------------------------------------------------------------------
    Пользователь (только свой документ)
    --------------------------------------------------------------------------- */
-const SELF_FIELDS = ['name', 'username', 'bio', 'avatar', 'privacy', 'chatPrefs', 'settings', 'security', 'reminders', 'messages'];
+const SELF_FIELDS = ['name', 'username', 'bio', 'avatar', 'privacy', 'chatPrefs', 'settings', 'security', 'reminders', 'messages', 'bookmarks', 'status'];
 
 export function checkAccount(me, patch, current) {
   if (patch.id !== me) deny('You can only change your own profile');
@@ -69,7 +69,7 @@ export function checkAccount(me, patch, current) {
    Чаты
    --------------------------------------------------------------------------- */
 const DM_ID = (a, b) => [a, b].sort().join('_');
-const IMMUTABLE = ['id', 'type', 'secret', 'createdAt', 'messages'];
+const IMMUTABLE = ['id', 'type', 'secret', 'saved', 'createdAt', 'messages'];
 
 function canPost(c, me) {
   if (!isRoom(c)) return c.members.includes(me);
@@ -92,6 +92,9 @@ function checkNewChat(me, doc) {
       if (!other) deny('Unknown member');
       if (other.privacy?.groups === 'nobody' || (other.privacy?.blocked ?? []).includes(me)) deny('This person can’t be added');
     }
+  } else if (doc.saved) {
+    // «Избранное» — чат с самим собой
+    if (doc.id !== `saved_${me}` || members.length !== 1) deny('Bad chat id');
   } else {
     if (members.length !== 2) deny('A private chat has two members');
     const other = members.find((u) => u !== me);
@@ -166,7 +169,7 @@ export function checkChat(me, patch, old) {
       set[k] = v;
       continue;
     }
-    if (['name', 'username', 'bio', 'avatar', 'settings', 'linked', 'linkedChannel'].includes(k)) {
+    if (['name', 'username', 'bio', 'avatar', 'settings', 'linked', 'linkedChannel', 'topics', 'invites'].includes(k)) {
       if (k === 'linkedChannel') {
         // привязку группы делает админ канала, который сам админ этой группы
         const ch = v ? chatsDb.get(v) : null;
@@ -193,7 +196,14 @@ export function checkChat(me, patch, old) {
         const ch = chatsDb.get(old.linkedChannel ?? m.threadOf.channel);
         if (!(after.members.includes(me) && ch && ch.members.includes(me))) deny('Not allowed');
       } else if (!canPost(after, me)) deny('You can’t post here');
-      if (!isRoom(old)) {
+      // медленный режим в группе: одно сообщение в N секунд (админам можно)
+      const slow = Number(after.settings?.slowMode) || 0;
+      if (slow && after.type === 'group' && !admin && !m.threadOf) {
+        const last = old.messages.reduce((t, x) => (x.from === me && x.at > t ? x.at : t), 0);
+        const wait = Math.ceil((last + slow * 1000 - Date.now()) / 1000);
+        if (wait > 0) throw new ApiError(429, 'slow_mode', `Slow mode: wait ${wait} s`, { wait });
+      }
+      if (!isRoom(old) && !old.saved) {
         const other = users.get(old.members.find((u) => u !== me));
         if ((other?.privacy?.blocked ?? []).includes(me)) deny('You can’t message this person');
       }
@@ -210,6 +220,27 @@ export function checkChat(me, patch, old) {
       if (m.poll.closed && !prev.poll.closed && isAdmin(old, me)) next.poll.closed = true;
     }
     if (m.hiddenFor) next.hiddenFor = onlyMeAdded(prev.hiddenFor, m.hiddenFor, me);
+    // одноразовое фото: отметка «я открыл»
+    if (prev.viewOnce && m.viewedBy) next.viewedBy = onlyMeAdded(prev.viewedBy, m.viewedBy, me);
+    // общий список дел: свои галочки и новые пункты от участников
+    if (prev.todo && m.todo) {
+      const oldItems = prev.todo.items ?? [];
+      const newItems = Array.isArray(m.todo.items) ? m.todo.items : [];
+      const items = oldItems.map((it) => {
+        const n = newItems.find((x) => x.id === it.id);
+        if (!n) return it;
+        const done = new Set((it.done ?? []).filter((u) => u !== me));
+        if ((n.done ?? []).includes(me)) done.add(me);
+        return { ...it, done: [...done] };
+      });
+      if (prev.todo.open !== false) {
+        for (const n of newItems) {
+          if (oldItems.some((x) => x.id === n.id) || items.length >= 50) continue;
+          items.push({ id: String(n.id).slice(0, 40), text: String(n.text ?? '').slice(0, 200), by: me, done: (n.done ?? []).includes(me) ? [me] : [] });
+        }
+      }
+      next.todo = { ...prev.todo, items };
+    }
     msgs.up.push(next);
   }
   for (const id of patch.msgs?.del ?? []) {

@@ -20,6 +20,7 @@ import { isRoom, roomAvatar, searchMessages, allMedia, chatTitle, chatAvatar, op
 import { openViewer } from './viewer.js';
 import { renderStories } from './stories.js';
 import { rememberAccount, forgetAccount, linkedAccounts, paintAuthCancel } from './accounts.js';
+import { handleJoinLink } from './plus.js';
 import { api, boot, shutdown } from './api.js';
 
 const app = $('#app');
@@ -355,6 +356,9 @@ document.addEventListener('kosmo:add-account', async () => {
   paintAuthCancel();
 });
 
+// ссылка-приглашение открыта, когда сайт уже запущен
+window.addEventListener('hashchange', () => { if (state.acc) handleJoinLink((id) => { renderChatList(); openChat(id); }); });
+
 // Отметка «был в сети» раз в минуту и при возвращении на вкладку
 // «В сети» отмечает сервер по живому соединению (api.js шлёт ping)
 const heartbeat = () => {};
@@ -420,6 +424,8 @@ export function showApp({ animate = true } = {}) {
   }
   refreshRefraction();
   heartbeat();
+  // открыли сайт по ссылке-приглашению …/#join=КОД
+  handleJoinLink((id) => { renderChatList(); openChat(id); });
   return true;
 }
 

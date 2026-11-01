@@ -405,6 +405,16 @@ case "\${1:-}" in
   sms)     KOSMO_SMS_SETUP=1 exec bash $APP_DIR/deploy/install.sh "$DOMAIN" "$EMAIL" ;;
   sms-key) . $ENV_FILE; echo "Приложение: https://$DOMAIN/kosmo-sms.apk"; echo "Сервер: $DOMAIN"; echo "Ключ:   \$GATEWAY_KEY"
            echo "Телефонов в сети: \$(curl -fsS http://127.0.0.1:$PORT/api/gateway | grep -o '[0-9]*')" ;;
+  premium) # kosmo premium адрес@почта [off] — значок Kosmo Premium (только с сервера)
+           [ -n "\${2:-}" ] || { echo "Использование: kosmo premium адрес@почта [off]"; exit 1; }
+           cd $APP_DIR/server && node --no-warnings=ExperimentalWarning --input-type=module -e "
+import { DatabaseSync } from 'node:sqlite';
+const db = new DatabaseSync('$DATA_DIR/kosmo.db');
+const u = db.prepare('SELECT id, data FROM users WHERE email = ?').get(process.argv[1].toLowerCase());
+if (!u) { console.error('Нет аккаунта с этой почтой'); process.exit(1); }
+const d = JSON.parse(u.data); d.premium = process.argv[2] !== 'off';
+db.prepare('UPDATE users SET data = ? WHERE id = ?').run(JSON.stringify(d), u.id);
+console.log(d.premium ? 'Kosmo Premium выдан' : 'Kosmo Premium снят');" "\$2" "\${3:-on}" && pm2 restart kosmo >/dev/null ;;
   logs)    exec pm2 logs kosmo ;;
   restart) exec pm2 restart kosmo --update-env ;;
   status)  pm2 status kosmo; curl -fsS http://127.0.0.1:$PORT/api/config; echo ;;
@@ -412,6 +422,7 @@ case "\${1:-}" in
      echo "kosmo mail-test адрес — отправить пробное письмо с кодом"
      echo "kosmo sms      — настроить SMS (на будущее, вход сейчас по почте)"
      echo "kosmo sms-key  — ключ и ссылка на приложение Kosmo SMS для телефона"
+     echo "kosmo premium адрес [off] — значок Kosmo Premium"
      echo "kosmo logs     — логи сервера (здесь коды, если SMS не настроены)"
      echo "kosmo restart  — перезапустить сервер"
      echo "kosmo status   — состояние" ;;

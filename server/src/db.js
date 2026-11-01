@@ -125,6 +125,7 @@ export function tx(fn) {
 const RESERVED = /^(kosmo|kosmoteam|kosmochat|kosmosupport|official|admin|administrator|support|help|security|system|moderator|root)$/;
 export const users = {
   get(id) {
+    if (typeof id !== 'string' || !id) return null;
     const r = sql.prepare('SELECT * FROM users WHERE id = ?').get(id);
     return r ? { ...json(r.data), id: r.id, email: r.email ?? '', phone: r.phone ?? '' } : null;
   },

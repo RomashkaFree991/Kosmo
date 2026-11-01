@@ -3,6 +3,7 @@
 
 import { $, db, toast, escapeHtml, userAvatarHtml, cosmicBadge, userBadge } from './core.js';
 import { openOverlay, closeOverlay, state } from './panels.js';
+import { statusOf, statusHtml } from './plus.js';
 import { hydrateMedia } from './media.js';
 
 const svg = (d) => `<svg class="i" viewBox="0 0 24 24" aria-hidden="true">${d}</svg>`;
@@ -43,6 +44,7 @@ export function showUser(userId) {
       </div>
       <h2 class="profile-name"><span>${escapeHtml(u.name)}</span>${userBadge(u)}</h2>
       ${u.official ? '<p class="official-note">Official account</p>' : ''}
+      ${statusOf(u) ? `<p class="profile-status">${statusHtml(u, true)}</p>` : ''}
       <div class="hero-actions">
         <button class="pill-btn" type="button" data-user-message>${ICON.chat}Message</button>
         <button class="pill-btn" type="button" data-user-call="voice" aria-label="Voice call">${ICON.call}Call</button>

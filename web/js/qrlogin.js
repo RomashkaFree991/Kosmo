@@ -12,9 +12,9 @@ const newCode = () => Array.from(crypto.getRandomValues(new Uint8Array(6)), (b) 
 const pretty = (c) => `${c.slice(0, 3)}-${c.slice(3)}`;
 
 let qrLib = null;
-const qrReady = import('https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/+esm').then((m) => { qrLib = m.default ?? m; }).catch(() => {});
+export const qrReady = import('https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/+esm').then((m) => { qrLib = m.default ?? m; }).catch(() => {});
 
-function qrSvg(text) {
+export function qrSvg(text) {
   if (!qrLib) return null;
   const qr = qrLib(0, 'M');
   qr.addData(text);

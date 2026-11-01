@@ -272,12 +272,12 @@ export function kosmoAvatar(cls = '') {
 }
 
 // Значок рядом с именем: официальный аккаунт (выдаётся только на сервере) или владелец
-export const userBadge = (u) => (u?.official ? cosmicBadge('official') : u?.role === 'owner' ? cosmicBadge('owner') : '');
+export const userBadge = (u) => (u?.official ? cosmicBadge('official') : u?.premium ? cosmicBadge('premium') : u?.role === 'owner' ? cosmicBadge('owner') : '');
 
 // «Космическая» галочка: планета с кольцом и галочкой.
 // official — официальные аккаунты (фиолетовая), owner — владелец (золотая)
 export function cosmicBadge(kind = 'official') {
-  const label = kind === 'owner' ? 'Owner' : 'Official';
+  const label = kind === 'owner' ? 'Owner' : kind === 'premium' ? 'Kosmo Premium' : 'Official';
   return `<svg class="cosmic-badge cosmic-${kind}" viewBox="0 0 24 24" role="img" aria-label="${label}">
     <title>${label}</title>
     <g transform="rotate(-24 12 12)"><path d="M0.9 12 A11.1 3.3 0 0 1 23.1 12" fill="none" stroke="url(#cb-ring)" stroke-width="1.3" stroke-linecap="round"/></g>

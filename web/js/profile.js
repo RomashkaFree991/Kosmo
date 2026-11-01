@@ -8,7 +8,10 @@ import {
 import { createOtp } from './otp.js';
 import { state, openPanel } from './panels.js';
 import { putBlob, hydrateMedia, squareAvatar } from './media.js';
-import { ICON as CHAT_ICON, deviceIcon } from './chats.js';
+import { ICON as CHAT_ICON, deviceIcon, openSaved, openChatAt, chatTitle, chats } from './chats.js';
+import {
+  PI, openBookmarks, openDnd, dndUntil, openStatus, statusOf, statusHtml, openBackup, openBots, bookmarks,
+} from './plus.js';
 import { SICON } from './settings.js';
 import { accountsHtml, linkedAccounts } from './accounts.js';
 import { api } from './api.js';
@@ -62,7 +65,7 @@ const MAIL_ICON = '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x
 let sig = '';
 export function renderProfile(force = false) {
   const u = state.acc.user;
-  const next = JSON.stringify([u.name, u.username, u.email, u.bio, u.role, u.avatar, u.publicId, u.sessions.length, u.privacy, u.security?.lock, linkedAccounts().map((a) => a.uid)]);
+  const next = JSON.stringify([u.status, u.settings?.dnd, (u.bookmarks ?? []).length, u.name, u.username, u.email, u.bio, u.role, u.avatar, u.publicId, u.sessions.length, u.privacy, u.security?.lock, linkedAccounts().map((a) => a.uid)]);
   if (next === sig && !force) return;
   sig = next;
   $('#profile').innerHTML = `
@@ -74,6 +77,7 @@ export function renderProfile(force = false) {
       </button>
       <h2 class="profile-name"><span>${escapeHtml(u.name)}</span>${userBadge(u)}</h2>
       ${u.official ? '<p class="official-note">Official account</p>' : ''}
+      <button class="profile-status" type="button" data-open-status>${statusOf(u) ? statusHtml(u, true) : `${PI.plus}Set status`}</button>
       <button class="pill-btn" type="button" data-open-edit>${ICON.edit}Edit profile</button>
     </section>
 
@@ -86,6 +90,11 @@ export function renderProfile(force = false) {
       ${tile(ICON.devices, 'Sessions', `${u.sessions.length} active`, 'data-open-sessions aria-label="Sessions"')}
     </section>
 
+    <section class="group settings-group" aria-label="Kosmo">
+      ${row('data-open-saved', PI.bookmark, 'Saved Messages', ICON.chevron, 'ic-blue')}
+      ${row('data-open-bookmarks', PI.star, 'Bookmarks', `<span class="row-value">${bookmarks().length || ''}</span>${ICON.chevron}`, 'ic-orange')}
+      ${row('data-open-dnd', PI.moon, 'Do not disturb', `<span class="row-value">${dndUntil() ? `until ${new Date(dndUntil()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'Off'}</span>${ICON.chevron}`, 'ic-violet')}
+    </section>
     <section class="group settings-group" aria-label="Account settings">
       ${row('data-open-edit', ICON.edit, 'Edit profile', ICON.chevron, 'ic-blue')}
       ${row('data-open-design', ICON.palette, 'Designs', ICON.chevron, 'ic-pink')}
@@ -99,6 +108,8 @@ export function renderProfile(force = false) {
     </section>
     ${accountsHtml(u.id)}
     <section class="group settings-group" aria-label="More">
+      ${row('data-open-backup', PI.lock, 'Backup', ICON.chevron, 'ic-green')}
+      ${row('data-open-bots', PI.bot, 'My bots', ICON.chevron, 'ic-teal')}
       ${row('data-open-settings="about"', SICON.info, 'About Kosmo', ICON.chevron, 'ic-blue')}
       <button class="group-row group-row-btn ripple-host danger" type="button" id="logout-btn">
         <span class="row-icon">${ICON.logout}</span><span class="row-text">Log out</span>
@@ -126,6 +137,28 @@ document.addEventListener('click', async (e) => {
   if (e.target.closest('[data-open-edit]')) openEdit();
   if (e.target.closest('[data-open-sessions]')) { renderSessions(); openPanel('sessions'); }
   if (e.target.closest('[data-open-email]')) openEmailChange();
+  if (e.target.closest('[data-open-saved]')) openSaved();
+  if (e.target.closest('[data-open-bookmarks]')) {
+    openBookmarks({
+      title: (id) => (id.startsWith('saved_') ? 'Saved Messages' : chats.get(id) ? chatTitle(chats.get(id)) : 'Chat'),
+      onOpen: (chatId, msgId) => openChatAt(chatId, msgId),
+    });
+  }
+  if (e.target.closest('[data-open-dnd]')) openDnd(() => renderProfile(true));
+  if (e.target.closest('[data-open-status]')) openStatus(() => renderProfile(true));
+  if (e.target.closest('[data-open-bots]')) openBots();
+  if (e.target.closest('[data-open-backup]')) {
+    openBackup(() => {
+      const me = state.acc.user;
+      const mine = Object.values(chats.all()).filter((c) => c.members.includes(me.id));
+      const ids = new Set(mine.flatMap((c) => c.members));
+      return {
+        kosmo: 'backup', exportedAt: Date.now(), me: me.id, bookmarks: me.bookmarks ?? [],
+        accounts: Object.fromEntries([...ids].map((id) => [id, { name: db.get(id)?.name ?? 'Unknown', username: db.get(id)?.username ?? '' }])),
+        chats: Object.fromEntries(mine.map((c) => [c.id, { ...c, messages: c.messages.filter((m) => !m.hiddenFor?.includes(me.id)) }])),
+      };
+    });
+  }
 });
 
 /* ---------------------------------------------------------------------------

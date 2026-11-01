@@ -10,6 +10,7 @@ import { createPad } from './pad.js';
 import { chats, isRoom, ICON } from './chats.js';
 import { posts } from './feeddata.js';
 import { LANGS, lang, setLang } from './i18n.js';
+import { dndUntil } from './plus.js';
 import { api as serverApi } from './api.js';
 
 const svg = (d, cls = 'i') => `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true">${d}</svg>`;
@@ -415,7 +416,7 @@ let audio = null;
 // Уведомление о новом сообщении с учётом настроек
 export function notify({ kind, title, text }) {
   const n = state.acc?.user.settings?.notify ?? {};
-  if (n[kind] === false) return;
+  if (n[kind] === false || dndUntil()) return;   // «Не беспокоить»
   toast(n.preview === false ? `${title}: New message` : `${title}: ${text}`);
   if (n.vibrate !== false) navigator.vibrate?.(30);
   if (n.sound !== false) {
