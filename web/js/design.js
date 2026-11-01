@@ -3,7 +3,7 @@
 // с живым превью списка чатов и переписки.
 
 import {
-  $, $$, root, store, kosmoAvatar, userAvatarHtml, reducedMotion, refreshRefraction, initials, escapeHtml, avatarStyle,
+  $, $$, root, store, kosmoAvatar, userAvatarHtml, reducedMotion, refreshRefraction, initials, escapeHtml, avatarStyle, schemeMode, setScheme,
 } from './core.js';
 import { KOSMO_NAME } from './chats.js';
 import { state, openPanel, panelOpen } from './panels.js';
@@ -214,6 +214,11 @@ export function renderDesign() {
   const s = settings[theme()];
   $('#design').innerHTML = `
     ${preview()}
+    <section class="group group-pad"><span class="group-label">Theme</span>
+      <div class="segs scheme-segs" role="radiogroup" aria-label="Theme">
+        ${[['dark', 'Dark'], ['light', 'Light'], ['auto', 'Auto']].map(([v, l]) => `<button type="button" class="seg-btn" role="radio" data-scheme-pick="${v}" aria-checked="${schemeMode() === v}">${l}</button>`).join('')}
+      </div>
+    </section>
     <section class="group group-pad"><span class="group-label">Style</span>${seg()}</section>
     <section class="group group-pad">
       <span class="group-label">Color</span>
@@ -251,6 +256,11 @@ document.addEventListener('click', (e) => {
     openPanel('design');
     return;
   }
+  const sp = e.target.closest('[data-scheme-pick]');
+  if (sp && sp.dataset.schemePick !== schemeMode()) {
+    const r = sp.getBoundingClientRect();
+    setScheme(sp.dataset.schemePick, r.left + r.width / 2, r.top + r.height / 2);
+  }
   const wp = e.target.closest('[data-wallpaper]');
   if (wp) {
     settings[theme()].wallpaper = wp.dataset.wallpaper;
@@ -268,6 +278,7 @@ document.addEventListener('click', (e) => {
 });
 
 // Смена стиля: у каждого стиля свои обои
+document.addEventListener('kosmo:scheme', () => applyDesign());
 document.addEventListener('kosmo:theme', () => {
   if (panelOpen() === 'design') renderDesign();
   else applyDesign();

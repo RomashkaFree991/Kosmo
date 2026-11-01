@@ -9,12 +9,13 @@ import { hydrateMedia } from './media.js';
 import { createPad } from './pad.js';
 import { chats, isRoom, ICON } from './chats.js';
 import { posts } from './feeddata.js';
-import { formatPhone } from './phone.js';
 import { LANGS, lang, setLang } from './i18n.js';
 import { api as serverApi } from './api.js';
 
 const svg = (d, cls = 'i') => `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true">${d}</svg>`;
 export const SICON = {
+  mail: svg('<rect x="3" y="5" width="18" height="14" rx="3"/><path d="M4 7l8 6 8-6"/>'),
+  sun: svg('<circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M4.6 4.6l1.4 1.4M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4L6 18M18 6l1.4-1.4"/>'),
   lock: svg('<rect x="5" y="10.5" width="14" height="9.5" rx="2.5"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"/>'),
   hand: svg('<circle cx="12" cy="12" r="8.5"/><path d="M6 6l12 12"/>'),
   bell: svg('<path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 2h-15zM10 20.5a2.2 2.2 0 0 0 4 0"/>'),
@@ -79,7 +80,7 @@ function renderPrivacy() {
     </section>
     <p class="section-label">Who can see</p>
     <section class="group group-pad">
-      ${choice('hidePhone', 'Phone number', p.hidePhone ? 'nobody' : 'everybody')}
+      ${choice('showEmail', 'Email', p.showEmail ? 'everybody' : 'nobody')}
       ${choice('lastSeen', 'Last seen & online', p.lastSeen, 'If hidden, people see “last seen recently”.')}
       ${choice('avatar', 'Profile photo', p.avatar)}
       ${choice('hideBio', 'Bio', p.hideBio ? 'nobody' : 'everybody')}
@@ -88,7 +89,7 @@ function renderPrivacy() {
     <section class="group group-pad">
       ${choice('messages', 'New messages', p.messages, 'People who already chat with you can still write.')}
       ${choice('groups', 'Add me to groups & channels', p.groups)}
-      ${sw('findByPhone', 'Find me by phone number', p.findByPhone !== false, 'People can find you in Search by your number.')}
+      ${sw('findByEmail', 'Find me by email', p.findByEmail !== false, 'People who know your exact email can find you in Search.')}
     </section>
     <p class="section-label">Messages</p>
     <section class="group group-pad">
@@ -117,7 +118,7 @@ $('#privacy-body').addEventListener('click', (e) => {
   if (c) {
     const key = c.dataset.choice;
     const v = c.dataset.v;
-    savePrivacy(key === 'hidePhone' || key === 'hideBio' ? { [key]: v === 'nobody' } : { [key]: v });
+    savePrivacy(key === 'hideBio' ? { [key]: v === 'nobody' } : key === 'showEmail' ? { showEmail: v === 'everybody' } : { [key]: v });
     $$(`[data-choice="${key}"]`).forEach((b) => b.setAttribute('aria-checked', String(b === c)));
   }
   const ub = e.target.closest('[data-unblock]');
@@ -173,7 +174,7 @@ function renderSecurity() {
     </section>
     <p class="section-label">Account</p>
     <section class="group">
-      ${row('data-open-phone', SICON.call, 'Change number', `<span class="row-value">${escapeHtml(formatPhone(u.phone))}</span>${SICON.chevron}`)}
+      ${row('data-open-email', SICON.mail, 'Change email', `<span class="row-value">${escapeHtml(u.email ?? '')}</span>${SICON.chevron}`)}
       ${row('data-open-sessions', SICON.devices, 'Active sessions', `<span class="row-value">${u.sessions.length}</span>${SICON.chevron}`)}
     </section>
     <section class="group group-pad">
@@ -499,7 +500,7 @@ document.addEventListener('change', (e) => {
   if (!s || !state.acc) return;
   const key = s.dataset.sw;
   const on = s.checked;
-  if (['findByPhone', 'readReceipts'].includes(key)) savePrivacy({ [key]: on });
+  if (['findByEmail', 'readReceipts'].includes(key)) savePrivacy({ [key]: on });
   else if (key === 'lock' || key === 'loginAlerts') { saveSecurity({ [key]: on }); if (key === 'lock') { renderSecurity(); if (on) { try { sessionStorage.setItem(LOCK_KEY, '1'); } catch { /* */ } toast('Passcode lock is on'); } } }
   else if (key.startsWith('notify.')) saveSettings({ notify: { ...(sets().notify ?? {}), [key.slice(7)]: on } });
   else if (key === 'saveMedia') saveSettings({ compress: on });

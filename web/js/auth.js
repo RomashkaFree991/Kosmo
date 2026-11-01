@@ -1,12 +1,12 @@
 // Вход и регистрация.
-// Регистрация: номер → код из SMS → новый код-пароль (4 цифры) → имя и @username → описание → «Sign up».
-// Вход: номер → код из SMS → код-пароль, заданный при регистрации.
+// Регистрация: почта → код из письма → новый код-пароль (4 цифры) → имя и @username → описание → «Sign up».
+// Вход: почта → код из письма → код-пароль. Забыли код-пароль — новый код на почту и новый код-пароль.
 
 import {
   $, $$, root, wait, easing, toast, shake, refreshRefraction, paintAvatar, tab, networkInfo, deviceInfo,
 } from './core.js';
 import { api, boot } from './api.js';
-import { createPhoneField, openSheet, closeSheet } from './phone.js';
+import { openSheet, closeSheet } from './phone.js';
 import { showLoginQr, stopLoginQr } from './qrlogin.js';
 import { createOtp } from './otp.js';
 
@@ -14,7 +14,7 @@ const auth = $('#auth');
 const backBtn = $('#back-btn');
 
 // Состояние текущей попытки входа/регистрации
-const flow = { phone: null, ticket: null, exists: false, pass: null, mode: 'create' };
+const flow = { email: null, ticket: null, exists: false, pass: null, mode: 'create', reset: false };
 let onSignedIn = () => {};
 
 /* ---------------------------------------------------------------------------
@@ -53,7 +53,7 @@ async function playIntro() {
    Переходы между экранами регистрации
    --------------------------------------------------------------------------- */
 // Куда ведёт «назад» с каждого экрана
-const BACK = { 'screen-code': 'screen-phone', 'screen-pass': 'screen-phone', 'screen-name': 'screen-pass', 'screen-bio': 'screen-name' };
+const BACK = { 'screen-code': 'screen-email', 'screen-pass': 'screen-email', 'screen-name': 'screen-pass', 'screen-bio': 'screen-name' };
 let switching = false;
 
 function showScreen(nextId, direction, onShown) {
@@ -88,38 +88,46 @@ backBtn.addEventListener('click', () => {
   const current = $('.auth .screen.is-active');
   const target = BACK[current.id];
   if (target === 'screen-pass') openPasscode('create');
-  else if (target) showScreen(target, 'back', () => target === 'screen-phone' && phoneField.focus());
+  else if (target) showScreen(target, 'back', () => target === 'screen-email' && emailInput.focus());
 });
 
 /* ---------------------------------------------------------------------------
-   1. Номер телефона
+   1. Почта
    --------------------------------------------------------------------------- */
-const phoneField = createPhoneField($('#phone-field'));
+const emailInput = $('#email-input');
+const emailField = $('#email-field');
 const submitBtn = $('#submit-btn');
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+emailInput.addEventListener('input', () => emailField.classList.remove('is-error'));
 
-$('#phone-form').addEventListener('submit', (e) => {
+function sendingButton(btn) {
+  // В M3 кнопка морфится в круг: фиксируем ширину, чтобы переход был плавным
+  btn.style.width = `${btn.offsetWidth}px`;
+  requestAnimationFrame(() => btn.classList.add('is-loading'));
+  return () => { btn.classList.remove('is-loading'); btn.style.removeProperty('width'); };
+}
+
+$('#email-form').addEventListener('submit', (e) => {
   e.preventDefault();
   if (submitBtn.classList.contains('is-loading')) return;
-  if (!phoneField.isComplete()) {
-    phoneField.shake();
+  const email = emailInput.value.trim().toLowerCase();
+  if (!EMAIL_RE.test(email)) {
+    shake(emailField);
+    emailField.classList.add('is-error');
+    emailInput.focus();
     return;
   }
-  flow.phone = phoneField.e164;
+  flow.email = email;
+  flow.reset = false;
   networkInfo();   // заранее узнаём город для будущей сессии
-  // В M3 кнопка морфится в круг: фиксируем ширину, чтобы переход был плавным
-  submitBtn.style.width = `${submitBtn.offsetWidth}px`;
-  requestAnimationFrame(() => submitBtn.classList.add('is-loading'));
-  const stop = () => { submitBtn.classList.remove('is-loading'); submitBtn.style.removeProperty('width'); };
-  // код отправляет сервер: SMS, Telegram или (в тестовом режиме) лог
-  Promise.all([api('POST', '/api/auth/code', { phone: flow.phone }, { auth: false }), wait(600)])
-    .then(([r]) => {
-      paintHint(r);
-      otp.reset();
-      resendTimer();
+  const stop = sendingButton(submitBtn);
+  Promise.all([api('POST', '/api/auth/code', { email }, { auth: false }), wait(600)])
+    .then(() => {
+      paintCodeScreen();
       showScreen('screen-code', 'forward', () => otp.focus());
       stop();
     })
-    .catch((err) => { stop(); phoneField.shake(); toast(err.message); });
+    .catch((err) => { stop(); shake(emailField); toast(err.message); });
 });
 
 // Вход по QR: другая вкладка, где уже вошли, сканирует код и подтверждает
@@ -131,17 +139,16 @@ $('#qr-btn').addEventListener('click', () => openSheet('qr', {
 /* ---------------------------------------------------------------------------
    2. Код из SMS
    --------------------------------------------------------------------------- */
-// Подсказка, куда пришёл код. Telegram-бот: если номер ещё не привязан —
-// кнопка открыть бота и поделиться номером, код придёт туда же
-function paintHint(r) {
-  const tg = $('#code-tg');
-  tg.hidden = !(r.channel === 'tgbot' && r.bot);
-  if (r.bot) tg.href = `https://t.me/${r.bot}`;
-  tg.textContent = r.bot ? `Open @${r.bot}` : '';
-  $('#code-hint').textContent = r.channel === 'tgbot'
-    ? (r.linked ? `Code sent to Telegram · @${r.bot}` : 'Open our Telegram bot and share your number — the code will arrive there')
-    : r.channel === 'telegram' ? `Code sent to Telegram · ${phoneField.e164}`
-    : r.channel === 'log' ? 'Test mode: the code is in the server log' : `Code sent by SMS to ${phoneField.e164}`;
+// Код отправлен: куда и зачем (вход или сброс код-пароля)
+function paintCodeScreen() {
+  $('#code-title').textContent = flow.reset ? 'Reset passcode' : 'Enter code';
+  $('#code-hint').innerHTML = '';
+  $('#code-hint').append(
+    document.createTextNode(`We sent a code to ${flow.email}`),
+    Object.assign(document.createElement('span'), { className: 'code-spam', textContent: 'No email? Check the Spam folder' }),
+  );
+  otp.reset();
+  resendTimer();
 }
 
 // «Отправить ещё раз» — через минуту
@@ -162,7 +169,7 @@ function resendTimer() {
 resendBtn.addEventListener('click', async () => {
   resendBtn.disabled = true;
   try {
-    paintHint(await api('POST', '/api/auth/code', { phone: flow.phone }, { auth: false }));
+    await api('POST', flow.reset ? '/api/auth/reset/code' : '/api/auth/code', { email: flow.email }, { auth: false });
     toast('Code sent again');
     resendTimer();
   } catch (err) {
@@ -170,11 +177,15 @@ resendBtn.addEventListener('click', async () => {
     resendBtn.disabled = false;
   }
 });
-// Есть аккаунт с этим номером — спрашиваем его код-пароль, иначе создаём новый
+// Есть аккаунт с этой почтой — спрашиваем его код-пароль, иначе создаём новый
 const otp = createOtp($('#otp'), {
   verify: async (code) => {
     try {
-      const r = await api('POST', '/api/auth/verify', { phone: flow.phone, code }, { auth: false });
+      if (flow.reset) {
+        flow.ticket = (await api('POST', '/api/auth/reset/verify', { email: flow.email, code }, { auth: false })).ticket;
+        return true;
+      }
+      const r = await api('POST', '/api/auth/verify', { email: flow.email, code }, { auth: false });
       flow.ticket = r.ticket;
       flow.exists = r.exists;
       return true;
@@ -183,7 +194,7 @@ const otp = createOtp($('#otp'), {
       return false;
     }
   },
-  onComplete: () => openPasscode(flow.exists ? 'enter' : 'create'),
+  onComplete: () => openPasscode(flow.reset ? 'reset' : flow.exists ? 'enter' : 'create'),
 });
 
 /* ---------------------------------------------------------------------------
@@ -214,7 +225,8 @@ function openPasscode(mode) {
   passBusy = false;
   attempts = 0;
   passCells.classList.remove('is-done', 'is-error');
-  $('#pass-title').textContent = mode === 'create' ? 'Create passcode' : 'Enter passcode';
+  $('#pass-title').textContent = { create: 'Create passcode', enter: 'Enter passcode', reset: 'New passcode' }[mode];
+  $('#forgot-btn').hidden = mode !== 'enter';
   renderPass();
   const fromBack = $('.auth .screen.is-active')?.id === 'screen-name';
   showScreen('screen-pass', fromBack ? 'back' : 'forward');
@@ -244,7 +256,17 @@ async function submitPass() {
       renderPass();
       passBusy = false;
       if (err.code !== 'wrong_passcode' || attempts >= 3) toast(err.message);
-      if (err.code === 'bad_ticket') showScreen('screen-phone', 'back');
+      if (err.code === 'bad_ticket') showScreen('screen-email', 'back');
+      return;
+    }
+  } else if (flow.mode === 'reset') {
+    try {
+      session = await api('POST', '/api/auth/reset', { ticket: flow.ticket, passcode: pass, ...(await deviceAndPlace()) }, { auth: false });
+      toast('Passcode changed. Other sessions were signed out');
+    } catch (err) {
+      passBusy = false;
+      toast(err.message);
+      showScreen('screen-email', 'back');
       return;
     }
   } else {
@@ -260,6 +282,22 @@ async function submitPass() {
   prepareNameScreen();
   showScreen('screen-name', 'forward', () => nameInput.focus({ preventScroll: true }));
 }
+
+// Забыли код-пароль: новый код на почту → новый код-пароль.
+// Остальные сеансы завершатся — так чужой не останется в аккаунте.
+$('#forgot-btn').addEventListener('click', async () => {
+  const btn = $('#forgot-btn');
+  btn.disabled = true;
+  try {
+    await api('POST', '/api/auth/reset/code', { email: flow.email }, { auth: false });
+    flow.reset = true;
+    paintCodeScreen();
+    showScreen('screen-code', 'forward', () => otp.focus());
+  } catch (err) {
+    toast(err.message);
+  }
+  btn.disabled = false;
+});
 
 // Нажатие: подсветка сразу, гаснет медленно после отпускания (как на iOS)
 keypad.addEventListener('pointerdown', (e) => {
@@ -378,7 +416,7 @@ $('#bio-form').addEventListener('submit', async (e) => {
   } catch (err) {
     toast(err.message);
     if (err.code === 'username_taken') showScreen('screen-name', 'back', () => usernameInput.focus());
-    if (err.code === 'bad_ticket') showScreen('screen-phone', 'back');
+    if (err.code === 'bad_ticket') showScreen('screen-email', 'back');
   }
   signupBtn.classList.remove('is-loading');
   signupBtn.style.removeProperty('width');
@@ -411,18 +449,18 @@ async function finish({ token, uid, sid }) {
   onSignedIn();
 }
 
-// После выхода: чистый экран номера телефона
+// После выхода: чистый экран почты
 export function showAuth() {
   root.classList.remove('has-session');
   root.classList.add('is-ready');
   $$('.auth .screen').forEach((s) => {
-    s.hidden = s.id !== 'screen-phone';
-    s.classList.toggle('is-active', s.id === 'screen-phone');
+    s.hidden = s.id !== 'screen-email';
+    s.classList.toggle('is-active', s.id === 'screen-email');
   });
   backBtn.hidden = true;
   [nameInput, usernameInput, bioInput].forEach((i) => { i.value = ''; });
   counter.textContent = '70';
-  phoneField.clear();
+  emailInput.value = '';
   auth.hidden = false;
   auth.animate([{ opacity: 0, transform: 'scale(0.96)' }, { opacity: 1, transform: 'none' }], { duration: 500, easing: easing.intro });
   refreshRefraction();

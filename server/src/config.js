@@ -27,7 +27,17 @@ export const config = {
   smsgateUrl: env.SMSGATE_URL || 'https://api.sms-gate.app/3rdparty/v1/message',
   smsgateUser: env.SMSGATE_USER ?? '',
   smsgatePass: env.SMSGATE_PASS ?? '',
-  // номера +000… для тестов: код всегда 000000
+  // почта: direct — свой сервер шлёт письма прямо получателю (MX), smtp — через SMTP_URL, log — в лог
+  mailMode: (env.MAIL_MODE ?? 'direct').toLowerCase(),
+  mailFrom: env.MAIL_FROM ?? '',
+  mailDomain: env.MAIL_DOMAIN ?? '',
+  smtpUrl: env.SMTP_URL ?? '',
+  dkimKeyFile: env.DKIM_KEY_FILE ?? '',
+  dkimSelector: env.DKIM_SELECTOR ?? 'kosmo',
+  mailDirectHost: env.MAIL_DIRECT_HOST ?? '',     // только для тестов
+  mailDirectPort: Number(env.MAIL_DIRECT_PORT ?? 25),
+  // адреса …@kosmo.test (и номера +000…) для проверки: код всегда 000000
+
   testNumbers: (env.TEST_NUMBERS ?? '1') === '1',
   // звонки: STUN Google + свой TURN (coturn) с общим секретом
   turnHost: env.TURN_HOST ?? '',

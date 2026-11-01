@@ -105,7 +105,7 @@ button.title-pill:active { scale: 0.97; }
   margin-left: 6px;
   padding: 1px 7px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(var(--ink), 0.08);
   font-size: 11px;
   font-weight: 600;
   vertical-align: 1px;
@@ -191,7 +191,7 @@ button.title-pill:active { scale: 0.97; }
   border: 0;
   border-left: 3px solid currentColor;
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.12);
+  background: rgba(var(--ink), 0.12);
   color: inherit;
   text-align: left;
   font-size: 13px;
@@ -234,7 +234,7 @@ button.title-pill:active { scale: 0.97; }
   padding: 0 8px 0 4px;
   border: 0;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.14);
+  background: rgba(var(--ink), 0.14);
   color: inherit;
   font-size: 13px;
   font-weight: 600;
@@ -244,7 +244,7 @@ button.title-pill:active { scale: 0.97; }
 .reaction:active { scale: 0.9; }
 .reaction .emoji { width: 21px; height: 21px; }
 .reaction .emoji * { animation: none !important; }
-.mine .reaction { background: rgba(255, 255, 255, 0.2); }
+.mine .reaction { background: rgba(var(--ink), 0.2); }
 .mine .reaction.is-mine { background: #fff; color: var(--c-accent); }
 .theirs .reaction.is-mine { background: var(--c-accent); color: #fff; }
 html[data-theme="material"] .mine .reaction.is-mine { background: var(--md-sys-color-on-primary); color: var(--md-sys-color-primary); }
@@ -358,7 +358,7 @@ html[data-theme="glass"] .react-bar { background: var(--c-sheet-bg); }
   animation-delay: calc(var(--i) * 22ms);
   transition: scale 300ms var(--spring-bouncy), background 200ms ease;
 }
-.emoji-opt:hover { background: rgba(255, 255, 255, 0.08); scale: 1.08; }
+.emoji-opt:hover { background: rgba(var(--ink), 0.08); scale: 1.08; }
 .emoji-opt:active { scale: 0.9; }
 .emoji-opt .emoji { width: 52px; height: 52px; }
 

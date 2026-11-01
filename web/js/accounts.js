@@ -3,7 +3,6 @@
 // из текущих. Входы (токены) хранятся в localStorage.
 
 import { $, db, tab, escapeHtml, userAvatarHtml, toast } from './core.js';
-import { formatPhone } from './phone.js';
 
 export const MAX_ACCOUNTS = 5;
 const KEY = 'kosmo:tab-accounts';
@@ -19,7 +18,7 @@ export function linkedAccounts() {
 // имя и номер другого аккаунта запоминаем при входе — его данных в кеше нет
 function remember(t) {
   const u = db.get(t.uid);
-  return u ? { ...t, name: u.name, phone: u.phone, avatar: u.avatar } : t;
+  return u ? { ...t, name: u.name, email: u.email, avatar: u.avatar } : t;
 }
 
 export function rememberAccount() {
@@ -38,13 +37,13 @@ export function forgetAccount(uid) {
 export function accountsHtml(currentUid) {
   const list = linkedAccounts();
   const rows = list.map((a) => {
-    const u = a.uid === currentUid ? db.get(a.uid) : { name: a.name ?? 'Account', phone: a.phone ?? '', avatar: a.avatar ?? {} };
+    const u = a.uid === currentUid ? db.get(a.uid) : { name: a.name ?? 'Account', email: a.email ?? '', avatar: a.avatar ?? {} };
     const me = a.uid === currentUid;
     const n = 0;
     return `
       <button class="group-row group-row-btn account-row${me ? ' is-current' : ''}" type="button" ${me ? 'disabled' : `data-switch-account="${a.uid}"`}>
         ${userAvatarHtml(u, 'avatar-xs')}
-        <span class="row-text"><b>${escapeHtml(u.name)}</b><small>${escapeHtml(formatPhone(u.phone))}</small></span>
+        <span class="row-text"><b>${escapeHtml(u.name)}</b><small>${escapeHtml(u.email ?? '')}</small></span>
         ${me ? '<svg class="i account-check" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>' : n ? `<span class="badge">${n}</span>` : ''}
       </button>`;
   }).join('');

@@ -5,11 +5,14 @@
   "type": "module",
   "description": "Сервер мессенджера Kosmo: API, WebSocket, SQLite",
   "main": "src/index.js",
-  "engines": { "node": ">=22.13" },
+  "engines": {
+    "node": ">=22.13"
+  },
   "scripts": {
     "start": "node src/index.js"
   },
   "dependencies": {
+    "nodemailer": "^6.9.16",
     "ws": "^8.18.0"
   }
 }

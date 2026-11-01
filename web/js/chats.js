@@ -177,7 +177,7 @@ function roomName(c) {
 }
 
 /* ---------------------------------------------------------------------------
-   Сообщения Kosmo: приветствие, новые входы, смена номера
+   Сообщения Kosmo: приветствие, новые входы, смена почты, сброс код-пароля
    --------------------------------------------------------------------------- */
 function kosmoCopy(m) {
   const first = escapeHtml(state.acc.user.name.split(/\s+/)[0]);
@@ -185,6 +185,8 @@ function kosmoCopy(m) {
   if (m.kind === 'login') return { title: 'New login to your account', text: 'A device signed in to your account. If it wasn\'t you, terminate this session.' };
   if (m.kind === 'passcode') return { title: 'Passcode changed', text: 'The passcode of your account was changed.' };
   if (m.kind === 'reminder') return { title: 'Reminder', text: escapeHtml(m.text) };
+  if (m.kind === 'reset') return { title: 'Passcode reset', text: 'The passcode was reset with a code from your email. All other sessions were signed out.' };
+  if (m.kind === 'email') return { title: 'Email changed', text: `Your email was changed from <b>${escapeHtml(m.from)}</b> to <b>${escapeHtml(m.to)}</b>.` };
   return {
     title: 'Phone number changed',
     text: `Your number was changed from <b>${escapeHtml(formatPhone(m.from))}</b> to <b>${escapeHtml(formatPhone(m.to))}</b>.`,

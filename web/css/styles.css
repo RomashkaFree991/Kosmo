@@ -59,10 +59,10 @@ html[data-theme="glass"] {
   --c-error: #ff453a;
   --c-success: #30d158;
   --c-field-bg: rgba(118, 118, 128, 0.24);
-  --c-field-border: rgba(255, 255, 255, 0.14);
+  --c-field-border: rgba(var(--ink), 0.14);
   --c-cell-bg: #0b0b0c;
-  --c-cell-border: rgba(255, 255, 255, 0.16);
-  --c-cell-border-active: rgba(255, 255, 255, 0.6);
+  --c-cell-border: rgba(var(--ink), 0.16);
+  --c-cell-border-active: rgba(var(--ink), 0.6);
   --c-btn-bg: #fff;
   --c-btn-fg: #000;
   --c-sheet-bg: rgba(28, 28, 30, 0.86);
@@ -157,7 +157,7 @@ html[data-theme="glass"] .glass {
   background: var(--c-field-bg);
   -webkit-backdrop-filter: saturate(180%) blur(28px);
   backdrop-filter: saturate(180%) blur(28px);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14);
+  box-shadow: inset 0 1px 0 rgba(var(--ink), 0.14);
 }
 /* Неравномерный ободок: ярче слева сверху и справа снизу — так стекло
    читается как толстая линза, а не наклейка */
@@ -168,10 +168,10 @@ html[data-theme="glass"] .glass::before {
   border-radius: inherit;
   padding: 1px;
   background: linear-gradient(135deg,
-    rgba(255, 255, 255, 0.45) 0%,
-    rgba(255, 255, 255, 0.08) 30%,
-    rgba(255, 255, 255, 0.04) 60%,
-    rgba(255, 255, 255, 0.26) 100%);
+    rgba(var(--ink), 0.45) 0%,
+    rgba(var(--ink), 0.08) 30%,
+    rgba(var(--ink), 0.04) 60%,
+    rgba(var(--ink), 0.26) 100%);
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   -webkit-mask-composite: xor;
   mask-composite: exclude;
@@ -228,8 +228,8 @@ html[data-theme="glass"] .glass-text.is-refracting { background: var(--c-sheet-b
   top: 3px; bottom: 3px; left: 3px;
   width: calc(50% - 3px);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.18);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22);
+  background: rgba(var(--ink), 0.18);
+  box-shadow: inset 0 1px 0 rgba(var(--ink), 0.22);
   transition: transform var(--spring-bouncy-dur) var(--spring-bouncy);
 }
 .seg.is-pressing .seg-thumb { transform: scale(0.94); }
@@ -360,7 +360,7 @@ html[data-theme="material"] .divider-or::before, html[data-theme="material"] .di
 }
 html[data-theme="glass"] .field { border-color: transparent; }   /* у стекла рамка — ободок ::before */
 html[data-theme="glass"] .field:focus-within {
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), 0 0 0 4px rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 1px 0 rgba(var(--ink), 0.14), 0 0 0 4px rgba(var(--ink), 0.08);
   scale: 1.015;
 }
 html[data-theme="material"] .field:focus-within {
@@ -388,13 +388,13 @@ html[data-theme="material"] .field.is-error { box-shadow: inset 0 0 0 1px var(--
   white-space: nowrap;
   transition: background 200ms ease, scale 300ms var(--spring-bouncy);
 }
-.country-btn:hover { background: rgba(255, 255, 255, 0.06); }
+.country-btn:hover { background: rgba(var(--ink), 0.06); }
 .country-btn:active { scale: 0.94; }
 .flag {
   width: 26px; height: 19px;
   border-radius: 4px;
   object-fit: cover;
-  box-shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.25);
+  box-shadow: 0 0 0 0.5px rgba(var(--ink), 0.25);
   background: #333;
 }
 html[data-theme="material"] .flag { border-radius: 6px; }
@@ -530,7 +530,7 @@ html[data-theme="material"] .btn-primary.is-loading { width: 56px !important; al
 }
 .icon-btn svg { width: 22px; height: 22px; }
 .icon-btn:active { scale: 0.9; }
-html[data-theme="material"] .icon-btn:hover { background: rgba(255, 255, 255, 0.08); }
+html[data-theme="material"] .icon-btn:hover { background: rgba(var(--ink), 0.08); }
 
 /* ---------- Динамический цвет (только Material) ---------- */
 .palette {
@@ -630,7 +630,7 @@ html[data-theme="material"] .otp-cell { border-radius: 16px; }
 
 /* Активная ячейка: светлее рамка и мигающий курсор */
 .otp.is-focused .otp-cell.is-active { border-color: var(--c-cell-border-active); scale: 1.06; }
-html[data-theme="glass"] .otp.is-focused .otp-cell.is-active { box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.07); }
+html[data-theme="glass"] .otp.is-focused .otp-cell.is-active { box-shadow: 0 0 0 4px rgba(var(--ink), 0.07); }
 html[data-theme="material"] .otp.is-focused .otp-cell.is-active { box-shadow: inset 0 0 0 1px var(--c-cell-border-active); }
 .otp.is-focused .otp-cell.is-active:empty::after {
   content: "";
@@ -719,7 +719,7 @@ html[data-theme="material"] .sheet-handle { width: 32px; height: 4px; margin: 14
 .sheet-head { display: flex; align-items: center; justify-content: space-between; padding: 4px 12px 8px 24px; }
 .sheet-head h2 { margin: 0; font-size: 20px; font-weight: 600; }
 html[data-theme="material"] .sheet-head h2 { font-size: 22px; font-weight: 400; }
-.sheet-close { background: rgba(255, 255, 255, 0.08); width: 36px; height: 36px; }
+.sheet-close { background: rgba(var(--ink), 0.08); width: 36px; height: 36px; }
 .sheet-close svg { width: 18px; height: 18px; }
 .sheet-body { display: flex; flex-direction: column; min-height: 0; padding: 0 16px; }
 
@@ -755,7 +755,7 @@ html[data-theme="material"] .search { height: 56px; background: var(--md-sys-col
   animation-delay: calc(var(--i, 0) * 18ms);
 }
 @keyframes item-in { from { opacity: 0; transform: translateY(10px); } }
-.country-item:hover { background: rgba(255, 255, 255, 0.07); }
+.country-item:hover { background: rgba(var(--ink), 0.07); }
 html[data-theme="material"] .country-item { border-radius: 999px; }
 html[data-theme="material"] .country-item[aria-selected="true"] { background: var(--md-sys-color-secondary-container); color: var(--md-sys-color-on-secondary-container); }
 html[data-theme="glass"] .country-item + .country-item::before {

@@ -3,11 +3,11 @@
 
 import { $, db, toast, escapeHtml, userAvatarHtml, cosmicBadge } from './core.js';
 import { openOverlay, closeOverlay, state } from './panels.js';
-import { formatPhone } from './phone.js';
 import { hydrateMedia } from './media.js';
 
 const svg = (d) => `<svg class="i" viewBox="0 0 24 24" aria-hidden="true">${d}</svg>`;
 const ICON = {
+  mail: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M4 7l8 6 8-6"/></svg>',
   at: svg('<circle cx="12" cy="12" r="3.6"/><path d="M15.6 12v1.4a2.6 2.6 0 0 0 5.2 0V12a8.8 8.8 0 1 0-3.5 7"/>'),
   hash: svg('<path d="M9.5 4l-2 16M16.5 4l-2 16M4.5 9h16M3.5 15h16"/>'),
   call: svg('<path d="M6.5 3.5h3l1.5 4.2-2 1.3a10 10 0 0 0 6 6l1.3-2 4.2 1.5v3a2 2 0 0 1-2.2 2A16.5 16.5 0 0 1 4.5 5.7a2 2 0 0 1 2-2.2z"/>'),
@@ -53,7 +53,7 @@ export function showUser(userId) {
     <section class="tiles" aria-label="Account">
       ${u.username ? tile(ICON.at, 'Username', `@${escapeHtml(u.username)}`, 'data-copy-user="username"') : ''}
       ${tile(ICON.hash, 'ID', escapeHtml(u.publicId), 'data-copy-user="id"')}
-      ${p.hidePhone ? tile(ICON.lock, 'Phone', 'Hidden') : tile(ICON.call, 'Phone', escapeHtml(formatPhone(u.phone)), '', true)}
+      ${u.email ? tile(ICON.mail, 'Email', escapeHtml(u.email), '', true) : tile(ICON.lock, 'Email', 'Hidden')}
       ${u.bio && !p.hideBio ? tile(ICON.quote, 'Bio', escapeHtml(u.bio), '', true) : ''}
       ${tile(ICON.calendar, 'Joined', monthYear.format(u.createdAt))}
     </section>`;

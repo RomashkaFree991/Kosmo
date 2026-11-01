@@ -58,12 +58,17 @@ function renderSearch(query) {
   const me = state.acc.user;
   const out = $('#search-results');
   const kosmo = !q || 'kosmo official'.includes(q);
-  // по номеру находят, только если человек его не скрыл
-  const digits = q.replace(/[\s()+-]/g, '');
-  const byPhone = (u) => /^\d{4,}$/.test(digits) && !u.privacy?.hidePhone && u.privacy?.findByPhone !== false
-    && u.phone.replace(/\D/g, '').includes(digits);
+  // по точной почте ищет сервер (если человек это разрешил)
+  if (EMAIL_Q.test(q) && emailHit.q !== q) {
+    emailHit = { q, id: null };
+    api('POST', '/api/find', { email: q }).then((r) => {
+      if (emailHit.q !== q) return;
+      emailHit.id = r.id;
+      if (r.id && searchInput.value.trim().toLowerCase() === q) renderSearch(searchInput.value);
+    }).catch(() => {});
+  }
   const people = Object.values(db.all())
-    .filter((u) => u.id !== me.id && (!q || u.name.toLowerCase().includes(q) || (u.username && u.username.includes(q)) || u.publicId === q || byPhone(u)));
+    .filter((u) => u.id !== me.id && (!q || u.name.toLowerCase().includes(q) || (u.username && u.username.includes(q)) || u.publicId === q || (emailHit.q === q && emailHit.id === u.id)));
   const rooms = searchRooms(q);
   if (!kosmo && !people.length && !rooms.length) {
     out.innerHTML = `<div class="search-empty">${ICON.empty}<span>No results</span></div>`;
@@ -94,6 +99,9 @@ function renderSearch(query) {
   ].filter(Boolean).join('');
   hydrateMedia(out);
 }
+
+const EMAIL_Q = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+let emailHit = { q: '', id: null };
 
 function openSearch() {
   renderSearch('');

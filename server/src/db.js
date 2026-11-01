@@ -11,6 +11,30 @@ fs.mkdirSync(config.dataDir, { recursive: true });
 fs.mkdirSync(path.join(config.dataDir, 'media'), { recursive: true });
 
 export const sql = new DatabaseSync(path.join(config.dataDir, 'kosmo.db'));
+
+// Миграция: вход по почте (раньше — по номеру). Таблицу users пересобираем,
+// коды и билеты — временные, их просто создаём заново.
+(function migrate() {
+  const cols = (t) => sql.prepare(`PRAGMA table_info(${t})`).all().map((c) => c.name);
+  if (cols('users').length && !cols('users').includes('email')) {
+    sql.exec(`
+      PRAGMA foreign_keys = OFF;
+      BEGIN;
+      CREATE TABLE users_new (
+        id TEXT PRIMARY KEY, email TEXT UNIQUE, phone TEXT UNIQUE, username TEXT,
+        pass_hash TEXT NOT NULL, pass_salt TEXT NOT NULL, data TEXT NOT NULL, created_at INTEGER NOT NULL
+      );
+      INSERT INTO users_new (id, phone, username, pass_hash, pass_salt, data, created_at)
+        SELECT id, phone, username, pass_hash, pass_salt, data, created_at FROM users;
+      DROP TABLE users;
+      ALTER TABLE users_new RENAME TO users;
+      COMMIT;
+      PRAGMA foreign_keys = ON;
+    `);
+  }
+  if (cols('codes').includes('phone')) sql.exec('DROP TABLE codes; DROP TABLE IF EXISTS tickets;');
+})();
+
 sql.exec(`
   PRAGMA journal_mode = WAL;
   PRAGMA synchronous = NORMAL;
@@ -18,7 +42,8 @@ sql.exec(`
 
   CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
-    phone TEXT UNIQUE NOT NULL,
+    email TEXT UNIQUE,
+    phone TEXT UNIQUE,
     username TEXT,
     pass_hash TEXT NOT NULL,
     pass_salt TEXT NOT NULL,
@@ -38,18 +63,18 @@ sql.exec(`
   CREATE INDEX IF NOT EXISTS sessions_user ON sessions(user_id);
 
   CREATE TABLE IF NOT EXISTS codes (
-    phone TEXT NOT NULL,
+    target TEXT NOT NULL,
     purpose TEXT NOT NULL,
     code_hash TEXT NOT NULL,
     expires INTEGER NOT NULL,
     attempts INTEGER NOT NULL DEFAULT 0,
     sent_at INTEGER NOT NULL,
-    PRIMARY KEY (phone, purpose)
+    PRIMARY KEY (target, purpose)
   );
 
   CREATE TABLE IF NOT EXISTS tickets (
     id TEXT PRIMARY KEY,
-    phone TEXT NOT NULL,
+    target TEXT NOT NULL,
     purpose TEXT NOT NULL,
     expires INTEGER NOT NULL
   );
@@ -100,15 +125,19 @@ export function tx(fn) {
 export const users = {
   get(id) {
     const r = sql.prepare('SELECT * FROM users WHERE id = ?').get(id);
-    return r ? { ...json(r.data), id: r.id, phone: r.phone } : null;
+    return r ? { ...json(r.data), id: r.id, email: r.email ?? '', phone: r.phone ?? '' } : null;
   },
   row(id) { return sql.prepare('SELECT * FROM users WHERE id = ?').get(id); },
+  byEmail(email) {
+    const r = sql.prepare('SELECT id FROM users WHERE email = ?').get(email);
+    return r ? this.get(r.id) : null;
+  },
   byPhone(phone) {
     const r = sql.prepare('SELECT id FROM users WHERE phone = ?').get(phone);
     return r ? this.get(r.id) : null;
   },
   all() {
-    return sql.prepare('SELECT id, phone, data FROM users').all().map((r) => ({ ...json(r.data), id: r.id, phone: r.phone }));
+    return sql.prepare('SELECT id, email, phone, data FROM users').all().map((r) => ({ ...json(r.data), id: r.id, email: r.email ?? '', phone: r.phone ?? '' }));
   },
   usernameTaken(name, exceptId) {
     if (!name) return false;
@@ -116,8 +145,9 @@ export const users = {
     return Boolean(sql.prepare("SELECT 1 FROM chats WHERE json_extract(data, '$.username') = ? AND id <> ?").get(name, exceptId ?? ''));
   },
   save(user) {
-    const { id, phone, ...rest } = user;
-    sql.prepare('UPDATE users SET data = ?, username = ?, phone = ? WHERE id = ?').run(JSON.stringify(rest), rest.username || null, phone, id);
+    const { id, email, phone, ...rest } = user;
+    sql.prepare('UPDATE users SET data = ?, username = ?, email = ?, phone = ? WHERE id = ?')
+      .run(JSON.stringify(rest), rest.username || null, email || null, phone || null, id);
   },
   count() { return sql.prepare('SELECT COUNT(*) AS n FROM users').get().n; },
   nextPublicId() {

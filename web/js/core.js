@@ -91,8 +91,30 @@ export function withTransition(fn, x = innerWidth / 2, y = innerHeight) {
   document.startViewTransition(fn);
 }
 
+/* ---------- Светлая / тёмная схема: dark | light | auto ---------- */
+const lightQuery = matchMedia('(prefers-color-scheme: light)');
+export const schemeMode = () => (['light', 'auto'].includes(store.get('scheme')) ? store.get('scheme') : 'dark');
+
+function applyScheme() {
+  const mode = schemeMode();
+  const scheme = mode === 'auto' ? (lightQuery.matches ? 'light' : 'dark') : mode;
+  if (root.dataset.scheme !== scheme) {
+    root.dataset.scheme = scheme;
+    document.dispatchEvent(new CustomEvent('kosmo:scheme', { detail: scheme }));
+  }
+  $('meta[name="theme-color"]')?.setAttribute('content', scheme === 'light' ? '#f2f2f7' : '#000000');
+  $$('[data-scheme-pick]').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.schemePick === mode)));
+}
+
+export function setScheme(mode, x, y) {
+  store.set('scheme', mode);
+  withTransition(applyScheme, x, y);
+}
+
 export function initTheme() {
   applyTheme(store.get('theme') === 'material' ? 'material' : 'glass');
+  applyScheme();
+  lightQuery.addEventListener('change', () => { if (schemeMode() === 'auto') applyScheme(); });
   document.addEventListener('click', (e) => {
     const btn = e.target.closest('[data-set-theme]');
     if (!btn || btn.dataset.setTheme === root.dataset.theme) return;

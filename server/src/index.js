@@ -6,12 +6,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { config } from './config.js';
-import { sql, users, chats, posts, stories, tx } from './db.js';
+import { sql, users, chats, posts, stories, tx, rateLimit } from './db.js';
 import {
-  ApiError, normPhone, startCode, checkCode, useTicket, verifyPass, setPass, createSession, sessionByToken,
+  ApiError, normPhone, normEmail, startCode, checkCode, useTicket, verifyPass, setPass, createSession, sessionByToken,
   sessionsOf, updateSession, deleteSession, kosmoMessage, newId,
 } from './auth.js';
 import { smsChannel } from './sms.js';
+import { noticeMail } from './mailer.js';
 import { handleGatewayUpgrade, gatewayStatus } from './gateway.js';
 import { startBot } from './tgbot.js';
 import { snapshot, applyPatches, broadcastUser, housekeeping } from './sync.js';
@@ -67,43 +68,46 @@ function activity(uid) {
 const routes = [];
 const route = (method, pattern, fn) => routes.push({ method, re: new RegExp(`^${pattern.replace(/:(\w+)/g, '(?<$1>[^/]+)')}$`), fn });
 
-route('GET', '/api/config', () => ({ channel: smsChannel(), testNumbers: config.testNumbers }));
+route('GET', '/api/config', () => ({ channel: 'email', mail: config.mailMode, sms: smsChannel(), testNumbers: config.testNumbers }));
 route('GET', '/api/gateway', () => ({ online: gatewayStatus().phones.length }));
 
 route('POST', '/api/auth/code', async (req) => {
-  const { phone } = await readBody(req);
-  const p = normPhone(phone);
-  const info = await startCode(p, 'login', clientIp(req));
-  return { sent: true, channel: smsChannel(), ...info };
+  const { email } = await readBody(req);
+  const e = normEmail(email);
+  await startCode(e, 'login', clientIp(req));
+  return { sent: true, channel: 'email' };
 });
 
 route('POST', '/api/auth/verify', async (req) => {
-  const { phone, code } = await readBody(req);
-  const p = normPhone(phone);
-  const ticket = checkCode(p, 'login', code);
-  const u = users.byPhone(p);
-  return { ticket, exists: Boolean(u) };
+  const { email, code } = await readBody(req);
+  const e = normEmail(email);
+  const ticket = checkCode(e, 'login', code);
+  return { ticket, exists: Boolean(users.byEmail(e)) };
 });
+
+function signIn(req, uid, { device, location, trusted, kind }) {
+  const ip = clientIp(req);
+  const s = createSession(uid, { device, ip, location, trusted });
+  if (kind === 'welcome') updateSession(s.sid, (d) => { d.first = true; });
+  kosmoMessage(uid, { kind, sid: s.sid, device: s.session.name, type: s.session.type, ip, location: s.session.location });
+  broadcastUser(uid);
+  return { token: s.token, uid, sid: s.sid };
+}
 
 route('POST', '/api/auth/login', async (req) => {
   const { ticket, passcode, device, location } = await readBody(req);
-  const phone = useTicket(ticket, 'login', false);
-  const u = users.byPhone(phone);
+  const email = useTicket(ticket, 'login', false);
+  const u = users.byEmail(email);
   if (!u) throw new ApiError(404, 'no_account');
   if (!verifyPass(u.id, passcode)) throw new ApiError(401, 'wrong_passcode', 'Wrong passcode');
   useTicket(ticket, 'login');
-  const trusted = !sessionsOf(u.id).some((s) => s.trusted);
-  const ip = clientIp(req);
-  const s = createSession(u.id, { device, ip, location, trusted });
-  kosmoMessage(u.id, { kind: 'login', sid: s.sid, device: s.session.name, type: s.session.type, ip, location: s.session.location });
-  broadcastUser(u.id);
-  return { token: s.token, uid: u.id, sid: s.sid };
+  return signIn(req, u.id, { device, location, trusted: !sessionsOf(u.id).some((x) => x.trusted), kind: 'login' });
 });
 
 route('POST', '/api/auth/register', async (req) => {
   const { ticket, passcode, name, username, bio, device, location } = await readBody(req);
-  const phone = useTicket(ticket, 'login', false);
-  if (users.byPhone(phone)) throw new ApiError(409, 'exists', 'This number is already registered');
+  const email = useTicket(ticket, 'login', false);
+  if (users.byEmail(email)) throw new ApiError(409, 'exists', 'This email is already registered');
   const cleanName = String(name ?? '').trim().slice(0, 64);
   if (!cleanName) throw new ApiError(400, 'bad_name', 'Name is required');
   const uname = String(username ?? '');
@@ -114,21 +118,60 @@ route('POST', '/api/auth/register', async (req) => {
   const data = {
     name: cleanName, username: uname, bio: String(bio ?? '').slice(0, 140), createdAt: now,
     role: users.count() === 0 ? 'owner' : 'user', publicId: users.nextPublicId(),
-    avatar: { color: null, text: '', photo: null }, chatPrefs: {}, privacy: { hidePhone: false, hideBio: false },
+    avatar: { color: null, text: '', photo: null }, chatPrefs: {}, privacy: { showEmail: false, hideBio: false },
     messages: [], settings: {}, security: {},
   };
   tx(() => {
-    sql.prepare('INSERT INTO users (id, phone, username, pass_hash, pass_salt, data, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
-      .run(id, phone, uname || null, 'x', 'x', JSON.stringify(data), now);
+    sql.prepare('INSERT INTO users (id, email, username, pass_hash, pass_salt, data, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .run(id, email, uname || null, 'x', 'x', JSON.stringify(data), now);
     setPass(id, passcode);
   });
   useTicket(ticket, 'login');
-  const ip = clientIp(req);
-  const s = createSession(id, { device, ip, location, trusted: true });
-  updateSession(s.sid, (d) => { d.first = true; });
-  kosmoMessage(id, { kind: 'welcome', sid: s.sid, device: s.session.name, type: s.session.type, ip, location: s.session.location });
-  broadcastUser(id);
-  return { token: s.token, uid: id, sid: s.sid };
+  return signIn(req, id, { device, location, trusted: true, kind: 'welcome' });
+});
+
+// Забыли код-пароль: отдельный код на почту → новый код-пароль.
+// Все прежние сеансы завершаются, на почту и в чат Kosmo приходит уведомление.
+route('POST', '/api/auth/reset/code', async (req) => {
+  const { email } = await readBody(req);
+  const e = normEmail(email);
+  const u = users.byEmail(e);
+  // не сообщаем, есть ли такой аккаунт: ответ одинаковый
+  if (u) {
+    if (!rateLimit(`reset:${u.id}`, 3, 24 * 3_600_000)) throw new ApiError(429, 'too_many', 'Too many resets today, try tomorrow');
+    await startCode(e, 'reset', clientIp(req));
+  }
+  return { sent: true, channel: 'email' };
+});
+
+route('POST', '/api/auth/reset/verify', async (req) => {
+  const { email, code } = await readBody(req);
+  return { ticket: checkCode(normEmail(email), 'reset', code) };
+});
+
+route('POST', '/api/auth/reset', async (req) => {
+  const { ticket, passcode, device, location } = await readBody(req);
+  if (!/^\d{4}$/.test(String(passcode))) throw new ApiError(400, 'bad_passcode', 'Passcode must be 4 digits');
+  const email = useTicket(ticket, 'reset');
+  const u = users.byEmail(email);
+  if (!u) throw new ApiError(401, 'bad_ticket', 'Verification expired, start again');
+  setPass(u.id, passcode);
+  for (const x of sessionsOf(u.id)) { deleteSession(x.id); kickSession(x.id); }
+  const r = signIn(req, u.id, { device, location, trusted: true, kind: 'reset' });
+  noticeMail(email, 'Код-пароль сброшен', `Код-пароль аккаунта Kosmo изменён, все остальные сеансы завершены. IP: ${clientIp(req)}.`)
+    .catch((e) => console.error('[mail]', e.message));
+  return r;
+});
+
+// Найти человека по точному адресу почты (если он это разрешил)
+route('POST', '/api/find', async (req) => {
+  const s = auth(req);
+  if (!rateLimit(`find:${s.userId}`, 60, 3_600_000)) throw new ApiError(429, 'too_many', 'Too many requests, try later');
+  const { email } = await readBody(req);
+  let e;
+  try { e = normEmail(email); } catch { return { id: null }; }
+  const u = users.byEmail(e);
+  return { id: u && u.privacy?.findByEmail !== false ? u.id : null };
 });
 
 route('GET', '/api/sync', (req) => {
@@ -188,6 +231,39 @@ route('POST', '/api/passcode/change', async (req) => {
   kosmoMessage(s.userId, { kind: 'passcode', sid: s.id, device: ses?.name, type: ses?.type, ip: clientIp(req), location: ses?.location });
   broadcastUser(s.userId);
   return { ok: true };
+});
+
+// Смена почты: код на старую почту → код на новую
+route('POST', '/api/email/code', async (req) => {
+  const s = auth(req);
+  const { step, email, ticket } = await readBody(req);
+  const u = users.get(s.userId);
+  if (step === 'old') { await startCode(u.email, `email-old:${u.id}`, clientIp(req)); return { sent: true }; }
+  useTicket(ticket, `email-old:${u.id}`, false);
+  const e = normEmail(email);
+  if (e === u.email) throw new ApiError(400, 'same_email', 'This is already your email');
+  if (users.byEmail(e)) throw new ApiError(409, 'email_taken', 'This email is used by another account');
+  await startCode(e, `email-new:${u.id}`, clientIp(req));
+  return { sent: true };
+});
+
+route('POST', '/api/email/verify', async (req) => {
+  const s = auth(req);
+  const { step, email, code, ticket } = await readBody(req);
+  const u = users.get(s.userId);
+  if (step === 'old') return { ticket: checkCode(u.email, `email-old:${u.id}`, code) };
+  useTicket(ticket, `email-old:${u.id}`);
+  const e = normEmail(email);
+  checkCode(e, `email-new:${u.id}`, code);
+  if (users.byEmail(e)) throw new ApiError(409, 'email_taken', 'This email is used by another account');
+  const from = u.email;
+  u.email = e;
+  users.save(u);
+  const ses = sessionsOf(s.userId).find((x) => x.id === s.id);
+  kosmoMessage(s.userId, { kind: 'email', sid: s.id, device: ses?.name, type: ses?.type, ip: clientIp(req), location: ses?.location, from, to: e });
+  noticeMail(from, 'Почта изменена', `Почта аккаунта Kosmo изменена на ${e}.`).catch((err) => console.error('[mail]', err.message));
+  broadcastUser(s.userId);
+  return { ok: true, email: e };
 });
 
 // Смена номера: код на старый номер → код на новый

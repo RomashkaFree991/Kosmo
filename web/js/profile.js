@@ -5,7 +5,6 @@ import {
   $, $$, db, wait, toast, shake, escapeHtml, userAvatarHtml, cosmicBadge, AVATAR_COLORS,
   timeAgo, refreshRefraction, initials,
 } from './core.js';
-import { createPhoneField, formatPhone } from './phone.js';
 import { createOtp } from './otp.js';
 import { state, openPanel } from './panels.js';
 import { putBlob, hydrateMedia, squareAvatar } from './media.js';
@@ -58,10 +57,12 @@ const row = (attrs, icon, text, extra = '', cls = '') => `
 // пометка «скрыто от других» на своих плашках
 const hiddenMark = '<span class="tile-hidden"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18M10.6 5.6A9.6 9.6 0 0 1 12 5.5c6 0 9.5 6.5 9.5 6.5a17 17 0 0 1-3 3.8M6.6 6.6C4 8.3 2.5 12 2.5 12S6 18.5 12 18.5c1.8 0 3.3-.5 4.6-1.2"/></svg>hidden</span>';
 
+const MAIL_ICON = '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M4 7l8 6 8-6"/></svg>';
+
 let sig = '';
 export function renderProfile(force = false) {
   const u = state.acc.user;
-  const next = JSON.stringify([u.name, u.username, u.phone, u.bio, u.role, u.avatar, u.publicId, u.sessions.length, u.privacy, u.security?.lock, linkedAccounts().map((a) => a.uid)]);
+  const next = JSON.stringify([u.name, u.username, u.email, u.bio, u.role, u.avatar, u.publicId, u.sessions.length, u.privacy, u.security?.lock, linkedAccounts().map((a) => a.uid)]);
   if (next === sig && !force) return;
   sig = next;
   $('#profile').innerHTML = `
@@ -78,7 +79,7 @@ export function renderProfile(force = false) {
     <section class="tiles" aria-label="Account">
       ${u.username ? tile(ICON.at, 'Username', `@${escapeHtml(u.username)}`, 'data-copy="username" aria-label="Copy username"') : tile(ICON.at, 'Username', '<span class="tile-muted">Not set</span>', 'data-open-edit aria-label="Set username"')}
       ${tile(ICON.hash, 'ID', escapeHtml(u.publicId), 'data-copy="id" aria-label="Copy ID"')}
-      ${tile(ICON.call, `Phone${u.privacy?.hidePhone ? hiddenMark : ''}`, escapeHtml(formatPhone(u.phone)), 'data-open-phone aria-label="Change number"', true)}
+      ${tile(MAIL_ICON, `Email${u.privacy?.showEmail ? '' : hiddenMark}`, escapeHtml(u.email ?? ''), 'data-open-email aria-label="Change email"', true)}
       ${u.bio ? tile(ICON.quote, `Bio${u.privacy?.hideBio ? hiddenMark : ''}`, escapeHtml(u.bio), '', true) : ''}
       ${tile(ICON.calendar, 'Joined', monthYear.format(u.createdAt))}
       ${tile(ICON.devices, 'Sessions', `${u.sessions.length} active`, 'data-open-sessions aria-label="Sessions"')}
@@ -123,7 +124,7 @@ document.addEventListener('click', async (e) => {
   }
   if (e.target.closest('[data-open-edit]')) openEdit();
   if (e.target.closest('[data-open-sessions]')) { renderSessions(); openPanel('sessions'); }
-  if (e.target.closest('[data-open-phone]')) openPhoneChange();
+  if (e.target.closest('[data-open-email]')) openEmailChange();
 });
 
 /* ---------------------------------------------------------------------------
@@ -321,12 +322,14 @@ document.addEventListener('click', (e) => {
 });
 
 /* ---------------------------------------------------------------------------
-   Смена номера: код на старый номер → новый номер → код на новый
+   Смена почты: код на старую почту → новая почта → код на новую
    --------------------------------------------------------------------------- */
-const steps = $('#phone-steps');
-const cpField = createPhoneField($('#cp-phone-field'));
+const steps = $('#email-steps');
+const cpInput = $('#cp-email-input');
+const cpField = $('#cp-email-field');
 const cpSubmit = $('#cp-new-submit');
-let cpNewPhone = null;
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+let cpNewEmail = null;
 
 function setStep(name, animate = true) {
   $$('.step', steps).forEach((s) => {
@@ -337,74 +340,65 @@ function setStep(name, animate = true) {
   refreshRefraction();
 }
 
-function openPhoneChange() {
-  $('#cp-current').textContent = formatPhone(state.acc.user.phone);
+function openEmailChange() {
+  $('#cp-current').textContent = state.acc.user.email;
   setStep('intro', false);
-  openPanel('phone');
+  openPanel('email');
 }
 
 let cpTicket = null;
 const oldOtp = createOtp($('#cp-old-otp'), {
   verify: async (code) => {
-    try { cpTicket = (await api('POST', '/api/phone/verify', { step: 'old', code })).ticket; return true; } catch (err) { toast(err.message); return false; }
+    try { cpTicket = (await api('POST', '/api/email/verify', { step: 'old', code })).ticket; return true; } catch (err) { toast(err.message); return false; }
   },
   onComplete: () => {
-    setStep('new-phone');
-    cpField.clear();
-    setTimeout(cpField.focus, 350);
+    setStep('new-email');
+    cpInput.value = '';
+    setTimeout(() => cpInput.focus(), 350);
   },
 });
 
 const newOtp = createOtp($('#cp-new-otp'), {
   verify: async (code) => {
-    try { await api('POST', '/api/phone/verify', { step: 'new', phone: cpNewPhone, code, ticket: cpTicket }); return true; } catch (err) { toast(err.message); return false; }
+    try { await api('POST', '/api/email/verify', { step: 'new', email: cpNewEmail, code, ticket: cpTicket }); return true; } catch (err) { toast(err.message); return false; }
   },
   onComplete: () => {
-    $('#cp-done').textContent = formatPhone(cpNewPhone);
+    $('#cp-done').textContent = cpNewEmail;
     setStep('done');
     document.dispatchEvent(new CustomEvent('kosmo:changed'));
   },
 });
 
-// код через Telegram-бота, а номер ещё не привязан — открыть бота
-function tgNotice(r) {
-  if (r?.bot && r.linked === false) {
-    toast(`Open @${r.bot} in Telegram and share your number`);
-    window.open(`https://t.me/${r.bot}`, '_blank', 'noopener');
-  }
-}
-
 $('#cp-start').addEventListener('click', async () => {
   try {
-    const r = await api('POST', '/api/phone/code', { step: 'old' });
-    tgNotice(r);
+    await api('POST', '/api/email/code', { step: 'old' });
   } catch (err) { toast(err.message); return; }
-  $('#cp-old').textContent = formatPhone(state.acc.user.phone);
+  $('#cp-old').textContent = state.acc.user.email;
   oldOtp.reset();
   setStep('old-code');
   setTimeout(oldOtp.focus, 350);
 });
 
+cpInput.addEventListener('input', () => cpField.classList.remove('is-error'));
 $('#cp-new-form').addEventListener('submit', (e) => {
   e.preventDefault();
   if (cpSubmit.classList.contains('is-loading')) return;
-  if (!cpField.isComplete()) { cpField.shake(); return; }
-  const phone = cpField.e164;
-  if (phone === state.acc.user.phone) { cpField.shake(); toast('This is already your number'); return; }
-  cpNewPhone = phone;
+  const email = cpInput.value.trim().toLowerCase();
+  if (!EMAIL_RE.test(email)) { shake(cpField); cpField.classList.add('is-error'); return; }
+  if (email === state.acc.user.email) { shake(cpField); toast('This is already your email'); return; }
+  cpNewEmail = email;
   cpSubmit.style.width = `${cpSubmit.offsetWidth}px`;
   requestAnimationFrame(() => cpSubmit.classList.add('is-loading'));
   const stop = () => { cpSubmit.classList.remove('is-loading'); cpSubmit.style.removeProperty('width'); };
-  api('POST', '/api/phone/code', { step: 'new', phone, ticket: cpTicket })
-    .then((r) => {
+  api('POST', '/api/email/code', { step: 'new', email, ticket: cpTicket })
+    .then(() => {
       stop();
-      tgNotice(r);
-      $('#cp-new').textContent = formatPhone(phone);
+      $('#cp-new').textContent = email;
       newOtp.reset();
       setStep('new-code');
       setTimeout(newOtp.focus, 350);
     })
-    .catch((err) => { stop(); cpField.shake(); toast(err.message); });
+    .catch((err) => { stop(); shake(cpField); toast(err.message); });
 });
 
 export const resetProfileCache = () => { sig = ''; };

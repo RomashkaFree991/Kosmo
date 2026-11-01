@@ -1,5 +1,5 @@
 // Динамический цвет Material You (material-color-utilities):
-// тёмная схема из исходного цвета или из фото, как Android берёт цвета из обоев.
+// светлая или тёмная схема из исходного цвета или из фото, как Android берёт цвета из обоев.
 
 import { $$, root, store, toast, withTransition } from './core.js';
 
@@ -17,31 +17,63 @@ const kebab = (s) => s.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`);
 let mcu = null;
 const mcuReady = import(MCU_URL).then((m) => { mcu = m; }).catch(() => { mcu = null; });
 
+let applied = [];
+const isDark = () => root.dataset.scheme !== 'light';
+
 function applySeed(hex) {
   const vars = {};
+  const dark = isDark();
   if (mcu) {
     const { Hct, SchemeTonalSpot, MaterialDynamicColors, argbFromHex, hexFromArgb } = mcu;
-    const scheme = new SchemeTonalSpot(Hct.fromInt(argbFromHex(hex)), true, 0);
+    const scheme = new SchemeTonalSpot(Hct.fromInt(argbFromHex(hex)), dark, 0);
     for (const role of ROLES) vars[`--md-sys-color-${kebab(role)}`] = hexFromArgb(MaterialDynamicColors[role].getArgb(scheme));
     // Кнопка остаётся белой, лишь с лёгким оттенком исходного цвета (тон 98)
-    vars['--md-btn-bg'] = hexFromArgb(scheme.primaryPalette.tone(98));
-    vars['--md-btn-fg'] = hexFromArgb(scheme.primaryPalette.tone(10));
+    // в светлой схеме — наоборот: тёмная кнопка
+    vars['--md-btn-bg'] = hexFromArgb(scheme.primaryPalette.tone(dark ? 98 : 20));
+    vars['--md-btn-fg'] = hexFromArgb(scheme.primaryPalette.tone(dark ? 10 : 98));
     // Обои: тона той же палитры. Material — насыщенные, Liquid Glass — почти чёрные
     const P = scheme.primaryPalette, T = scheme.tertiaryPalette, N = scheme.neutralPalette;
-    const tones = {
+    const tones = dark ? {
       m: [P.tone(12), P.tone(24), T.tone(26), N.tone(92), P.tone(62), N.tone(98)],
       g: [P.tone(4), P.tone(13), T.tone(13), N.tone(70), P.tone(45), N.tone(90)],
+    } : {
+      m: [P.tone(94), P.tone(86), T.tone(88), N.tone(30), P.tone(55), N.tone(20)],
+      g: [N.tone(96), P.tone(90), T.tone(92), N.tone(55), P.tone(65), N.tone(35)],
     };
     // Liquid Glass: яркий акцент того же оттенка (сообщения, кнопки, переключатели)
     const seedHct = Hct.fromInt(argbFromHex(hex));
-    vars['--glass-accent'] = hexFromArgb(Hct.from(seedHct.hue, Math.max(56, seedHct.chroma), 60).toInt());
+    vars['--glass-accent'] = hexFromArgb(Hct.from(seedHct.hue, Math.max(56, seedHct.chroma), dark ? 60 : 50).toInt());
     for (const [k, list] of Object.entries(tones)) {
       ['bg', 'a', 'b', 'line', 'dot', 'dot2'].forEach((name, i) => { vars[`--wp${k}-${name}`] = hexFromArgb(list[i]); });
     }
   } else {
     // Запасной вариант без библиотеки: тот же оттенок, грубые тона через HSL
     const h = hueOf(hex);
-    Object.assign(vars, {
+    if (!dark) {
+      Object.assign(vars, {
+        '--md-sys-color-primary': `hsl(${h} 55% 40%)`,
+        '--md-sys-color-on-primary': '#fff',
+        '--md-sys-color-primary-container': `hsl(${h} 80% 90%)`,
+        '--md-sys-color-on-primary-container': `hsl(${h} 60% 15%)`,
+        '--md-sys-color-secondary-container': `hsl(${h} 35% 90%)`,
+        '--md-sys-color-on-secondary-container': `hsl(${h} 30% 15%)`,
+        '--md-sys-color-tertiary': `hsl(${(h + 60) % 360} 35% 40%)`,
+        '--md-sys-color-on-surface': `hsl(${h} 10% 11%)`,
+        '--md-sys-color-on-surface-variant': `hsl(${h} 8% 30%)`,
+        '--md-sys-color-surface-container-low': `hsl(${h} 30% 96%)`,
+        '--md-sys-color-surface-container': `hsl(${h} 25% 94%)`,
+        '--md-sys-color-surface-container-high': `hsl(${h} 20% 91%)`,
+        '--md-sys-color-surface-container-highest': `hsl(${h} 18% 88%)`,
+        '--md-sys-color-outline': `hsl(${h} 6% 47%)`,
+        '--md-sys-color-outline-variant': `hsl(${h} 12% 80%)`,
+        '--md-btn-bg': `hsl(${h} 50% 20%)`, '--md-btn-fg': `hsl(${h} 90% 98%)`,
+        '--glass-accent': `hsl(${h} 85% 48%)`,
+        '--wpm-bg': `hsl(${h} 60% 95%)`, '--wpm-a': `hsl(${h} 55% 87%)`, '--wpm-b': `hsl(${(h + 60) % 360} 45% 88%)`,
+        '--wpm-line': `hsl(${h} 15% 30%)`, '--wpm-dot': `hsl(${h} 45% 55%)`, '--wpm-dot2': `hsl(${h} 20% 20%)`,
+        '--wpg-bg': `hsl(${h} 15% 96%)`, '--wpg-a': `hsl(${h} 45% 90%)`, '--wpg-b': `hsl(${(h + 60) % 360} 35% 92%)`,
+        '--wpg-line': `hsl(${h} 8% 55%)`, '--wpg-dot': `hsl(${h} 40% 65%)`, '--wpg-dot2': `hsl(${h} 10% 35%)`,
+      });
+    } else Object.assign(vars, {
       '--md-sys-color-primary': `hsl(${h} 70% 82%)`,
       '--md-sys-color-on-primary': `hsl(${h} 60% 18%)`,
       '--md-sys-color-primary-container': `hsl(${h} 40% 30%)`,
@@ -60,6 +92,9 @@ function applySeed(hex) {
       '--wpg-line': `hsl(${h} 20% 70%)`, '--wpg-dot': `hsl(${h} 45% 45%)`, '--wpg-dot2': `hsl(${h} 30% 90%)`,
     });
   }
+  // убрать значения прошлой схемы, которых в новой нет
+  for (const k of applied) if (!(k in vars)) root.style.removeProperty(k);
+  applied = Object.keys(vars);
   for (const [k, v] of Object.entries(vars)) root.style.setProperty(k, v);
   store.set('seed', hex);
   $$('.swatch').forEach((s) => s.setAttribute('aria-checked', String(s.dataset.seed === hex)));
@@ -121,4 +156,6 @@ export function initColor() {
   renderSwatches(saved);
   applySeed(saved ?? SEEDS[0]);
   mcuReady.then(() => applySeed(store.get('seed') ?? SEEDS[0]));
+  // светлая/тёмная схема сменилась — пересчитать цвета
+  document.addEventListener('kosmo:scheme', () => applySeed(store.get('seed') ?? SEEDS[0]));
 }

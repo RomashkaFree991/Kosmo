@@ -16,33 +16,28 @@ curl -fsSL https://raw.githubusercontent.com/RomashkaFree991/Kosmo/ccr-c8594e95-
 
 Повторный запуск команды (или `kosmo update`) обновляет код. База и настройки остаются.
 
-## Коды по SMS
-Данные можно передать прямо в команде установки, тогда скрипт ничего не спрашивает:
+## Вход по почте
+Коды входа, сброса код-пароля и смены почты приходят на почту. Отправляет их **сам сервер**, без сторонних сервисов: письмо уходит прямо на почтовый сервер получателя (порт 25) и подписывается ключом DKIM.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/RomashkaFree991/Kosmo/ccr-c8594e95-6dq4vq/deploy/install.sh | sudo bash -s -- kosmochat.duckdns.org you@mail.com --tgbot ТОКЕН_БОТА
+curl -fsSL https://raw.githubusercontent.com/RomashkaFree991/Kosmo/ccr-c8594e95-6dq4vq/deploy/install.sh | sudo bash -s -- kosmochat.duckdns.org you@mail.com --duckdns ТОКЕН_DUCKDNS
 ```
 
-Другие варианты: `--device` (свой Android-телефон, приложение Kosmo SMS), `--phone USER PASS` (sms-gate.app), `--smsru API_ID`, `--telegram TOKEN`, `--twilio SID TOKEN FROM`, `--no-sms`.
+- `--duckdns ТОКЕН` записывает публичный ключ DKIM в TXT-запись домена DuckDNS (токен — вверху страницы duckdns.org). С подписью Gmail и Яндекс реже отправляют письма в «Спам».
+- Если хостинг закрыл исходящий порт 25 (установщик это проверяет), письма напрямую не уйдут. Тогда либо попросите поддержку открыть порт, либо отправляйте через свой ящик: `--smtp 'smtps://you%40gmail.com:ПАРОЛЬ_ПРИЛОЖЕНИЯ@smtp.gmail.com'`.
+- Совет: в панели VPS задайте обратную запись (rDNS/PTR) для IP сервера = ваш домен.
+- Проверка: `kosmo mail-test ваш@адрес`.
+- `--test` — адреса `…@kosmo.test` входят с кодом `000000` (только для проверки).
 
-Во время установки скрипт спрашивает, как отправлять коды. Поменять позже можно командой `kosmo sms`.
+Забыли код-пароль: на экране код-пароля «Forgot passcode?» → код на почту → новый код-пароль. Все остальные сеансы завершаются, на почту приходит уведомление.
 
-| Вариант | Где взять ключ | Настройка |
-|---|---|---|
-| **Telegram-бот** (бесплатно) | @BotFather → /newbot → токен. Человек при первом входе жмёт в боте «Поделиться номером», дальше коды приходят туда | `SMS_PROVIDER=tgbot`, `TG_BOT_TOKEN` |
-| **Свой телефон — Kosmo SMS** (бесплатно, без сторонних сервисов) | Android с SIM: открыть `https://ваш-домен/kosmo-sms.apk`, установить, ввести домен и ключ из `kosmo sms-key` | `SMS_PROVIDER=device`, `GATEWAY_KEY` |
-| SMS Gateway for Android | приложение sms-gate.app, Cloud server, Username/Password | `SMS_PROVIDER=phone`, `SMSGATE_USER`, `SMSGATE_PASS` |
-| SMS.ru (РФ/СНГ) | sms.ru → «Программистам» → api_id; пополнить баланс | `SMS_PROVIDER=smsru`, `SMSRU_API_ID` |
-| Telegram Gateway | gateway.telegram.org → токен; код приходит в Telegram | `SMS_PROVIDER=telegram`, `TG_GATEWAY_TOKEN` |
-| Twilio (весь мир) | twilio.com → Account SID, Auth Token, номер | `SMS_PROVIDER=twilio`, `TWILIO_SID`, `TWILIO_TOKEN`, `TWILIO_FROM` |
-| Без SMS | — | `SMS_PROVIDER=log`, коды в `kosmo logs` |
-
-Номера `+000…` (страна «Test numbers») всегда входят с кодом `000000` и SMS не тратят. Отключить их: `TEST_NUMBERS=0` в `/etc/kosmo/kosmo.env`, затем `kosmo restart`.
+Номера телефонов пока не используются; отправка SMS-кодов сохранена в коде на будущее (`kosmo sms`).
 
 ## Команды
 ```
 kosmo update    обновить код с GitHub
-kosmo sms       настроить отправку кодов
+kosmo mail-test адрес   пробное письмо с кодом
+kosmo sms       настроить SMS (на будущее)
 kosmo sms-key   ключ и ссылка на приложение Kosmo SMS
 kosmo logs      логи сервера
 kosmo restart   перезапуск

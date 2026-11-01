@@ -1,4 +1,5 @@
-// Вход: код по номеру → «билет» на номер → код-пароль → сессия.
+// Вход: код на почту → «билет» на почту → код-пароль → сессия.
+// (Код по номеру — та же схема, оставлена для будущего входа по телефону.)
 // Коды и пароли хранятся только в виде хешей. Токен сессии — случайные
 // 32 байта, в базе лежит его SHA-256.
 
@@ -6,6 +7,7 @@ import crypto from 'node:crypto';
 import { sql, users, json, rateLimit } from './db.js';
 import { config } from './config.js';
 import { sendCode } from './sms.js';
+import { codeMail } from './mailer.js';
 
 const sha = (s) => crypto.createHash('sha256').update(s).digest('hex');
 export const newId = () => crypto.randomUUID();
@@ -21,43 +23,55 @@ export const normPhone = (p) => {
   if (d.length < 6 || d.length > 15) throw new ApiError(400, 'bad_phone', 'Invalid phone number');
   return `+${d}`;
 };
-const isTest = (phone) => config.testNumbers && phone.startsWith('+000');
+const EMAIL_RE = /^[^\s@]{1,64}@[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}$/;
+export const normEmail = (e) => {
+  const v = String(e ?? '').trim().toLowerCase();
+  if (v.length > 254 || !EMAIL_RE.test(v)) throw new ApiError(400, 'bad_email', 'Invalid email address');
+  return v;
+};
+// для проверки: адреса …@kosmo.test и номера +000… — код всегда 000000, ничего не отправляется
+const isTest = (t) => config.testNumbers && (t.startsWith('+000') || t.endsWith('@kosmo.test'));
+const isEmail = (t) => t.includes('@');
 
 /* ---------- Коды подтверждения ---------- */
-export async function startCode(phone, purpose, ip) {
+export async function startCode(target, purpose, ip) {
+  const phone = target;
   // тестовые номера SMS не тратят — для них только мягкий лимит по IP
   if (isTest(phone)) {
     if (!rateLimit(`ip-test:${ip}`, 120, 3_600_000)) throw new ApiError(429, 'too_many', 'Too many requests, try later');
   } else {
     if (!rateLimit(`ip:${ip}`, 20, 3_600_000)) throw new ApiError(429, 'too_many', 'Too many requests, try later');
-    const prev = sql.prepare('SELECT sent_at FROM codes WHERE phone = ? AND purpose = ?').get(phone, purpose);
+    const prev = sql.prepare('SELECT sent_at FROM codes WHERE target = ? AND purpose = ?').get(phone, purpose);
     if (prev && Date.now() - prev.sent_at < 55_000) throw new ApiError(429, 'wait', 'Wait a minute before requesting a new code');
-    if (!rateLimit(`phone:${phone}`, 6, 3_600_000)) throw new ApiError(429, 'too_many', 'Too many codes for this number');
+    if (!rateLimit(`to:${phone}`, 6, 3_600_000)) throw new ApiError(429, 'too_many', isEmail(phone) ? 'Too many codes for this email' : 'Too many codes for this number');
   }
   let info = {};
   const code = isTest(phone) ? '000000' : String(crypto.randomInt(0, 1_000_000)).padStart(6, '0');
   if (!isTest(phone)) {
-    try { info = (await sendCode(phone, code)) ?? {}; } catch (e) {
-      console.error('[sms]', e.message);
-      throw new ApiError(502, 'sms_failed', 'Could not send the code, try later');
+    try {
+      if (isEmail(phone)) { await codeMail(phone, code, purpose); info = { channel: 'email' }; }
+      else info = (await sendCode(phone, code)) ?? {};
+    } catch (e) {
+      console.error(isEmail(phone) ? '[mail]' : '[sms]', phone, e.message);
+      throw new ApiError(502, 'send_failed', 'Could not send the code, try later');
     }
   }
-  sql.prepare('INSERT OR REPLACE INTO codes (phone, purpose, code_hash, expires, attempts, sent_at) VALUES (?, ?, ?, ?, 0, ?)')
+  sql.prepare('INSERT OR REPLACE INTO codes (target, purpose, code_hash, expires, attempts, sent_at) VALUES (?, ?, ?, ?, 0, ?)')
     .run(phone, purpose, sha(`${phone}:${code}`), Date.now() + CODE_TTL, Date.now());
   return info;
 }
 
 export function checkCode(phone, purpose, code) {
-  const r = sql.prepare('SELECT * FROM codes WHERE phone = ? AND purpose = ?').get(phone, purpose);
+  const r = sql.prepare('SELECT * FROM codes WHERE target = ? AND purpose = ?').get(phone, purpose);
   if (!r || r.expires < Date.now()) throw new ApiError(400, 'code_expired', 'The code has expired, request a new one');
   if (r.attempts >= 5) throw new ApiError(429, 'too_many', 'Too many attempts, request a new code');
   if (sha(`${phone}:${String(code).trim()}`) !== r.code_hash) {
-    sql.prepare('UPDATE codes SET attempts = attempts + 1 WHERE phone = ? AND purpose = ?').run(phone, purpose);
+    sql.prepare('UPDATE codes SET attempts = attempts + 1 WHERE target = ? AND purpose = ?').run(phone, purpose);
     throw new ApiError(400, 'wrong_code', 'Wrong code');
   }
-  sql.prepare('DELETE FROM codes WHERE phone = ? AND purpose = ?').run(phone, purpose);
+  sql.prepare('DELETE FROM codes WHERE target = ? AND purpose = ?').run(phone, purpose);
   const id = crypto.randomBytes(24).toString('hex');
-  sql.prepare('INSERT INTO tickets (id, phone, purpose, expires) VALUES (?, ?, ?, ?)').run(id, phone, purpose, Date.now() + TICKET_TTL);
+  sql.prepare('INSERT INTO tickets (id, target, purpose, expires) VALUES (?, ?, ?, ?)').run(id, phone, purpose, Date.now() + TICKET_TTL);
   return id;
 }
 
@@ -65,7 +79,7 @@ export function useTicket(id, purpose, consume = true) {
   const r = sql.prepare('SELECT * FROM tickets WHERE id = ?').get(String(id ?? ''));
   if (!r || r.purpose !== purpose || r.expires < Date.now()) throw new ApiError(401, 'bad_ticket', 'Verification expired, start again');
   if (consume) sql.prepare('DELETE FROM tickets WHERE id = ?').run(r.id);
-  return r.phone;
+  return r.target;
 }
 
 /* ---------- Код-пароль (4 цифры) ---------- */
@@ -141,10 +155,12 @@ export function project(user, viewerId) {
     publicId: user.publicId,
     role: user.role,
     createdAt: user.createdAt,
-    phone: p.hidePhone ? '' : user.phone,
+    // почта скрыта, пока человек сам не откроет её в приватности
+    email: p.showEmail ? user.email : '',
+    phone: '',
     privacy: {
-      hidePhone: Boolean(p.hidePhone), hideBio: Boolean(p.hideBio), lastSeen: p.lastSeen, avatar: p.avatar,
-      messages: p.messages, groups: p.groups, readReceipts: p.readReceipts, findByPhone: p.findByPhone,
+      showEmail: Boolean(p.showEmail), hideBio: Boolean(p.hideBio), lastSeen: p.lastSeen, avatar: p.avatar,
+      messages: p.messages, groups: p.groups, readReceipts: p.readReceipts, findByEmail: p.findByEmail,
       blocked: (p.blocked ?? []).includes(viewerId) ? [viewerId] : [],
     },
     sessions: p.lastSeen === 'nobody' ? [] : [{ lastActive }],
