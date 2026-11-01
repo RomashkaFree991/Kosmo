@@ -227,7 +227,7 @@ DKIM_PUB="$(openssl rsa -in "$DKIM_FILE" -pubout -outform DER 2>/dev/null | base
 DKIM_TXT="v=DKIM1; k=rsa; p=$DKIM_PUB"
 set_env DKIM_KEY_FILE "$DKIM_FILE"
 set_env DKIM_SELECTOR kosmo
-[ -n "$TEST_ARG" ] && set_env TEST_NUMBERS 1
+if [ -n "$TEST_ARG" ]; then set_env TEST_NUMBERS 1; else set_env TEST_NUMBERS 0; fi
 if [ -n "$SMTP_ARG" ]; then set_env SMTP_URL "$SMTP_ARG"; set_env MAIL_MODE smtp
 elif ! grep -q '^MAIL_MODE=' "$ENV_FILE"; then set_env MAIL_MODE direct; fi
 [ -n "$DUCKDNS_ARG" ] && set_env DUCKDNS_TOKEN "$DUCKDNS_ARG"
