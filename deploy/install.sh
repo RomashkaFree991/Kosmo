@@ -454,21 +454,4 @@ if [ "$PTR" != "$DOMAIN" ]; then
   echo "  Совет: в панели VPS укажите обратную запись (rDNS/PTR) для $PUBIP = $DOMAIN — письма реже попадут в спам."
 fi
 echo "  Проверить отправку: kosmo mail-test ваш@адрес"
-if [ "$SMS_PROVIDER" = tgbot ]; then
-  BOTNAME="$(curl -fsS --max-time 10 "https://api.telegram.org/bot$TG_BOT_TOKEN/getMe" | grep -o '"username":"[^"]*"' | cut -d'"' -f4 || true)"
-  if [ -n "$BOTNAME" ]; then
-    printf '\n\033[1;36m  Коды приходят в Telegram-бота: https://t.me/%s\033[0m\n' "$BOTNAME"
-    echo "  При первом входе человек открывает бота, жмёт «Поделиться номером» — и код приходит туда."
-  else
-    warn "Токен бота не подошёл или Telegram недоступен с сервера. Задать заново: kosmo sms"
-  fi
-fi
-if [ "$SMS_PROVIDER" = device ]; then
-  printf '\n\033[1;36m  Телефон для SMS (приложение Kosmo SMS):\033[0m\n'
-  echo "  1. Откройте на Android-телефоне с SIM: $URL/kosmo-sms.apk и установите"
-  echo "  2. В приложении: Сервер = $DOMAIN"
-  echo "                   Ключ   = $GATEWAY_KEY"
-  echo "  3. Нажмите «Включить шлюз» и разрешите отправку SMS"
-  echo "  Показать ещё раз: kosmo sms-key"
-fi
 echo "  Обновить код: kosmo update   ·   Помощь: kosmo"
