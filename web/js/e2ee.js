@@ -1,9 +1,8 @@
 // Сквозное шифрование Kosmo. Сервер хранит и пересылает только шифротекст.
 //
 //  • У каждого пользователя пара ключей ECDH P-256. Закрытый ключ живёт на
-//    его устройствах (IndexedDB). На сервер уходит только публичный ключ и
-//    резервная копия закрытого, зашифрованная ключом восстановления, который
-//    знает лишь сам человек (PBKDF2 → AES-GCM).
+//    его устройствах (IndexedDB). На сервер уходит только публичный ключ.
+//    Новое устройство получает закрытый ключ от уже вошедшего (см. ниже).
 //  • Личный чат: общий ключ двух людей (ECDH → HKDF → AES-GCM 256).
 //  • Группа и закрытый канал: случайный ключ группы, для каждого участника
 //    зашифрованный общим ключом «автор ↔ участник» (поле ekeys чата).
@@ -82,50 +81,63 @@ async function storeKeys(privJwk, pubJwk) {
 }
 
 /* ---------------------------------------------------------------------------
-   Ключ восстановления: 24 символа (120 бит), им зашифрована копия на сервере
+   Первая настройка и перенос ключа на новое устройство
+   Закрытый ключ никогда не уходит на сервер. Новое устройство получает его
+   от уже вошедшего: обе стороны делают одноразовые ключи ECDH, ключ
+   шифруется общим секретом и идёт через сервер, который его прочесть не может.
+   Чтобы сервер не подменил одноразовый ключ, оба экрана показывают один и
+   тот же 4-значный код.
    --------------------------------------------------------------------------- */
-const RK_ALPHA = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-export const normRecovery = (s) => String(s ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-function newRecoveryKey() {
-  const raw = Array.from(crypto.getRandomValues(new Uint8Array(24)), (b) => RK_ALPHA[b % 32]).join('');
-  return raw.match(/.{4}/g).join('-');
-}
-async function recoveryAes(rk, salt) {
-  const base = await crypto.subtle.importKey('raw', te.encode(normRecovery(rk)), 'PBKDF2', false, ['deriveKey']);
-  return crypto.subtle.deriveKey({ name: 'PBKDF2', salt, iterations: 310_000, hash: 'SHA-256' }, base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
-}
-async function sealBackup(privJwk, rk) {
-  const salt = crypto.getRandomValues(new Uint8Array(16));
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const data = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, await recoveryAes(rk, salt), te.encode(JSON.stringify(privJwk)));
-  return { salt: b64(salt), iv: b64(iv), data: b64(data) };
-}
-
-// Первая настройка: новая пара ключей и ключ восстановления
 export async function createKeys() {
   const pair = await crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits']);
   const privJwk = await crypto.subtle.exportKey('jwk', pair.privateKey);
   const pubFull = await crypto.subtle.exportKey('jwk', pair.publicKey);
   const pubJwk = { kty: 'EC', crv: 'P-256', x: pubFull.x, y: pubFull.y };
-  const rk = newRecoveryKey();
-  const backup = await sealBackup(privJwk, rk);
   await storeKeys(privJwk, pubJwk);
-  return { e2ee: { pub: pubJwk, backup, at: Date.now() }, recoveryKey: rk };
+  return { e2ee: { pub: pubJwk, at: Date.now() } };
 }
 
-// Новое устройство: открыть копию ключом восстановления
-export async function unlockWith(rk, e2ee) {
-  const b = e2ee?.backup;
-  if (!b) throw new Error('no backup');
-  const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: unb64(b.iv) }, await recoveryAes(rk, unb64(b.salt)), unb64(b.data));
+async function ephemeral() {
+  const pair = await crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits']);
+  const full = await crypto.subtle.exportKey('jwk', pair.publicKey);
+  return { priv: pair.privateKey, pub: { x: full.x, y: full.y } };
+}
+async function transferAes(priv, pub) {
+  const bits = await crypto.subtle.deriveBits({ name: 'ECDH', public: await importPub(pub) }, priv, 256);
+  const hk = await crypto.subtle.importKey('raw', bits, 'HKDF', false, ['deriveKey']);
+  return crypto.subtle.deriveKey(
+    { name: 'HKDF', hash: 'SHA-256', salt: te.encode('kosmo-e2ee-v1'), info: te.encode('transfer') },
+    hk, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt'],
+  );
+}
+
+// 4 цифры из одноразового ключа нового устройства — сверить на двух экранах
+export async function transferCode(epub) {
+  const h = new Uint8Array(await crypto.subtle.digest('SHA-256', te.encode(`kosmo-link|${epub.x}.${epub.y}`)));
+  return String(((h[0] << 16) | (h[1] << 8) | h[2]) % 10000).padStart(4, '0');
+}
+
+// Новое устройство: одноразовый ключ для запроса
+export async function keyRequest() {
+  const e = await ephemeral();
+  return { priv: e.priv, epub: e.pub, code: await transferCode(e.pub) };
+}
+
+// Вошедшее устройство: зашифровать свой ключ для запросившего
+export async function keyResponse(epub) {
+  if (!keys) throw new Error('no keys');
+  const o = await ephemeral();
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const data = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, await transferAes(o.priv, epub), te.encode(JSON.stringify(keys.privJwk)));
+  return { opub: o.pub, iv: b64(iv), data: b64(data) };
+}
+
+// Новое устройство: принять ключ (только если он от этого аккаунта)
+export async function acceptKey(req, res, accountPub) {
+  const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: unb64(res.iv) }, await transferAes(req.priv, res.opub), unb64(res.data));
   const privJwk = JSON.parse(td.decode(plain));
-  await storeKeys(privJwk, e2ee.pub);
-}
-
-// Новый ключ восстановления для того же закрытого ключа
-export async function rotateRecovery(e2ee) {
-  const rk = newRecoveryKey();
-  return { e2ee: { ...e2ee, backup: await sealBackup(keys.privJwk, rk), at: Date.now() }, recoveryKey: rk };
+  if (!accountPub || privJwk.x !== accountPub.x || privJwk.y !== accountPub.y) throw new Error('foreign key');
+  await storeKeys(privJwk, { kty: 'EC', crv: 'P-256', x: accountPub.x, y: accountPub.y });
 }
 
 /* ---------------------------------------------------------------------------

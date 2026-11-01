@@ -60,6 +60,7 @@ export function attachRealtime(server, { onActivity, onGateway }) {
     if (s) {
       ws.uid = s.userId;
       ws.sid = s.id;
+      ws.device = s.name ?? 'Browser';
       if (!byUser.has(s.userId)) byUser.set(s.userId, new Set());
       byUser.get(s.userId).add(ws);
       touchSession(s.id);
@@ -90,6 +91,29 @@ export function attachRealtime(server, { onActivity, onGateway }) {
         if (!members.includes(ws.uid)) return;
         const kind = ['text', 'voice', 'round'].includes(msg.kind) ? msg.kind : 'text';
         for (const u of members) if (u !== ws.uid) sendTo(u, { t: 'typing', chat: msg.chat, from: ws.uid, kind });
+        return;
+      }
+      // перенос ключа шифрования на новое устройство: запрос уходит другим
+      // устройствам того же человека, ответ (зашифрованный) — только запросившему
+      const jwkPart = (v) => typeof v === 'string' && v.length <= 64;
+      if (msg.t === 'key-req' && jwkPart(msg.epub?.x) && jwkPart(msg.epub?.y)) {
+        const now = Date.now();
+        if (now - (ws.keyReqAt ?? 0) < 3000) return;
+        ws.keyReqAt = now;
+        const data = JSON.stringify({ t: 'key-req', from: ws.sid, device: ws.device, epub: { x: msg.epub.x, y: msg.epub.y } });
+        for (const o of byUser.get(ws.uid) ?? []) if (o.sid !== ws.sid && o.readyState === 1) o.send(data);
+        return;
+      }
+      if (msg.t === 'key-res' && typeof msg.to === 'string' && jwkPart(msg.opub?.x) && jwkPart(msg.opub?.y)
+        && typeof msg.iv === 'string' && msg.iv.length < 40 && typeof msg.data === 'string' && msg.data.length < 4000) {
+        const data = JSON.stringify({ t: 'key-res', from: ws.sid, opub: { x: msg.opub.x, y: msg.opub.y }, iv: msg.iv, data: msg.data });
+        for (const o of byUser.get(ws.uid) ?? []) if (o.sid === msg.to && o.readyState === 1) o.send(data);
+        sendTo(ws.uid, { t: 'key-done', sid: msg.to }, ws);
+        return;
+      }
+      if (msg.t === 'key-deny' && typeof msg.to === 'string') {
+        for (const o of byUser.get(ws.uid) ?? []) if (o.sid === msg.to && o.readyState === 1) o.send(JSON.stringify({ t: 'key-deny' }));
+        sendTo(ws.uid, { t: 'key-done', sid: msg.to }, ws);
         return;
       }
       if (msg.t === 'ping') {

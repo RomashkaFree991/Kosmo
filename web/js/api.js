@@ -251,6 +251,11 @@ export function sendSignal(to, data) {
 }
 export const onSignal = (fn) => signalHandlers.add(fn);
 export const onServerMessage = (fn) => msgHandlers.add(fn);
+export function wsSend(obj) {
+  if (ws?.readyState !== 1) return false;
+  ws.send(JSON.stringify(obj));
+  return true;
+}
 export function sendTyping(chat, kind = 'text') {
   if (ws?.readyState === 1) ws.send(JSON.stringify({ t: 'typing', chat, kind }));
 }

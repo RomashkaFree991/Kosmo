@@ -6,11 +6,11 @@ import {
   $, $$, db, uid, toast, escapeHtml, userAvatarHtml, formatDate, formatTime, refreshRefraction, timeAgo,
 } from './core.js';
 import { state } from './panels.js';
-import { api } from './api.js';
+import { api, onServerMessage, wsSend } from './api.js';
 import { EMOJI, emojiSvg } from './emoji.js';
 import { qrSvg, qrReady } from './qrlogin.js';
 import { lang } from './i18n.js';
-import { e2eeReady, myPub, createKeys, unlockWith, rotateRecovery, fingerprint } from './e2ee.js';
+import { e2eeReady, myPub, createKeys, keyRequest, keyResponse, acceptKey, transferCode, fingerprint } from './e2ee.js';
 
 const svg = (d) => `<svg class="i" viewBox="0 0 24 24" aria-hidden="true">${d}</svg>`;
 export const PI = {
@@ -616,84 +616,131 @@ export function startTranscriber() {
 }
 
 /* ---------------------------------------------------------------------------
-   Сквозное шифрование: настройка, ключ восстановления, разблокировка
+   Сквозное шифрование: ключ создаётся сам, на новое устройство его передаёт
+   уже вошедшее (как привязка устройств в WhatsApp/Signal)
    --------------------------------------------------------------------------- */
 let e2eeAsked = '';
-// Вызывается после входа: ключей нет — создать; есть на сервере, но не на этом устройстве — спросить ключ восстановления
+const hasMyKey = () => { const u = me(); return e2eeReady() && Boolean(u?.e2ee?.pub) && myPub()?.x === u.e2ee.pub.x; };
+
+// После входа: ключа нет — создать; он есть у аккаунта, но не здесь — попросить у другого устройства
 export async function ensureE2EE(onUnlocked) {
   const u = me();
   if (!u || u.bot || e2eeAsked === u.id) return;
   e2eeAsked = u.id;
-  if (e2eeReady() && myPub()?.x === u.e2ee?.pub?.x) return;
+  if (hasMyKey()) {
+    // старые аккаунты: убрать с сервера копию под ключом восстановления
+    if (u.e2ee.backup) saveMe((x) => { x.e2ee = { pub: x.e2ee.pub, at: x.e2ee.at }; });
+    return;
+  }
   if (!u.e2ee?.pub) {
-    const { e2ee, recoveryKey } = await createKeys();
+    const { e2ee } = await createKeys();
     saveMe((x) => { x.e2ee = e2ee; });
-    showRecoveryKey(recoveryKey, true);
+    onUnlocked?.();
     return;
   }
   openUnlock(onUnlocked);
 }
 
-function showRecoveryKey(rk, first = false) {
-  const wrap = openModal(first ? 'Your chats are encrypted' : 'New recovery key', `
-    <div class="e2ee-hero">${PI.lock}</div>
-    <p class="pm-note">${first ? 'Messages and files are end-to-end encrypted: only you and the people you talk to can read them. Not even the server owner can.' : 'The old recovery key no longer works.'}</p>
-    <span class="modal-label">Recovery key — save it somewhere safe</span>
-    <code class="e2ee-key" id="rk-text">${escapeHtml(rk)}</code>
-    <button class="btn btn-secondary glass" type="button" data-rk-copy>${PI.copy}Copy key</button>
-    <p class="pm-note">You’ll need it to read your chats on a new device. If you lose it, nobody can recover your old encrypted messages.</p>
-    <button class="btn btn-primary" type="button" data-pm-close>I saved it</button>`, {
-    onClick: (e) => { if (e.target.closest('[data-rk-copy]')) navigator.clipboard?.writeText(rk).then(() => toast('Key copied')); },
-  });
-  return wrap;
+/* ---------- Новое устройство: ждать ключ ---------- */
+let waitKey = null;   // { req, timer, onUnlocked, wrap }
+
+function stopWaiting() {
+  if (!waitKey) return;
+  clearInterval(waitKey.timer);
+  waitKey = null;
 }
 
-export function openUnlock(onUnlocked) {
+export async function openUnlock(onUnlocked) {
+  stopWaiting();
+  const req = await keyRequest();
+  const ask = () => wsSend({ t: 'key-req', epub: req.epub });
   const wrap = openModal('Unlock encrypted chats', `
     <div class="e2ee-hero">${PI.lock}</div>
-    <p class="pm-note">This device doesn’t have your encryption key yet. Enter the recovery key you saved when you first set up Kosmo.</p>
-    <label class="modal-field"><input type="text" id="rk-input" autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="XXXX-XXXX-XXXX-XXXX-XXXX-XXXX"></label>
-    <button class="btn btn-primary" type="button" data-rk-unlock>Unlock</button>
-    <button class="link-btn" type="button" data-rk-reset>Lost the key? Start over</button>`, {
+    <p class="pm-note">Open Kosmo on a device where you’re already signed in and allow this one. Your encryption key will be sent straight to it, encrypted.</p>
+    <span class="modal-label">Check that the other device shows the same code</span>
+    <code class="e2ee-key e2ee-code">${req.code}</code>
+    <p class="pm-note e2ee-wait"><span class="e2ee-dot"></span>Waiting for your other device…</p>
+    <button class="link-btn" type="button" data-rk-reset>No other device? Start over</button>`, {
     onClick: async (e) => {
-      if (e.target.closest('[data-rk-unlock]')) {
-        try {
-          await unlockWith($('#rk-input', wrap).value, me().e2ee);
-          closeModal();
-          toast('Encrypted chats unlocked');
-          onUnlocked?.();
-        } catch { toast('Wrong recovery key'); }
-      }
-      if (e.target.closest('[data-rk-reset]')) {
-        if (!confirm('Create a new encryption key? Old encrypted messages will stay unreadable on all devices.')) return;
-        const { e2ee, recoveryKey } = await createKeys();
-        saveMe((x) => { x.e2ee = e2ee; });
-        showRecoveryKey(recoveryKey, true);
-        onUnlocked?.();
-      }
+      if (!e.target.closest('[data-rk-reset]')) return;
+      if (!confirm('Create a new encryption key? Old encrypted messages will stay unreadable on all devices.')) return;
+      stopWaiting();
+      const { e2ee } = await createKeys();
+      saveMe((x) => { x.e2ee = e2ee; });
+      closeModal();
+      toast('New encryption key created');
+      onUnlocked?.();
     },
   });
+  waitKey = { req, onUnlocked, wrap, timer: setInterval(() => { if (!wrap.isConnected) stopWaiting(); else ask(); }, 4000) };
+  ask();
 }
+
+/* ---------- Вошедшее устройство: разрешить новому ---------- */
+const keyAsks = new Map();   // sid нового устройства → время, когда ответили
+let askOpen = '';
+
+onServerMessage(async (msg) => {
+  if (msg.t === 'key-res' && waitKey) {
+    const w = waitKey;
+    try {
+      await acceptKey(w.req, msg, me()?.e2ee?.pub);
+    } catch { return; }
+    stopWaiting();
+    if (w.wrap.isConnected) closeModal();
+    toast('Encrypted chats unlocked');
+    w.onUnlocked?.();
+    return;
+  }
+  if (msg.t === 'key-deny' && waitKey) {
+    stopWaiting();
+    closeModal();
+    toast('The other device declined');
+    return;
+  }
+  // на запрос уже ответило другое устройство — убрать вопрос
+  if (msg.t === 'key-done') {
+    keyAsks.set(msg.sid, Date.now());
+    if (askOpen === msg.sid) { askOpen = ''; closeModal(); }
+    return;
+  }
+  if (msg.t !== 'key-req' || !hasMyKey() || askOpen === msg.from) return;
+  if (Date.now() - (keyAsks.get(msg.from) ?? 0) < 60_000) return;
+  askOpen = msg.from;
+  const code = await transferCode(msg.epub);
+  const wrap = openModal('New device', `
+    <div class="e2ee-hero is-on">${PI.lock}</div>
+    <p class="pm-note"><b>${escapeHtml(msg.device ?? 'Browser')}</b> wants to read your encrypted chats. Allow only if it’s your device and it shows the same code.</p>
+    <code class="e2ee-key e2ee-code">${code}</code>
+    <button class="btn btn-primary" type="button" data-key-allow>Allow</button>
+    <button class="btn btn-secondary glass" type="button" data-key-deny>Not me</button>`, {
+    onClick: async (e) => {
+      const allow = e.target.closest('[data-key-allow]');
+      if (!allow && !e.target.closest('[data-key-deny]')) return;
+      keyAsks.set(msg.from, Date.now());
+      askOpen = '';
+      closeModal();
+      if (allow) {
+        wsSend({ t: 'key-res', to: msg.from, ...(await keyResponse(msg.epub)) });
+        toast('Key sent');
+      } else wsSend({ t: 'key-deny', to: msg.from });
+    },
+  });
+  // закрыли крестиком — спросить снова при следующем запросе
+  new MutationObserver((_, o) => { if (!wrap.isConnected) { if (askOpen === msg.from) askOpen = ''; o.disconnect(); } }).observe(document.body, { childList: true });
+});
 
 // Профиль → «Шифрование»
 export async function openEncryption(onUnlocked) {
-  const u = me();
-  const ready = e2eeReady() && myPub()?.x === u.e2ee?.pub?.x;
+  const ready = hasMyKey();
   const fp = ready ? await fingerprint(myPub()) : '';
   openModal('Encryption', `
     <div class="e2ee-hero${ready ? ' is-on' : ''}">${PI.lock}</div>
     <p class="pm-note">${ready ? 'End-to-end encryption is on for private chats, groups and Saved Messages. Public groups and channels are open to everyone and are not encrypted.' : 'Encrypted chats are locked on this device.'}</p>
     ${ready ? `<span class="modal-label">Your key fingerprint</span><code class="e2ee-key">${fp.match(/.{4}/g).join(' ')}</code>
-      <button class="btn btn-secondary glass" type="button" data-e2ee-rotate>Create a new recovery key</button>`
-    : '<button class="btn btn-primary" type="button" data-e2ee-unlock>Enter recovery key</button>'}`, {
-    onClick: async (e) => {
-      if (e.target.closest('[data-e2ee-unlock]')) { closeModal(); openUnlock(onUnlocked); }
-      if (e.target.closest('[data-e2ee-rotate]')) {
-        const { e2ee, recoveryKey } = await rotateRecovery(u.e2ee);
-        saveMe((x) => { x.e2ee = e2ee; });
-        showRecoveryKey(recoveryKey);
-      }
-    },
+      <p class="pm-note">Your key never leaves your devices. To use Kosmo on a new device, sign in there and tap Allow here.</p>`
+    : '<button class="btn btn-primary" type="button" data-e2ee-unlock>Get the key from another device</button>'}`, {
+    onClick: (e) => { if (e.target.closest('[data-e2ee-unlock]')) { closeModal(); openUnlock(onUnlocked); } },
   });
 }
 
