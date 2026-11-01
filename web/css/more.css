@@ -142,7 +142,7 @@ html[data-theme="material"] .attach-tray { background: var(--md-tint-high); }
 .send-btn[data-mode="round"] .ic-mic, .send-btn[data-mode="round"] .ic-send { opacity: 0; scale: 0.3; }
 .send-btn[data-mode="round"] .ic-round { opacity: 1; scale: 1; }
 .send-btn[data-mode="voice"] .ic-round, .send-btn[data-mode="send"] .ic-round { opacity: 0; scale: 0.3; rotate: 90deg; }
-.ic-round { background: #34c759; }
+.menu-ic.ic-round { background: #34c759; }
 .ic-poll { background: #ff9f0a; }
 .menu-ic.ic-round, .menu-ic.ic-poll { color: #fff; }
 
@@ -759,3 +759,43 @@ html[data-theme="material"] .avatar.avatar-room { clip-path: none !important; bo
 /* одноразовое фото: время под карточкой, а не поверх картинки */
 .bubble:has(.vo-card) .b-meta { position: static; float: right; margin: 2px 0 0 8px; padding: 0; background: none; color: inherit; opacity: 0.7; }
 .bubble:has(.vo-card) { padding-bottom: 8px; }
+/* Kosmo Premium: планета справа от имени */
+.premium-badge { display: inline-grid; place-items: center; width: 1.15em; height: 1.15em; margin-left: 4px; vertical-align: -0.18em; flex: none; filter: drop-shadow(0 0 5px rgba(177, 92, 255, 0.55)); }
+.premium-badge .premium-planet { width: 100%; height: 100%; }
+/* клавиатура открыта: нижний отступ под «домашнюю полоску» не нужен */
+.kb-open .composer, .kb-open .composer-ro, .kb-open .chat-join { bottom: 8px; }
+.kb-open .panel-chat.has-tray .compose-bar { bottom: 158px; }
+.kb-open .tabbar { display: none; }
+
+/* ---------- Загрузка файлов и неподтверждённые сообщения ---------- */
+.ticks.is-pending { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; opacity: 0; animation: fade-in 200ms 600ms ease forwards; }
+.kind-upload { display: flex; align-items: center; gap: 12px; padding: 8px 14px 8px 8px; min-width: 200px; }
+.kind-upload.has-thumb { flex-direction: column; align-items: stretch; gap: 6px; padding: 4px; min-width: 0; }
+.up-media { position: relative; display: grid; place-items: center; width: 52px; height: 52px; flex: none; border-radius: 50%; background: rgba(var(--ink), 0.18); overflow: hidden; }
+.has-thumb .up-media { width: min(240px, 60vw); height: auto; aspect-ratio: 4 / 3; border-radius: 14px; background: #000; }
+.has-thumb.is-once .up-media img, .has-thumb.is-once .up-media video { filter: blur(18px); }
+.up-media img, .up-media video { width: 100%; height: 100%; object-fit: cover; filter: brightness(0.7); }
+.up-ic { display: none; }
+.up-ring { position: absolute; inset: 0; display: grid; place-items: center; }
+.has-thumb .up-ring { inset: auto; width: 56px; height: 56px; }
+.up-ring svg { position: absolute; inset: 0; width: 100%; height: 100%; rotate: -90deg; }
+.up-track, .up-bar { fill: none; stroke-width: 3; }
+.up-track { stroke: rgba(255, 255, 255, 0.25); }
+.up-bar { stroke: #fff; stroke-linecap: round; stroke-dasharray: 1; stroke-dashoffset: calc(1 - max(0.04, var(--p, 0))); transition: stroke-dashoffset 200ms linear; animation: up-spin 1.2s linear infinite; transform-origin: 50% 50%; }
+@keyframes up-spin { to { rotate: 360deg; } }
+.has-thumb .up-ring::before { content: ""; position: absolute; inset: 0; border-radius: 50%; background: rgba(0, 0, 0, 0.45); }
+.up-btn { position: relative; width: 30px; height: 30px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 50%; background: none; color: #fff; }
+.up-btn .i { width: 18px; height: 18px; }
+.up-text { display: flex; flex-direction: column; gap: 2px; font-size: 14px; }
+.up-text span { opacity: 0.75; font-size: 12px; font-variant-numeric: tabular-nums; }
+.has-thumb .up-text { padding: 0 8px 4px; flex-direction: row; justify-content: space-between; align-items: baseline; }
+.is-failed .up-bar { animation: none; stroke: #ff453a; stroke-dashoffset: 0; }
+.is-failed .up-text span { color: #ffd0cc; opacity: 1; }
+/* запись кружка: подсказка, вспышка экраном для фронтальной камеры */
+.round-hint { position: relative; margin: -8px 0 0; color: rgba(255, 255, 255, 0.75); font-size: 13px; }
+.round-rec.is-flash .round-rec-bg { background: #fff; -webkit-backdrop-filter: none; backdrop-filter: none; }
+.round-rec.is-flash .round-rec-time, .round-rec.is-flash .round-hint { color: #000; }
+.round-rec [data-rr="torch"][aria-pressed="true"] { background: #ffd60a; color: #000; }
+/* «печатает…» */
+.typing-label { color: var(--c-accent); font-weight: 500; }
+#chat-sub.is-typing { color: var(--c-accent); }

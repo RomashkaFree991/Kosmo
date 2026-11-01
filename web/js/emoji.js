@@ -1,7 +1,7 @@
 // Свои анимированные эмодзи Kosmo: векторные, с градиентами и лёгкой
 // анимацией. Для реакций и отправки в чат.
 
-import { $ } from './core.js';
+import { $, setPremiumIcon } from './core.js';
 
 // Градиенты и маски общие для всех эмодзи — кладём один раз в спрайт
 const DEFS = `
@@ -181,3 +181,5 @@ export function emojiSvg(id, cls = '') {
 export function initEmoji() {
   $('.sprite defs').insertAdjacentHTML('beforeend', DEFS);
 }
+
+setPremiumIcon(() => emojiSvg('planet', 'premium-planet'));

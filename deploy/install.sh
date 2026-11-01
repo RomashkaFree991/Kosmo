@@ -87,8 +87,10 @@ else
   git clone -q --depth 1 --branch "$BRANCH" "$REPO" "$APP_DIR"
 fi
 # скрипт из curl мог быть старым (кеш GitHub) — дальше выполняем свежий из репозитория
-if [ -z "${KOSMO_REEXEC:-}" ] && ! cmp -s "$0" "$APP_DIR/deploy/install.sh" 2>/dev/null; then
-  KOSMO_REEXEC=1 exec bash "$APP_DIR/deploy/install.sh" "${ORIG_ARGS[@]}"
+# (запускаем копию во /tmp: bash читает скрипт по ходу, а git только что заменил файл)
+if [ -z "${KOSMO_REEXEC:-}" ]; then
+  cp "$APP_DIR/deploy/install.sh" /tmp/kosmo-install.sh
+  KOSMO_REEXEC=1 exec bash /tmp/kosmo-install.sh "${ORIG_ARGS[@]}"
 fi
 (cd "$APP_DIR/server" && npm install --omit=dev --no-audit --no-fund --silent)
 mkdir -p "$DATA_DIR" && chmod 700 "$DATA_DIR"
@@ -397,7 +399,8 @@ cat > /usr/local/bin/kosmo <<KOS
 #!/usr/bin/env bash
 # kosmo update | sms | logs | restart | status
 case "\${1:-}" in
-  update)  exec bash $APP_DIR/deploy/install.sh "$DOMAIN" "$EMAIL" ;;
+  update)  git -C $APP_DIR fetch -q --depth 1 origin $BRANCH && git -C $APP_DIR reset -q --hard FETCH_HEAD
+           cp $APP_DIR/deploy/install.sh /tmp/kosmo-install.sh && exec bash /tmp/kosmo-install.sh "$DOMAIN" "$EMAIL" ;;
   mail-test)
            [ -n "\${2:-}" ] || { echo "Использование: kosmo mail-test адрес@почта"; exit 1; }
            set -a; . $ENV_FILE; set +a; cd $APP_DIR/server

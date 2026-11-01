@@ -3,6 +3,15 @@
 
 import { WebSocketServer } from 'ws';
 import { sessionByToken, touchSession } from './auth.js';
+import { chats } from './db.js';
+
+// Кто в чате: участники, а у ещё не созданного личного чата — двое из его id
+function membersOf(chatId) {
+  const c = chats.get(chatId);
+  if (c) return c.members;
+  const m = /^(?:secret_)?([0-9a-f-]{36})_([0-9a-f-]{36})$/.exec(chatId);
+  return m ? [m[1], m[2]] : [];
+}
 
 const byUser = new Map();      // uid → Set<ws>
 const qrWaiters = new Map();   // QR-код → ws экрана входа
@@ -70,6 +79,17 @@ export function attachRealtime(server, { onActivity, onGateway }) {
         // звонок: пересылаем собеседнику (во все его вкладки) и своим другим вкладкам
         sendTo(msg.to, { t: 'signal', from: ws.uid, data: msg.data }, ws);
         if (msg.mirror) sendTo(ws.uid, { t: 'signal', from: ws.uid, data: msg.data }, ws);
+        return;
+      }
+      // «печатает…» / «записывает голосовое…» — только участникам чата
+      if (msg.t === 'typing' && typeof msg.chat === 'string') {
+        const now = Date.now();
+        if (now - (ws.typingAt ?? 0) < 1500) return;
+        ws.typingAt = now;
+        const members = membersOf(msg.chat);
+        if (!members.includes(ws.uid)) return;
+        const kind = ['text', 'voice', 'round'].includes(msg.kind) ? msg.kind : 'text';
+        for (const u of members) if (u !== ws.uid) sendTo(u, { t: 'typing', chat: msg.chat, from: ws.uid, kind });
         return;
       }
       if (msg.t === 'ping') {

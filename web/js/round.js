@@ -3,7 +3,6 @@
 // и кольцом прогресса.
 
 import { toast } from './core.js';
-import { putBlob } from './media.js';
 
 const MAX = 60;
 const svg = (d) => `<svg class="i" viewBox="0 0 24 24" aria-hidden="true">${d}</svg>`;
@@ -11,6 +10,7 @@ const I = {
   close: svg('<path d="M7 7l10 10M17 7L7 17"/>'),
   send: svg('<path d="M12 19V5M5.5 11.5L12 5l6.5 6.5"/>'),
   flip: svg('<path d="M4 9a8 8 0 0 1 14-3l2 2M20 15a8 8 0 0 1-14 3l-2-2M20 4v4h-4M4 20v-4h4"/>'),
+  torch: svg('<path d="M8 3h8l-1.5 5h-5zM9.5 8h5v4.5L13 21h-2l-1.5-8.5z"/><path d="M12 12v2"/>'),
 };
 // Фильтры кружка: CSS-фильтр canvas; «Портрет» — размытый фон
 const FILTERS = [
@@ -75,22 +75,27 @@ function stop(btn) {
 
 /* ---------------------------------------------------------------------------
    Запись
+   Картинка: камера → canvas (фильтр) → запись; звук — отдельным потоком,
+   поэтому смена камеры не прерывает запись. Возвращает пульт { send, cancel }
+   — для записи «пока держишь кнопку».
    --------------------------------------------------------------------------- */
-export async function openRoundRecorder(onSend) {
+const MIME = ['video/mp4;codecs=avc1,mp4a.40.2', 'video/mp4', 'video/webm;codecs=vp8,opus', 'video/webm'];
+
+export async function openRoundRecorder(onSend, { hold = false } = {}) {
   if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
     toast('Video messages are not supported in this browser');
-    return;
+    return null;
   }
   let facing = 'user';
-  let stream;
-  const getStream = () => navigator.mediaDevices.getUserMedia({
-    video: { facingMode: facing, width: { ideal: 480 }, height: { ideal: 480 } }, audio: true,
-  });
+  let cam;
+  let mic;
+  const getCam = () => navigator.mediaDevices.getUserMedia({ video: { facingMode: facing, width: { ideal: 640 }, height: { ideal: 640 } }, audio: false });
   try {
-    stream = await getStream();
+    [cam, mic] = await Promise.all([getCam(), navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true }, video: false })]);
   } catch {
+    cam?.getTracks().forEach((t) => t.stop());
     toast('Allow camera and microphone access to record');
-    return;
+    return null;
   }
   const el = document.createElement('div');
   el.className = 'round-rec';
@@ -101,16 +106,20 @@ export async function openRoundRecorder(onSend) {
       <svg class="round-rec-ring" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="${R}" style="stroke-dasharray:${C};stroke-dashoffset:${C}"/></svg>
     </div>
     <div class="round-rec-time"><span class="rec-dot"></span><span id="round-time">0:00</span></div>
+    ${hold ? '<p class="round-hint">Release to send · slide up to lock</p>' : ''}
     <div class="round-filters" role="radiogroup" aria-label="Filter">${FILTERS.map(([id, label], i) => `<button class="rf-chip" type="button" role="radio" data-rf="${id}" aria-checked="${i === 0}">${label}</button>`).join('')}</div>
     <div class="round-rec-actions">
       <button class="v-btn" type="button" data-rr="cancel" aria-label="Cancel">${I.close}</button>
+      <button class="v-btn" type="button" data-rr="torch" aria-label="Flashlight" aria-pressed="false">${I.torch}</button>
       <button class="round-rec-send" type="button" data-rr="send" aria-label="Send">${I.send}</button>
       <button class="v-btn" type="button" data-rr="flip" aria-label="Switch camera">${I.flip}</button>
     </div>`;
   document.body.append(el);
   const video = el.querySelector('video');
-  video.srcObject = stream;
-  // кадр с камеры → canvas с фильтром → запись (звук — с микрофона)
+  video.srcObject = cam;
+  const ring = el.querySelector('circle');
+
+  // кадр с камеры → canvas с фильтром
   const canvas = el.querySelector('canvas');
   const ctx = canvas.getContext('2d');
   const soft = document.createElement('canvas');
@@ -122,21 +131,18 @@ export async function openRoundRecorder(onSend) {
     raf = requestAnimationFrame(draw);
     const vw = video.videoWidth;
     const vh = video.videoHeight;
-    if (!vw) return;
+    if (!vw || video.readyState < 2) return;   // при смене камеры остаётся последний кадр
     const side = Math.min(vw, vh);
     const sx = (vw - side) / 2;
     const sy = (vh - side) / 2;
     const f = FILTERS.find(([id]) => id === filter)?.[2] ?? 'none';
     canvas.classList.toggle('is-mirror', facing === 'user');
     if (filter === 'portrait') {
-      // фон размыт, в центре (лицо) — резко, с мягким краем
       ctx.filter = 'blur(12px) saturate(1.1)';
       ctx.drawImage(video, sx, sy, side, side, -12, -12, 504, 504);
       sctx.globalCompositeOperation = 'source-over';
-      sctx.filter = 'saturate(1.08)';
       sctx.clearRect(0, 0, 480, 480);
       sctx.drawImage(video, sx, sy, side, side, 0, 0, 480, 480);
-      sctx.filter = 'none';
       sctx.globalCompositeOperation = 'destination-in';
       const g = sctx.createRadialGradient(240, 225, 90, 240, 225, 215);
       g.addColorStop(0, 'rgba(0,0,0,1)');
@@ -152,40 +158,55 @@ export async function openRoundRecorder(onSend) {
     }
   };
   draw();
-  const recStream = () => new MediaStream([...canvas.captureStream(30).getVideoTracks(), ...stream.getAudioTracks()]);
-  const ring = el.querySelector('circle');
-  let chunks = [];
-  let rec = null;
-  let started = 0;
-  let send = false;
-  let timer = null;
 
-  const startRec = () => {
-    chunks = [];
-    const type = ['video/webm;codecs=vp9,opus', 'video/webm', 'video/mp4'].find((t) => MediaRecorder.isTypeSupported?.(t));
-    rec = new MediaRecorder(canvas.captureStream ? recStream() : stream, type ? { mimeType: type } : undefined);
-    rec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
-    rec.onstop = async () => {
-      const elapsed = (Date.now() - started) / 1000;
-      stream.getTracks().forEach((t) => t.stop());
-      clearInterval(timer);
-      cancelAnimationFrame(raf);
-      el.classList.add('is-closing');
-      setTimeout(() => el.remove(), 220);
-      if (!send || elapsed < 0.6) return;
-      const blob = new Blob(chunks, { type: rec.mimeType || 'video/webm' });
-      onSend({ kind: 'round', media: await putBlob(blob), duration: Math.min(MAX, elapsed) });
-    };
-    rec.start(250);
-    started = Date.now();
+  // запись: видео с canvas + звук с микрофона; битрейт умеренный — файл
+  // небольшой и быстро грузится даже на слабом интернете
+  const type = MIME.find((t) => MediaRecorder.isTypeSupported?.(t));
+  const out = canvas.captureStream ? new MediaStream([...canvas.captureStream(30).getVideoTracks(), ...mic.getAudioTracks()]) : new MediaStream([...cam.getVideoTracks(), ...mic.getAudioTracks()]);
+  const chunks = [];
+  const rec = new MediaRecorder(out, { ...(type ? { mimeType: type } : {}), videoBitsPerSecond: 1_200_000, audioBitsPerSecond: 64_000 });
+  rec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
+  let send = false;
+  let finished = false;
+  const started = Date.now();
+  rec.onstop = () => {
+    const elapsed = (Date.now() - started) / 1000;
+    cam.getTracks().forEach((t) => t.stop());
+    mic.getTracks().forEach((t) => t.stop());
+    out.getTracks().forEach((t) => t.stop());
+    clearInterval(timer);
+    cancelAnimationFrame(raf);
+    el.classList.add('is-closing');
+    setTimeout(() => el.remove(), 220);
+    if (!send || elapsed < 0.6) return;
+    const blob = new Blob(chunks, { type: (rec.mimeType || type || 'video/webm').split(';')[0] });
+    onSend({ kind: 'round', blob, duration: Math.min(MAX, elapsed) });
   };
-  startRec();
-  timer = setInterval(() => {
+  rec.start(1000);
+  const timer = setInterval(() => {
     const t = (Date.now() - started) / 1000;
     el.querySelector('#round-time').textContent = fmt(t);
     ring.style.strokeDashoffset = String(C * (1 - Math.min(1, t / MAX)));
-    if (t >= MAX) { send = true; rec.stop(); }
+    if (t >= MAX) finish(true);
   }, 100);
+
+  function finish(ok) {
+    if (finished) return;
+    finished = true;
+    send = ok;
+    if (rec.state !== 'inactive') rec.stop();
+  }
+
+  // фонарик: у задней камеры — настоящая вспышка, у фронтальной — белый экран
+  let torch = false;
+  async function setTorch(on) {
+    torch = on;
+    el.querySelector('[data-rr="torch"]').setAttribute('aria-pressed', String(on));
+    const track = cam.getVideoTracks()[0];
+    const real = track?.getCapabilities?.().torch;
+    el.classList.toggle('is-flash', on && !real);
+    if (real) { try { await track.applyConstraints({ advanced: [{ torch: on }] }); } catch { el.classList.toggle('is-flash', on); } }
+  }
 
   el.addEventListener('click', async (e) => {
     const chip = e.target.closest('[data-rf]');
@@ -196,18 +217,18 @@ export async function openRoundRecorder(onSend) {
     }
     const b = e.target.closest('[data-rr]');
     if (!b) return;
-    if (b.dataset.rr === 'cancel') { send = false; rec.stop(); }
-    if (b.dataset.rr === 'send') { send = true; rec.stop(); }
+    if (b.dataset.rr === 'cancel') finish(false);
+    if (b.dataset.rr === 'send') finish(true);
+    if (b.dataset.rr === 'torch') setTorch(!torch);
     if (b.dataset.rr === 'flip') {
-      // смена камеры: запись начинается заново
+      // другая камера: меняется только картинка, запись продолжается
       facing = facing === 'user' ? 'environment' : 'user';
-      send = false;
-      rec.onstop = null;
-      rec.stop();
-      stream.getTracks().forEach((t) => t.stop());
-      try { stream = await getStream(); } catch { facing = 'user'; stream = await getStream(); }
-      video.srcObject = stream;
-      startRec();
+      const old = cam;
+      try { cam = await getCam(); } catch { facing = facing === 'user' ? 'environment' : 'user'; return; }
+      video.srcObject = cam;
+      old.getTracks().forEach((t) => t.stop());
+      if (torch) setTorch(true);
     }
   });
+  return { send: () => finish(true), cancel: () => finish(false), lock: () => el.querySelector('.round-hint')?.remove() };
 }

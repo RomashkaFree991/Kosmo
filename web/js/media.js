@@ -24,16 +24,26 @@ function tx(mode, fn) {
   }));
 }
 
-export async function putBlob(blob) {
-  const res = await fetch('/api/media', {
-    method: 'POST',
-    headers: { 'Content-Type': blob.type || 'application/octet-stream', Authorization: `Bearer ${tab.get()?.token ?? ''}` },
-    body: blob,
+// Загрузка на сервер; onProgress(0…1) — для полоски загрузки, onXhr — чтобы отменить
+export function putBlob(blob, { onProgress, onXhr, type } = {}) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', '/api/media');
+    xhr.setRequestHeader('Content-Type', type || blob.type || 'application/octet-stream');
+    xhr.setRequestHeader('Authorization', `Bearer ${tab.get()?.token ?? ''}`);
+    xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress?.(e.loaded / e.total); };
+    xhr.onload = async () => {
+      let data = {};
+      try { data = JSON.parse(xhr.responseText); } catch { /* */ }
+      if (xhr.status < 200 || xhr.status >= 300) { reject(new Error(data.message || 'Upload failed')); return; }
+      await tx('readwrite', (st) => st.put(blob, data.id)).catch(() => {});
+      resolve(data.id);
+    };
+    xhr.onerror = () => reject(new Error('No connection to the server'));
+    xhr.onabort = () => { const e = new Error('aborted'); e.aborted = true; reject(e); };
+    onXhr?.(xhr);
+    xhr.send(blob);
   });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.message || 'Upload failed');
-  await tx('readwrite', (s) => s.put(blob, data.id)).catch(() => {});
-  return data.id;
 }
 
 const urls = new Map();

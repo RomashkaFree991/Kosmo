@@ -10,7 +10,7 @@ import { state, openPanel } from './panels.js';
 import { putBlob, hydrateMedia, squareAvatar } from './media.js';
 import { ICON as CHAT_ICON, deviceIcon, openSaved, openChatAt, chatTitle, chats } from './chats.js';
 import {
-  PI, openBookmarks, openDnd, dndUntil, openStatus, statusOf, statusHtml, openBackup, openBots, bookmarks,
+  PI, openBookmarks, openDnd, dndUntil, openBackup, openBots, bookmarks,
 } from './plus.js';
 import { SICON } from './settings.js';
 import { accountsHtml, linkedAccounts } from './accounts.js';
@@ -65,7 +65,7 @@ const MAIL_ICON = '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x
 let sig = '';
 export function renderProfile(force = false) {
   const u = state.acc.user;
-  const next = JSON.stringify([u.status, u.settings?.dnd, (u.bookmarks ?? []).length, u.name, u.username, u.email, u.bio, u.role, u.avatar, u.publicId, u.sessions.length, u.privacy, u.security?.lock, linkedAccounts().map((a) => a.uid)]);
+  const next = JSON.stringify([u.premium, u.settings?.dnd, (u.bookmarks ?? []).length, u.name, u.username, u.email, u.bio, u.role, u.avatar, u.publicId, u.sessions.length, u.privacy, u.security?.lock, linkedAccounts().map((a) => a.uid)]);
   if (next === sig && !force) return;
   sig = next;
   $('#profile').innerHTML = `
@@ -77,7 +77,6 @@ export function renderProfile(force = false) {
       </button>
       <h2 class="profile-name"><span>${escapeHtml(u.name)}</span>${userBadge(u)}</h2>
       ${u.official ? '<p class="official-note">Official account</p>' : ''}
-      <button class="profile-status" type="button" data-open-status>${statusOf(u) ? statusHtml(u, true) : `${PI.plus}Set status`}</button>
       <button class="pill-btn" type="button" data-open-edit>${ICON.edit}Edit profile</button>
     </section>
 
@@ -145,7 +144,6 @@ document.addEventListener('click', async (e) => {
     });
   }
   if (e.target.closest('[data-open-dnd]')) openDnd(() => renderProfile(true));
-  if (e.target.closest('[data-open-status]')) openStatus(() => renderProfile(true));
   if (e.target.closest('[data-open-bots]')) openBots();
   if (e.target.closest('[data-open-backup]')) {
     openBackup(() => {

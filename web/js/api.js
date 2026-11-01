@@ -15,6 +15,11 @@ let queue = [];
 let flushTimer = null;
 let retry = 0;
 const signalHandlers = new Set();
+// свои сообщения, которые ещё не подтвердил сервер (часики в пузыре)
+const pending = new Set();
+export const isPending = (id) => pending.has(id);
+const pendingChanged = () => document.dispatchEvent(new CustomEvent('kosmo:pending'));
+const myMsgIds = (patches) => patches.flatMap((p) => (p.col === 'chats' ? (p.msgs?.up ?? []).filter((m) => m.from === me).map((m) => m.id) : []));
 const msgHandlers = new Set();
 
 /* ---------- REST ---------- */
@@ -81,6 +86,7 @@ function onWrite(key, value) {
   if (key === 'accounts') patches = patches.filter((p) => p.id === me && p.op !== 'del');
   shadow[key] = clone(value);
   if (!patches.length) return;
+  myMsgIds(patches).forEach((id) => pending.add(id));
   queue.push(...patches);
   clearTimeout(flushTimer);
   flushTimer = setTimeout(flush, 30);
@@ -93,12 +99,18 @@ async function flush() {
     const { results } = await api('POST', '/api/sync', { patches: batch, conn: connId });
     const failed = results.filter((r) => !r.ok);
     if (failed.length) toast(failed[0].message || 'Could not save the change');
+    const ids = myMsgIds(batch);
+    if (ids.length) { ids.forEach((id) => pending.delete(id)); pendingChanged(); }
   } catch (e) {
     if (e.status === 0 || e.status >= 500) {
       // нет связи — повторим позже
       queue.unshift(...batch);
       setTimeout(flush, 3000);
-    } else toast(e.message);
+    } else {
+      toast(e.message);
+      myMsgIds(batch).forEach((id) => pending.delete(id));
+      pendingChanged();
+    }
   }
   if (queue.length) flush();
 }
@@ -172,6 +184,10 @@ export function sendSignal(to, data) {
   if (ws?.readyState === 1) ws.send(JSON.stringify({ t: 'signal', to, data }));
 }
 export const onSignal = (fn) => signalHandlers.add(fn);
+export const onServerMessage = (fn) => msgHandlers.add(fn);
+export function sendTyping(chat, kind = 'text') {
+  if (ws?.readyState === 1) ws.send(JSON.stringify({ t: 'typing', chat, kind }));
+}
 
 // Анонимное соединение для экрана входа (ожидание QR)
 export function anonSocket(onMessage) {

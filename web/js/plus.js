@@ -1,4 +1,4 @@
-// Kosmo+: «Избранное», закладки, «Не беспокоить», перевод, цитаты, статус,
+// Kosmo+: «Избранное», закладки, «Не беспокоить», перевод, цитаты,
 // списки дел, итоги опросов, геопозиция, приглашения по ссылке и QR,
 // темы в группах, резервная копия и боты. Окна — модальные листы.
 
@@ -201,48 +201,6 @@ export function openQuote(text, onPick) {
   range.selectNodeContents($('#quote-src', wrap));
   getSelection().removeAllRanges();
   getSelection().addRange(range);
-}
-
-/* ---------------------------------------------------------------------------
-   Статус: эмодзи и текст рядом с именем, со сроком
-   --------------------------------------------------------------------------- */
-const STATUS_EMOJI = ['party', 'fire', 'cool', 'rocket', 'planet', 'heart', 'laugh', 'star', 'like', 'wow'].filter((e) => EMOJI[e]);
-export const statusOf = (u) => (u?.status && (!u.status.until || u.status.until > Date.now()) ? u.status : null);
-export function statusHtml(u, withText = false) {
-  const s = statusOf(u);
-  if (!s) return '';
-  return `<span class="user-status" title="${escapeHtml(s.text ?? '')}">${s.emoji && EMOJI[s.emoji] ? emojiSvg(s.emoji, 'status-emoji') : ''}${withText && s.text ? `<span>${escapeHtml(s.text)}</span>` : ''}</span>`;
-}
-export function openStatus(onChange) {
-  const cur = statusOf(me()) ?? {};
-  let pick = cur.emoji ?? STATUS_EMOJI[0];
-  const DUR = [[3_600_000, '1 hour'], ['today', 'Today'], [7 * 86_400_000, '1 week'], [0, 'Forever']];
-  const wrap = openModal('Status', `
-    <div class="status-emojis">${STATUS_EMOJI.map((e) => `<button class="status-pick" type="button" data-st-emoji="${e}" aria-checked="${e === pick}" aria-label="${EMOJI[e].label}">${emojiSvg(e)}</button>`).join('')}</div>
-    <label class="modal-field"><span>What’s up?</span><input type="text" id="st-text" maxlength="60" placeholder="In a meeting, on vacation…" value="${escapeHtml(cur.text ?? '')}"></label>
-    <span class="modal-label">Clear after</span>
-    <div class="segs segs-wrap">${DUR.map(([v, l], i) => `<button type="button" class="seg-btn" role="radio" data-st-dur="${v}" aria-checked="${i === 0}">${l}</button>`).join('')}</div>
-    <button class="btn btn-primary" type="button" data-st-save>Set status</button>
-    ${statusOf(me()) ? '<button class="btn btn-secondary glass" type="button" data-st-clear>Clear status</button>' : ''}`, {
-    onClick: (e) => {
-      const em = e.target.closest('[data-st-emoji]');
-      if (em) { pick = em.dataset.stEmoji; $$('[data-st-emoji]', wrap).forEach((b) => b.setAttribute('aria-checked', String(b === em))); }
-      const d = e.target.closest('[data-st-dur]');
-      if (d) $$('[data-st-dur]', wrap).forEach((b) => b.setAttribute('aria-checked', String(b === d)));
-      if (e.target.closest('[data-st-clear]')) {
-        saveMe((u) => { u.status = null; });
-        closeModal(); toast('Status cleared'); onChange?.();
-      }
-      if (e.target.closest('[data-st-save]')) {
-        const dv = $('[data-st-dur][aria-checked="true"]', wrap).dataset.stDur;
-        let until = 0;
-        if (dv === 'today') { const t = new Date(); t.setHours(23, 59, 59, 0); until = t.getTime(); } else if (Number(dv)) until = Date.now() + Number(dv);
-        const text = $('#st-text', wrap).value.trim();
-        saveMe((u) => { u.status = { emoji: pick, text, until }; });
-        closeModal(); toast('Status set'); onChange?.();
-      }
-    },
-  });
 }
 
 /* ---------------------------------------------------------------------------

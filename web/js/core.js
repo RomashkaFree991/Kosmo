@@ -272,7 +272,11 @@ export function kosmoAvatar(cls = '') {
 }
 
 // Значок рядом с именем: официальный аккаунт (выдаётся только на сервере) или владелец
-export const userBadge = (u) => (u?.official ? cosmicBadge('official') : u?.premium ? cosmicBadge('premium') : u?.role === 'owner' ? cosmicBadge('owner') : '');
+// Kosmo Premium — анимированная планета правее имени (вместе с галочкой, если она есть)
+let premiumIcon = () => '';
+export function setPremiumIcon(fn) { premiumIcon = fn; }
+export const userBadge = (u) => (u?.official ? cosmicBadge('official') : u?.role === 'owner' ? cosmicBadge('owner') : '')
+  + (u?.premium ? `<span class="premium-badge" title="Kosmo Premium" aria-label="Kosmo Premium">${premiumIcon()}</span>` : '');
 
 // «Космическая» галочка: планета с кольцом и галочкой.
 // official — официальные аккаунты (фиолетовая), owner — владелец (золотая)
@@ -449,4 +453,41 @@ export function patchList(box, items, onCreate) {
     else cursor = cursor.nextElementSibling;
   }
   for (const el of [...box.children]) if (!keep.has(el)) el.remove();
+}
+
+/* ---------------------------------------------------------------------------
+   Экранная клавиатура: приложение занимает только видимую часть экрана,
+   поле ввода и последние сообщения остаются над клавиатурой (iOS не сжимает
+   страницу сам — подстраиваемся по visualViewport)
+   --------------------------------------------------------------------------- */
+export function initKeyboard() {
+  const vv = window.visualViewport;
+  if (!vv) return;
+  const app = document.getElementById('app');
+  let raf = 0;
+  const sync = () => {
+    cancelAnimationFrame(raf);
+    raf = requestAnimationFrame(() => {
+      const kb = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+      const open = kb > 80;
+      root.classList.toggle('kb-open', open);
+      root.style.setProperty('--kb', `${open ? kb : 0}px`);
+      if (open) {
+        app.style.height = `${vv.height}px`;
+        app.style.top = `${vv.offsetTop}px`;
+        app.style.bottom = 'auto';
+      } else {
+        app.style.removeProperty('height');
+        app.style.removeProperty('top');
+        app.style.removeProperty('bottom');
+      }
+      // переписка прилипает к низу и после смены высоты
+      const sc = document.getElementById('chat-scroll');
+      if (open && sc && sc.scrollHeight - sc.scrollTop - sc.clientHeight < 160) sc.scrollTop = sc.scrollHeight;
+    });
+  };
+  vv.addEventListener('resize', sync);
+  vv.addEventListener('scroll', sync);
+  // браузер не должен прокручивать страницу к полю — прокручиваем только ленту
+  window.addEventListener('scroll', () => { if (window.scrollY) window.scrollTo(0, 0); }, { passive: true });
 }

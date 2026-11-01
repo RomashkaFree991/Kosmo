@@ -21,12 +21,13 @@ import { posts } from './feeddata.js';
 import { stickerHtml, stickerPickerHtml, stickerByRef } from './stickers.js';
 import {
   PI, savedId, isSavedChat, savedAvatar, isBookmarked, toggleBookmark, translate, translationOf, clearTranslation,
-  openQuote, statusHtml, openTodoCreator, todoHtml, pollResultHtml, openLocation, locationHtml, stopLive, viewOnceHtml,
+  openQuote, openTodoCreator, todoHtml, pollResultHtml, openLocation, locationHtml, stopLive, viewOnceHtml,
   topicsBarHtml, openTopicCreator, GENERAL, startTranscriber,
 } from './plus.js';
 import { pollHtml, openPollCreator, closePoll, retractVote } from './polls.js';
 import { roundHtml, openRoundRecorder } from './round.js';
 import { startCall } from './calls.js';
+import { isPending, onServerMessage, sendTyping } from './api.js';
 import { pickTime, schedule, myScheduled, openScheduledList, addReminder, TTL_OPTIONS, ttlLabel } from './schedule.js';
 
 export const KOSMO = 'kosmo';
@@ -158,6 +159,8 @@ export const deviceIcon = (type) => ICON[type] ?? ICON.desktop;
 export const KOSMO_NAME = `<span class="name-with-badge">Kosmo ${cosmicBadge('official')}</span>`;
 
 // Галочки «отправлено / прочитано»; cls — анимация появления
+// ещё не дошло до сервера (слабый интернет) — часики вместо галочки
+const CLOCK = '<svg class="ticks is-pending" viewBox="0 0 24 24" aria-label="Sending"><circle cx="12" cy="12" r="7.5"/><path d="M12 8v4.2l2.6 1.6"/></svg>';
 function ticks(read, cls = '') {
   return `<svg class="ticks${read ? ' is-read' : ''} ${cls}" viewBox="0 0 24 24" aria-label="${read ? 'Read' : 'Sent'}">
     <path class="t1" pathLength="1" d="${read ? 'M2.5 12.5l4 4L15 8' : 'M5 12.5l4.5 4.5L19 7.5'}"/>
@@ -169,7 +172,7 @@ const shortTime = (t) => (new Date(t).toDateString() === new Date().toDateString
 export const fmtDur = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
 export function displayName(u) {
-  return `<span class="name-with-badge">${escapeHtml(u.name)}${userBadge(u)}${statusHtml(u)}</span>`;
+  return `<span class="name-with-badge">${escapeHtml(u.name)}${userBadge(u)}</span>`;
 }
 
 export function roomAvatar(c, cls = '') {
@@ -327,8 +330,10 @@ function listItems() {
       mine: last?.from === me,
     });
   }
-  // черновики: недописанное сообщение видно в списке
+  // черновики: недописанное сообщение видно в списке; «печатает…» — поверх всего
   for (const it of items) {
+    const ty = typingIn(it.id);
+    if (ty) { it.preview = `<span class="typing-label">${escapeHtml(ty)}</span>`; continue; }
     const d = prefs(it.id).draft;
     if (d?.text) { it.preview = `<span class="draft-label">Draft:</span> ${escapeHtml(d.text)}`; it.lastAt = Math.max(it.lastAt, d.at ?? 0); it.mine = false; }
   }
@@ -749,9 +754,6 @@ function markOpenRead() {
 }
 
 // Онлайн / был(а) недавно — с учётом приватности
-// статус человека вместо «был(а) в сети», пока он не истёк
-const statusOf2 = (u) => (u.status?.text && (!u.status.until || u.status.until > Date.now()) ? u.status.text : null);
-
 function lastSeen(u) {
   if (!u) return '';
   if (u.official) return 'official account';
@@ -779,11 +781,14 @@ function paintHeader() {
     const other = publicUser(db.get(open.otherId));
     title = isSecret(c) ? `<span class="name-with-badge is-secret"><span class="room-icon">${ICON.lock}</span>${escapeHtml(other?.name ?? 'Deleted account')}</span>`
       : displayName(other ?? { name: 'Deleted account' });
-    sub = other ? (statusOf2(other) ?? lastSeen(other)) : '';
+    sub = other ? lastSeen(other) : '';
     if (isSecret(c)) sub = 'secret chat';
     avatar = userAvatarHtml(other ?? { name: '?' }, 'avatar-head');
   }
   if (c?.ttl) sub += ` · auto-delete ${ttlLabel(c.ttl)}`;
+  const ty = typingIn(open.id);
+  if (ty) sub = ty;
+  $('#chat-sub').classList.toggle('is-typing', Boolean(ty));
   $('#chat-more').hidden = open.id === KOSMO;
   $('#chat-title').innerHTML = title;
   $('#chat-sub').textContent = sub;
@@ -1035,7 +1040,7 @@ function bubble(m, all, c, anim = false) {
   const fwd = m.fwd ? `<span class="b-fwd">${ICON.forward}Forwarded from&nbsp;${fwdUser ? `<button type="button" data-user-open="${m.fwd.from}">${escapeHtml(fwdUser.name)}</button>` : `<b>${escapeHtml(m.fwd.name ?? 'Hidden user')}</b>`}</span>` : '';
   const reactions = reactionsHtml(m, 'msg', anim);
   const marked = isBookmarked(c?.id ?? open.id, m.id) ? `<span class="b-ttl b-bm">${PI.bookmark}</span>` : '';
-  const meta = `<span class="b-meta">${marked}${m.expiresAt ? `<span class="b-ttl" title="Disappears ${formatDate(m.expiresAt)}">${ICON.timer}</span>` : ''}${m.silent ? `<span class="b-ttl">${ICON.silent}</span>` : ''}${signature ? `<em class="b-sign">${escapeHtml(signature)}</em>` : ''}${m.edited ? '<em>edited</em>' : ''}${channel ? `${ICON.eye}${views}&nbsp;` : ''}${formatTime(m.at)}${mine && !channel ? ticks(read, tickCls) : ''}</span>`;
+  const meta = `<span class="b-meta">${marked}${m.expiresAt ? `<span class="b-ttl" title="Disappears ${formatDate(m.expiresAt)}">${ICON.timer}</span>` : ''}${m.silent ? `<span class="b-ttl">${ICON.silent}</span>` : ''}${signature ? `<em class="b-sign">${escapeHtml(signature)}</em>` : ''}${m.edited ? '<em>edited</em>' : ''}${channel ? `${ICON.eye}${views}&nbsp;` : ''}${formatTime(m.at)}${mine && !channel ? (isPending(m.id) ? CLOCK : ticks(read, tickCls)) : ''}</span>`;
   const html = `
     <div class="bubble-row ${side}" data-id="${m.id}">
       ${sender ? `<button class="b-avatar" type="button" data-user-open="${m.from}" aria-label="${escapeHtml(sender.name)}">${userAvatarHtml(sender, 'avatar-xs')}</button>` : ''}
@@ -1099,7 +1104,8 @@ export function renderMessages({ scroll = false } = {}) {
   const c = curChat();
   paintPinned();
   paintScheduled();
-  if (!msgs.length && open.id !== KOSMO) {
+  const ups = [...uploads.values()].filter((u) => u.ctx.chatId === open.id);
+  if (!msgs.length && !ups.length && open.id !== KOSMO) {
     messagesBox.innerHTML = emptyState();
     hydrateMedia(messagesBox);
     return;
@@ -1122,6 +1128,7 @@ export function renderMessages({ scroll = false } = {}) {
       rows.push({ key: m.id, sig: bubble(m, msgs, c), get html() { return bubble(m, msgs, c, true); } });
     }
   }
+  for (const u of ups) rows.push({ key: `up:${u.id}`, sig: `${u.status}`, html: uploadRow(u) });
   patchList(messagesBox, rows, (el, key) => { if (!key.startsWith('day:') && !known.has(key)) el.classList.add('is-new'); });
   msgs.forEach((m) => known.add(m.id));
   if (searchQ) markSearch();
@@ -1707,6 +1714,7 @@ input.addEventListener('input', () => {
   if (!recorder) setMode(idleMode());
   clearTimeout(draftTimer);
   if (compose?.mode !== 'edit') draftTimer = setTimeout(() => saveDraft(input.value.trim()), 900);
+  if (input.value.trim() && open.id && open.id !== KOSMO && !isSavedOpen()) sendTyping(open.id, 'text');
 });
 input.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && matchMedia('(pointer: fine)').matches && state.acc.user.settings?.sendEnter !== false) {
@@ -1743,11 +1751,7 @@ composer.addEventListener('submit', (e) => {
 // Отправить то, что в поле и в ленте вложений (сразу, отложенно или без звука)
 async function sendComposed(opts = {}) {
   const text = input.value.trim();
-  if (!text && !tray.length) {
-    if (sendBtn.dataset.mode === 'round') openRoundRecorder((msg) => send(msg));
-    else startRecording();
-    return;
-  }
+  if (!text && !tray.length) return;
   const items = tray.splice(0);
   input.value = '';
   autosize();
@@ -1760,9 +1764,14 @@ async function sendComposed(opts = {}) {
   let caption = text;
   try {
     if (visual.length) {
-      const stored = await Promise.all(visual.map(storeTrayItem));
-      if (stored.length === 1) send({ ...stored[0], caption, ...(visual[0].once && stored[0].kind === 'photo' ? { viewOnce: true } : {}) }, opts);
-      else send({ kind: 'album', items: stored.map(({ kind, ...rest }) => ({ type: kind, ...rest })), caption }, opts);
+      // сообщение сразу появляется в чате с кругом загрузки
+      const prepared = await Promise.all(visual.map((t) => prepareMedia(t.file)));
+      const once = prepared.length === 1 && visual[0].once && prepared[0].kind === 'photo';
+      const cap = caption;
+      startUpload(prepared.map((x) => ({ blob: x.blob })), (ids) => (prepared.length === 1
+        ? { kind: prepared[0].kind, media: ids[0], ...mediaMeta(prepared[0]), caption: cap, ...(once ? { viewOnce: true } : {}) }
+        : { kind: 'album', items: prepared.map((x, i) => ({ type: x.kind, media: ids[i], ...mediaMeta(x) })), caption: cap }),
+      { kind: prepared[0].kind, url: visual[0].url, count: prepared.length, once, revoke: visual.map((t) => t.url) }, opts);
       caption = '';
     }
   } catch {
@@ -1850,7 +1859,7 @@ attachMenu.addEventListener('click', (e) => {
     });
     return;
   }
-  if (kind === 'round') { openRoundRecorder((msg) => send(msg)); return; }
+  if (kind === 'round') { openRoundRecorder(roundDone); return; }
   if (kind === 'poll') { openPollCreator((msg) => send(msg)); return; }
   if (kind === 'todo') { openTodoCreator((msg) => send(msg)); return; }
   if (kind === 'location') {
@@ -1862,6 +1871,17 @@ attachMenu.addEventListener('click', (e) => {
   }
   $(`#pick-${kind}`).click();
 });
+
+// Подготовить файл к отправке (сжать фото, узнать длину видео) — без загрузки
+async function prepareMedia(file) {
+  if (file.type.startsWith('video/')) {
+    if (file.size > MAX_FILE) throw new Error('too large');
+    return { kind: 'video', blob: file, duration: await mediaDuration(file, 'video') };
+  }
+  const { blob, w, h } = await compressImage(file);
+  return { kind: 'photo', blob, w, h };
+}
+const mediaMeta = (p) => (p.kind === 'photo' ? { w: p.w, h: p.h } : { duration: p.duration });
 
 // Фото и видео: сначала лист с превью и подписью, потом отправка
 export async function storeMedia(file) {
@@ -1952,7 +1972,8 @@ $('#pick-audio').addEventListener('change', async (e) => {
   if (f.size > MAX_FILE) { toast('File is too large (max 50 MB)'); return; }
   try {
     const duration = await mediaDuration(f, 'audio');
-    send({ kind: 'audio', media: await putBlob(f), name: f.name.replace(/\.[^.]+$/, ''), duration });
+    const name = f.name.replace(/\.[^.]+$/, '');
+    startUpload([{ blob: f }], ([media]) => ({ kind: 'audio', media, name, duration }), { kind: 'audio', name });
   } catch {
     toast('Could not send this file');
   }
@@ -1994,7 +2015,8 @@ async function startRecording() {
     // настоящая волна и точная длина — из самой записи
     const info = await analyzeAudio(blob);
     const transcript = transcriber ? await transcriber.stop() : '';
-    send({ kind: 'voice', media: await putBlob(blob), duration: info?.duration || elapsed, wave: info?.wave, ...(transcript ? { transcript } : {}) });
+    const duration = info?.duration || elapsed;
+    startUpload([{ blob }], ([media]) => ({ kind: 'voice', media, duration, wave: info?.wave, ...(transcript ? { transcript } : {}) }), { kind: 'voice' });
   };
   recorder.start();
   recStart = Date.now();
@@ -2076,30 +2098,67 @@ function openSendMenu() {
   refreshRefraction();
 }
 
+// Кнопка записи: короткое нажатие — голосовое ↔ кружок; зажать — запись,
+// отпустить — отправить, увести палец вверх — запись закрепляется
+const roundDone = (r) => startUpload([{ blob: r.blob }], ([media]) => ({ kind: 'round', media, duration: r.duration }), { kind: 'round' });
 (() => {
   let timer = null;
   let fired = false;
+  let holding = null;
+  let startY = 0;
   sendBtn.addEventListener('pointerdown', (e) => {
-    if (e.button > 0 || recorder) return;
+    if (e.button > 0 || recorder) return;   // во время записи кнопка — «отправить»
     fired = false;
-    timer = setTimeout(() => {
+    startY = e.clientY;
+    const mode = sendBtn.dataset.mode;
+    try { sendBtn.setPointerCapture(e.pointerId); } catch { /* */ }
+    timer = setTimeout(async () => {
       fired = true;
       navigator.vibrate?.(12);
-      if (sendBtn.dataset.mode === 'send') { openSendMenu(); return; }
-      recordKind = recordKind === 'voice' ? 'round' : 'voice';
-      setMode('voice');
-      toast(recordKind === 'round' ? 'Tap to record a video message' : 'Tap to record a voice message');
-    }, 450);
+      if (mode === 'send') { openSendMenu(); return; }
+      const h = { kind: mode === 'round' ? 'round' : 'voice', locked: false, released: false, ctl: null };
+      holding = h;
+      if (h.kind === 'voice') { startRecording(); return; }
+      h.ctl = await openRoundRecorder(roundDone, { hold: true });
+      // отпустили, пока включалась камера
+      if (h.released && !h.locked) h.ctl?.send();
+    }, 220);
   });
-  const cancel = () => clearTimeout(timer);
-  sendBtn.addEventListener('pointerup', cancel);
-  sendBtn.addEventListener('pointerleave', cancel);
+  sendBtn.addEventListener('pointermove', (e) => {
+    if (!holding || holding.locked || startY - e.clientY < 70) return;
+    holding.locked = true;
+    navigator.vibrate?.(10);
+    holding.ctl?.lock();
+    toast(holding.kind === 'round' ? 'Recording locked' : 'Recording locked — tap send when done');
+  });
+  const release = (ok) => {
+    clearTimeout(timer);
+    if (!holding) return;
+    const h = holding;
+    holding = null;
+    h.released = true;
+    if (h.locked) return;
+    if (h.kind === 'voice') stopRecording(ok);
+    else if (ok) h.ctl?.send(); else h.ctl?.cancel();
+  };
+  sendBtn.addEventListener('pointerup', () => release(true));
+  sendBtn.addEventListener('pointercancel', () => release(false));
   sendBtn.addEventListener('contextmenu', (e) => {
     e.preventDefault();
     if (sendBtn.dataset.mode === 'send' && !recorder) { fired = true; openSendMenu(); }
   });
-  // клик после долгого нажатия не отправляет
-  sendBtn.addEventListener('click', (e) => { if (fired) { e.preventDefault(); e.stopImmediatePropagation(); fired = false; } }, true);
+  sendBtn.addEventListener('click', (e) => {
+    // клик после долгого нажатия не отправляет
+    if (fired) { e.preventDefault(); e.stopImmediatePropagation(); fired = false; return; }
+    const mode = sendBtn.dataset.mode;
+    if (!recorder && (mode === 'voice' || mode === 'round')) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      recordKind = recordKind === 'voice' ? 'round' : 'voice';
+      setMode('voice');
+      toast(recordKind === 'round' ? 'Hold to record a video message' : 'Hold to record a voice message');
+    }
+  }, true);
 })();
 
 document.addEventListener('click', (e) => {
@@ -2360,3 +2419,154 @@ async function openViewOnce(msgId) {
     updateMsg(chatId, msgId, (x) => { x.viewedBy = [...new Set([...(x.viewedBy ?? []), state.acc.user.id])]; });
   });
 }
+
+/* ---------------------------------------------------------------------------
+   Загрузка файлов: сообщение сразу в чате, круг прогресса, отмена и повтор
+   --------------------------------------------------------------------------- */
+const uploads = new Map();   // id → { ctx, parts, build, thumb, p, status, xhrs }
+
+// Куда и как отправить, когда файл загрузится (ответ, тема, чат) — фиксируем сразу
+function sendContext() {
+  const me = state.acc.user.id;
+  const c = curChat();
+  const extra = compose?.mode === 'reply' ? { replyTo: compose.id, ...(compose.quote ? { quote: compose.quote } : {}) } : {};
+  if (hasTopics(c) && topic !== GENERAL) extra.topic = topic;
+  return { chatId: open.id, members: c?.members ?? (isSavedOpen() ? [me] : [me, open.otherId]), saved: isSavedOpen(), extra };
+}
+
+function deliver(ctx, msg, opts = {}) {
+  const me = state.acc.user.id;
+  const full = { ...ctx.extra, ...msg, ...(opts.silent ? { silent: true } : {}) };
+  if (opts.at) { schedule(ctx.chatId, ctx.members, full, opts.at); return; }
+  if (ctx.saved && !chats.get(ctx.chatId)) chats.save({ id: ctx.chatId, saved: true, members: [me], messages: [], read: {}, createdAt: Date.now() });
+  const m = chats.send(ctx.chatId, ctx.members, { from: me, kind: 'text', ...full });
+  const c = chats.get(ctx.chatId);
+  if (c?.ttl) chats.update(ctx.chatId, (x) => { const y = x.messages.find((z) => z.id === m.id); if (y) y.expiresAt = y.at + x.ttl * 1000; });
+  state.reload();
+  if (open.id === ctx.chatId) renderMessages({ scroll: true });
+  renderChatList();
+}
+
+export function startUpload(parts, build, thumb = {}, opts = {}) {
+  const u = { id: uid(), ctx: sendContext(), parts, build, thumb, opts, p: 0, status: 'up', xhrs: [] };
+  setCompose(null);
+  uploads.set(u.id, u);
+  renderMessages({ scroll: true });
+  runUpload(u);
+}
+
+async function runUpload(u) {
+  u.status = 'up';
+  u.p = 0;
+  u.xhrs = [];
+  const total = u.parts.reduce((t, x) => t + (x.blob.size || 1), 0);
+  const done = u.parts.map(() => 0);
+  try {
+    const ids = await Promise.all(u.parts.map((part, i) => putBlob(part.blob, {
+      type: part.type,
+      onXhr: (x) => u.xhrs.push(x),
+      onProgress: (f) => { done[i] = f * (part.blob.size || 1); u.p = done.reduce((a, b) => a + b, 0) / total; paintUpload(u); },
+    })));
+    uploads.delete(u.id);
+    (u.thumb.revoke ?? []).forEach((url) => url && URL.revokeObjectURL(url));
+    deliver(u.ctx, u.build(ids), u.opts);
+  } catch (e) {
+    if (e.aborted) uploads.delete(u.id);
+    else { u.status = 'fail'; toast(e.message || 'Could not send this file'); }
+    if (open.id === u.ctx.chatId) renderMessages();
+  }
+}
+
+function paintUpload(u) {
+  const el = messagesBox.querySelector(`[data-upload="${u.id}"]`);
+  if (!el) return;
+  el.style.setProperty('--p', u.p.toFixed(3));
+  const pct = el.querySelector('.up-pct');
+  if (pct) pct.textContent = `${Math.round(u.p * 100)}%`;
+}
+
+function uploadRow(u) {
+  const t = u.thumb;
+  const label = { voice: 'Voice message', round: 'Video message', audio: t.name ?? 'Music', photo: t.count > 1 ? `${t.count} files` : 'Photo', video: 'Video' }[t.kind] ?? 'File';
+  const media = t.url && (t.kind === 'photo' || t.kind === 'video')
+    ? (t.kind === 'video' ? `<video src="${t.url}" muted playsinline preload="metadata"></video>` : `<img src="${t.url}" alt="">`)
+    : `<span class="up-ic">${t.kind === 'voice' ? ICON.mic ?? ICON.play : ICON.play}</span>`;
+  return `
+    <div class="bubble-row mine upload-row${u.status === 'fail' ? ' is-failed' : ''}" data-upload="${u.id}" style="--p:${u.p.toFixed(3)}">
+      <div class="bubble kind-upload${t.url ? ' has-thumb' : ''}${t.once ? ' is-once' : ''}">
+        <div class="up-media">${media}
+          <span class="up-ring">
+            <svg viewBox="0 0 44 44" aria-hidden="true"><circle class="up-track" cx="22" cy="22" r="18"/><circle class="up-bar" cx="22" cy="22" r="18" pathLength="1"/></svg>
+            ${u.status === 'fail'
+              ? `<button class="up-btn" type="button" data-upload-retry="${u.id}" aria-label="Retry">${svg('<path d="M4 12a8 8 0 1 0 2.4-5.7M4 4.5v4h4"/>')}</button>`
+              : `<button class="up-btn" type="button" data-upload-cancel="${u.id}" aria-label="Cancel">${svg('<path d="M7 7l10 10M17 7L7 17"/>')}</button>`}
+          </span>
+        </div>
+        <span class="up-text"><b>${escapeHtml(label)}</b><span>${u.status === 'fail' ? 'Not sent · tap to retry' : '<span class="up-pct">0%</span> · uploading'}</span></span>
+      </div>
+    </div>`;
+}
+
+document.addEventListener('click', (e) => {
+  const cancel = e.target.closest('[data-upload-cancel]');
+  if (cancel) {
+    const u = uploads.get(cancel.dataset.uploadCancel);
+    if (!u) return;
+    u.xhrs.forEach((x) => x.abort());
+    uploads.delete(u.id);
+    renderMessages();
+    return;
+  }
+  const retry = e.target.closest('[data-upload-retry]');
+  if (retry) {
+    const u = uploads.get(retry.dataset.uploadRetry);
+    if (!u) return;
+    renderMessages();
+    runUpload(u);
+  }
+});
+
+// подтверждение от сервера пришло — часики сменяются галочкой
+document.addEventListener('kosmo:pending', () => { if (openChatId()) renderMessages(); renderChatList(); });
+
+/* ---------------------------------------------------------------------------
+   «Печатает…»: собеседник набирает текст или записывает голосовое/кружок
+   --------------------------------------------------------------------------- */
+const typing = new Map();   // chatId → Map(from → { kind, until })
+function typingIn(chatId) {
+  const now = Date.now();
+  const list = [...(typing.get(chatId)?.entries() ?? [])].filter(([, t]) => t.until > now);
+  if (!list.length) return '';
+  const [from, t] = list[0];
+  const verb = t.kind === 'voice' ? 'recording voice…' : t.kind === 'round' ? 'recording video…' : 'typing…';
+  const c = chats.get(chatId);
+  if (isRoom(c)) {
+    const name = db.get(from)?.name.split(/\s+/)[0] ?? 'Someone';
+    return list.length > 1 ? `${list.length} people are typing…` : `${name} is ${verb}`;
+  }
+  return verb;
+}
+let typingTimer = null;
+onServerMessage((msg) => {
+  if (msg.t !== 'typing') return;
+  if (!typing.has(msg.chat)) typing.set(msg.chat, new Map());
+  typing.get(msg.chat).set(msg.from, { kind: msg.kind, until: Date.now() + 5000 });
+  if (open.id === msg.chat && openChatId()) paintHeader();
+  renderChatList();
+  clearTimeout(typingTimer);
+  typingTimer = setTimeout(() => { if (openChatId()) paintHeader(); renderChatList(); }, 5100);
+});
+// новое сообщение от человека — значит, он уже не печатает
+document.addEventListener('kosmo:remote', () => {
+  for (const [chatId, m] of typing) {
+    const c = chats.get(chatId);
+    const last = c?.messages.at(-1);
+    if (last && m.has(last.from) && Date.now() - last.at < 4000) m.delete(last.from);
+  }
+});
+// пока идёт запись — «записывает голосовое…»
+setInterval(() => {
+  if (!open.id || open.id === KOSMO || isSavedOpen()) return;
+  if (recorder) sendTyping(open.id, 'voice');
+  else if (document.querySelector('.round-rec')) sendTyping(open.id, 'round');
+}, 2500);

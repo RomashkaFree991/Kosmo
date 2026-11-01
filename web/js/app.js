@@ -1,7 +1,7 @@
 // Kosmo: точка входа. Если эта вкладка уже вошла — сразу приложение,
 // иначе заставка и вход/регистрация.
 
-import { $, initTheme, initPress, initGuards, tab, toast } from './core.js';
+import { $, initTheme, initPress, initGuards, initKeyboard, tab, toast } from './core.js';
 import { boot } from './api.js';
 import { initColor } from './color.js';
 import { initDesign } from './design.js';
@@ -16,6 +16,7 @@ initDesign();
 initTheme();
 initPress();
 initGuards();
+initKeyboard();
 initColor();
 
 initHome({ logout: showAuth });
