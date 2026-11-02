@@ -169,7 +169,8 @@ html[data-theme="material"] .pass-cell:nth-child(3).is-filled { clip-path: url(#
 html[data-theme="material"] .pass-cell:nth-child(4).is-filled { clip-path: url(#shape-cookie7); }
 html[data-theme="material"] .pass-cell::after { background: var(--md-sys-color-on-primary); }
 html[data-theme="material"] .pass-cells.is-error .pass-cell { background: var(--md-sys-color-error-container, #8c1d18); }
-html[data-theme="material"] .pass-cells.is-done .pass-cell { clip-path: url(#shape-circle); background: var(--md-sys-color-primary); }
+html[data-theme="material"] .pass-cells.is-done .pass-cell { background: #6dd58c; }
+html[data-theme="material"] .pass-cells.is-done .pass-cell::after { background: #00391a; }
 @keyframes m3-pop { 0% { scale: 0.7; rotate: -25deg; } 100% { scale: 1; rotate: 0deg; } }
 html[data-theme="material"] .key {
   border-radius: 50%;

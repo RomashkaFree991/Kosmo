@@ -1037,3 +1037,14 @@ html[data-theme="material"] :is(.pick-rows, .pick-list) > :only-child { border-r
 html[data-theme="material"] .pick-ic { border-radius: 50%; background: var(--md-sys-color-primary-container); color: var(--md-sys-color-on-primary-container); }
 html[data-theme="material"] .pick-opt.is-on .pick-check { background: var(--md-sys-color-primary); box-shadow: inset 0 0 0 6px var(--md-sys-color-primary), inset 0 0 0 9px var(--md-sys-color-on-primary); }
 @media (prefers-reduced-motion: reduce) { .music-disc.is-on { animation: none; } }
+
+/* ---------- Восстановление код-пароля — как экраны входа ---------- */
+.lock.is-recover::before { display: none; }
+.lock.is-recover .lock-inner { width: 100%; max-width: 440px; justify-content: center; }
+.lock.is-recover .screen-title { margin: 0 0 10px; }
+.lock.is-recover .lock-hint { margin: 0 0 26px; display: flex; flex-direction: column; gap: 4px; align-items: center; }
+.lock.is-recover .lock-otp { width: 100%; margin-top: 0; }
+.lock .lock-backbtn { position: absolute; z-index: 3; top: calc(max(16px, env(safe-area-inset-top)) + 4px); left: 16px; }
+.lock .lock-links { margin-top: 26px; }
+.lock.is-recover #lock-resend { color: var(--c-accent); }
+.lock.is-recover #lock-resend:disabled { opacity: 0.85; }

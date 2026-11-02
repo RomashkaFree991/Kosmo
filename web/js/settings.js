@@ -367,6 +367,9 @@ export function lockAfterSwitch() {
   maybeLock();
 }
 
+// Только что вошли с код-паролем на экране входа — второй раз не спрашиваем
+export function markUnlocked() { unlocked = true; lastActivity = Date.now(); }
+
 // Вызывается при показе приложения: нужна ли блокировка
 export function maybeLock() {
   const s = me().security ?? {};
@@ -419,27 +422,45 @@ const newPad = createPad($('#lock-newpad'), {
     } catch (err) { toast(err.message); await padApi.error(); if (err.code === 'bad_ticket') lockStep('pass'); }
   },
 });
+// Шаги восстановления выглядят как экраны входа: стрелка «назад», «Введите код»,
+// подсказка про «Спам», обратный отсчёт до повторной отправки
+let resendTick = 0;
+function resendTimer() {
+  clearInterval(resendTick);
+  const btn = $('#lock-resend');
+  let left = 60;
+  btn.disabled = true;
+  const paint = () => { btn.textContent = left > 0 ? `Send again in ${left} s` : 'Send again'; };
+  paint();
+  resendTick = setInterval(() => { left -= 1; paint(); if (left <= 0) { clearInterval(resendTick); btn.disabled = false; } }, 1000);
+}
 function lockStep(step) {
   fp.step = step;
   const pass = step === 'pass';
+  lockEl.classList.toggle('is-recover', !pass);
   $('#lock-pad').hidden = !pass;
   $('#lock-otp').hidden = step !== 'code';
   $('#lock-newpad').hidden = !['new', 'repeat'].includes(step);
   $('#lock-avatar').hidden = !pass;
   $('#lock-sub').hidden = pass;
   $('#lock-forgot').hidden = !pass;
+  $('#lock-logout').hidden = !pass;
   $('#lock-resend').hidden = step !== 'code';
-  $('#lock-back').hidden = pass;
-  if (pass) $('#lock-title').textContent = `Hi, ${(me()?.name ?? '').split(/\s+/)[0]}`;
-  if (step === 'code') { $('#lock-title').textContent = 'Check your email'; lockOtp.reset(); setTimeout(() => lockOtp.focus(), 200); }
+  $('#lock-backbtn').hidden = pass;
+  if (pass) { clearInterval(resendTick); $('#lock-title').textContent = `Hi, ${(me()?.name ?? '').split(/\s+/)[0]}`; }
+  if (step === 'code') { $('#lock-title').textContent = 'Enter code'; lockOtp.reset(); setTimeout(() => lockOtp.focus(), 200); }
   if (step === 'new') { $('#lock-title').textContent = 'New passcode'; $('#lock-sub').textContent = 'Choose a new 4-digit passcode'; newPad.reset(); }
   if (step === 'repeat') { $('#lock-title').textContent = 'Repeat passcode'; $('#lock-sub').textContent = 'Enter the new passcode again'; newPad.reset(); }
 }
 async function sendForgotCode() {
   try {
     const { email } = await serverApi('POST', '/api/passcode/forgot/code', {});
-    $('#lock-sub').textContent = `We sent a code to ${email}`;
+    $('#lock-sub').replaceChildren(
+      document.createTextNode(`We sent a code to ${email}`),
+      Object.assign(document.createElement('span'), { className: 'code-spam', textContent: 'No email? Check the Spam folder' }),
+    );
     lockStep('code');
+    resendTimer();
   } catch (err) { toast(err.message); }
 }
 // Из настроек: тот же экран поверх приложения
@@ -450,7 +471,7 @@ export function openForgotPasscode(onDone) {
 }
 $('#lock-forgot').addEventListener('click', () => { fp.onDone = null; sendForgotCode(); });
 $('#lock-resend').addEventListener('click', sendForgotCode);
-$('#lock-back').addEventListener('click', () => lockStep('pass'));
+$('#lock-backbtn').addEventListener('click', () => (fp.step === 'repeat' ? lockStep('new') : lockStep('pass')));
 
 $('#lock-logout').addEventListener('click', () => {
   lockEl.hidden = true;

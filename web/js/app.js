@@ -11,6 +11,7 @@ import { initEmoji } from './emoji.js';
 import { applyLang } from './i18n.js';
 import { initAuth, showAuth } from './auth.js';
 import { initHome, showApp } from './home.js';
+import { markUnlocked } from './settings.js';
 
 initEmoji();
 applyLang();
@@ -47,7 +48,7 @@ function showSplash() {
     setTimeout(() => el.remove(), 800);
   }, 1500);
 }
-initAuth({ signedIn: () => showApp() });
+initAuth({ signedIn: () => { markUnlocked(); showApp(); } });
 
 // Уже входили в этом браузере: сразу показываем кеш, затем свежие данные с сервера
 const saved = tab.get();
