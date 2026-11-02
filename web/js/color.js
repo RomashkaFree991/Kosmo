@@ -4,14 +4,33 @@
 import { $$, root, store, toast, withTransition } from './core.js';
 
 const MCU_URL = 'https://cdn.jsdelivr.net/npm/@material/material-color-utilities@0.3.0/+esm';
-const SEEDS = ['#6750A4', '#1A73E8', '#00897B', '#2E7D32', '#E8710A', '#D93F87', '#B3261E'];
+// исходные цвета: базовый M3 (#6750A4) и тона из гайдов Material
+const SEEDS = ['#6750A4', '#1A73E8', '#006A6A', '#00897B', '#2E7D32', '#7C5800', '#E8710A', '#B3261E', '#D93F87', '#8E24AA', '#546E7A'];
 const ROLES = [
   'primary', 'onPrimary', 'primaryContainer', 'onPrimaryContainer',
-  'secondaryContainer', 'onSecondaryContainer', 'tertiary',
-  'onSurface', 'onSurfaceVariant',
-  'surfaceContainerLow', 'surfaceContainer', 'surfaceContainerHigh', 'surfaceContainerHighest',
-  'outline', 'outlineVariant', 'error', 'inverseSurface', 'inverseOnSurface',
+  'secondary', 'onSecondary', 'secondaryContainer', 'onSecondaryContainer',
+  'tertiary', 'onTertiary', 'tertiaryContainer', 'onTertiaryContainer',
+  'surface', 'surfaceDim', 'surfaceBright', 'onSurface', 'onSurfaceVariant',
+  'surfaceContainerLowest', 'surfaceContainerLow', 'surfaceContainer', 'surfaceContainerHigh', 'surfaceContainerHighest',
+  'outline', 'outlineVariant', 'error', 'onError', 'errorContainer', 'onErrorContainer',
+  'inverseSurface', 'inverseOnSurface', 'inversePrimary',
 ];
+// Стили схем из material-color-utilities (как «Стиль обоев» в Android)
+export const SCHEME_STYLES = {
+  tonal: ['SchemeTonalSpot', 'Tonal spot'],
+  vibrant: ['SchemeVibrant', 'Vibrant'],
+  expressive: ['SchemeExpressive', 'Expressive'],
+  content: ['SchemeContent', 'Content'],
+  fruit: ['SchemeFruitSalad', 'Fruit salad'],
+  rainbow: ['SchemeRainbow', 'Rainbow'],
+  neutral: ['SchemeNeutral', 'Neutral'],
+  mono: ['SchemeMonochrome', 'Monochrome'],
+};
+export const schemeStyle = () => (SCHEME_STYLES[store.get('scheme-style')] ? store.get('scheme-style') : 'tonal');
+export function setSchemeStyle(id) {
+  store.set('scheme-style', id);
+  withTransition(() => applySeed(store.get('seed') ?? SEEDS[0]));
+}
 const kebab = (s) => s.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`);
 
 let mcu = null;
@@ -20,13 +39,21 @@ const mcuReady = import(MCU_URL).then((m) => { mcu = m; }).catch(() => { mcu = n
 let applied = [];
 const isDark = () => root.dataset.scheme !== 'light';
 
+// Тема Хэллоуин: свой исходный цвет (тыквенный) и яркая схема
+const HALLOWEEN = '#E8590C';
+const halloweenOn = () => store.get('holiday') === 'halloween';
+export function reapplyColor() { withTransition(() => applySeed(store.get('seed') ?? SEEDS[0])); }
+
 function applySeed(hex) {
   const vars = {};
+  const userSeed = hex;
+  if (halloweenOn()) hex = HALLOWEEN;
   const dark = isDark();
   if (mcu) {
-    const { Hct, SchemeTonalSpot, MaterialDynamicColors, argbFromHex, hexFromArgb } = mcu;
-    const scheme = new SchemeTonalSpot(Hct.fromInt(argbFromHex(hex)), dark, 0);
-    for (const role of ROLES) vars[`--md-sys-color-${kebab(role)}`] = hexFromArgb(MaterialDynamicColors[role].getArgb(scheme));
+    const { Hct, MaterialDynamicColors, argbFromHex, hexFromArgb } = mcu;
+    const Scheme = mcu[SCHEME_STYLES[halloweenOn() ? 'vibrant' : schemeStyle()][0]] ?? mcu.SchemeTonalSpot;
+    const scheme = new Scheme(Hct.fromInt(argbFromHex(hex)), dark, 0);
+    for (const role of ROLES) if (MaterialDynamicColors[role]) vars[`--md-sys-color-${kebab(role)}`] = hexFromArgb(MaterialDynamicColors[role].getArgb(scheme));
     // Кнопка остаётся белой, лишь с лёгким оттенком исходного цвета (тон 98)
     // в светлой схеме — наоборот: тёмная кнопка
     vars['--md-btn-bg'] = hexFromArgb(scheme.primaryPalette.tone(dark ? 98 : 20));
@@ -96,8 +123,8 @@ function applySeed(hex) {
   for (const k of applied) if (!(k in vars)) root.style.removeProperty(k);
   applied = Object.keys(vars);
   for (const [k, v] of Object.entries(vars)) root.style.setProperty(k, v);
-  store.set('seed', hex);
-  $$('.swatch').forEach((s) => s.setAttribute('aria-checked', String(s.dataset.seed === hex)));
+  store.set('seed', userSeed);
+  $$('.swatch').forEach((s) => s.setAttribute('aria-checked', String(s.dataset.seed === userSeed)));
 }
 
 function hueOf(hex) {

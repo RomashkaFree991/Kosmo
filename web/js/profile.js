@@ -7,8 +7,8 @@ import {
 } from './core.js';
 import { createOtp } from './otp.js';
 import { state, openPanel, overlayOpen, closeOverlay } from './panels.js';
-import { putBlob, hydrateMedia, squareAvatar } from './media.js';
-import { profileChannelRow } from './info.js';
+import { putBlob, hydrateMedia, squareAvatar, mediaDuration } from './media.js';
+import { profileExtras } from './info.js';
 import { ICON as CHAT_ICON, deviceIcon, openSaved, openChatAt, chatTitle, chats, chatAvatar, openChat, isRoom } from './chats.js';
 import {
   PI, openBookmarks, openDnd, dndUntil, openBackup, openBots, bookmarks, openStats,
@@ -68,7 +68,7 @@ const MAIL_ICON = '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x
 let sig = '';
 export function renderProfile(force = false) {
   const u = state.acc.user;
-  const next = JSON.stringify([u.profileChannel, u.profileChannel && chats.get(u.profileChannel)?.members?.length, u.premium, u.settings?.dnd, (u.bookmarks ?? []).length, u.name, u.username, u.email, u.bio, u.role, u.avatar, u.publicId, u.sessions.length, u.privacy, u.security?.lock, linkedAccounts().map((a) => a.uid)]);
+  const next = JSON.stringify([u.music, u.profileChannel, u.profileChannel && chats.get(u.profileChannel)?.members?.length, u.premium, u.settings?.dnd, (u.bookmarks ?? []).length, u.name, u.username, u.email, u.bio, u.role, u.avatar, u.publicId, u.sessions.length, u.privacy, u.security?.lock, linkedAccounts().map((a) => a.uid)]);
   if (next === sig && !force) return;
   sig = next;
   $('#profile').innerHTML = `
@@ -83,7 +83,7 @@ export function renderProfile(force = false) {
       <button class="pill-btn" type="button" data-open-edit>${ICON.edit}Edit profile</button>
     </section>
 
-    ${profileChannelRow(u)}
+    ${profileExtras(u)}
     <section class="tiles" aria-label="Account">
       ${u.username ? tile(ICON.at, 'Username', `@${escapeHtml(u.username)}`, 'data-copy="username" aria-label="Copy username"') : tile(ICON.at, 'Username', '<span class="tile-muted">Not set</span>', 'data-open-edit aria-label="Set username"')}
       ${tile(ICON.hash, 'ID', escapeHtml(u.publicId), 'data-copy="id" aria-label="Copy ID"')}
@@ -207,6 +207,8 @@ function openEdit() {
   $('#avatar-text').value = draft.avatar.text ?? '';
   editCounter.textContent = 70 - editBio.value.length;
   const mine = Object.values(chats.all()).filter((c) => isRoom(c) && c.username && c.owner === u.id);
+  draft.music = u.music ?? null;
+  paintMusicEdit();
   $('#edit-channel').innerHTML = `<option value="">None</option>${mine.map((c) => `<option value="${c.id}"${u.profileChannel === c.id ? ' selected' : ''}>${escapeHtml(chatTitle(c))} (@${escapeHtml(c.username)})</option>`).join('')}`;
   $('#avatar-colors').innerHTML = `
     <button class="color-chip color-auto" type="button" role="radio" data-color="null" aria-label="Automatic color">Auto</button>
@@ -277,6 +279,7 @@ $('#edit-form').addEventListener('submit', async (e) => {
     u.bio = editBio.value.trim();
     u.avatar = draft.avatar;
     u.profileChannel = $('#edit-channel').value || null;
+    u.music = draft.music ?? null;
   });
   state.reload();
   renderProfile(true);
@@ -455,4 +458,31 @@ document.addEventListener('click', (e) => {
   if (!b) return;
   if (overlayOpen()) closeOverlay();
   openChat(b.dataset.openProfileChannel);
+});
+
+/* ---------- Музыка в профиле: выбрать аудиофайл ---------- */
+function paintMusicEdit() {
+  const m = draft?.music;
+  $('#music-edit').innerHTML = m
+    ? `<div class="music-chip"><span class="ms">music_note</span><span class="mc-text"><b>${escapeHtml(m.title)}</b><small>${escapeHtml(m.artist || '')}</small></span><button class="chip-btn" type="button" data-music-pick>Change</button><button class="chip-btn" type="button" data-music-clear>Remove</button></div>`
+    : '<button class="btn btn-secondary glass" type="button" data-music-pick>🎵 Add a track</button>';
+}
+$('#music-edit').addEventListener('click', (e) => {
+  if (e.target.closest('[data-music-pick]')) $('#music-input').click();
+  if (e.target.closest('[data-music-clear]')) { draft.music = null; paintMusicEdit(); }
+});
+$('#music-input').addEventListener('change', async (e) => {
+  const file = e.target.files?.[0];
+  e.target.value = '';
+  if (!file) return;
+  if (file.size > 15 * 1024 * 1024) { toast('The track is too large (max 15 MB)'); return; }
+  const name = file.name.replace(/\.[a-z0-9]+$/i, '');
+  const [artist, title] = name.includes(' - ') ? name.split(' - ', 2) : ['', name];
+  $('#music-edit').innerHTML = '<p class="field-hint">Uploading…</p>';
+  try {
+    const dur = await mediaDuration(file).catch(() => 0);
+    const media = await putBlob(file, { type: file.type || 'audio/mpeg' });
+    draft.music = { media, title: title.trim().slice(0, 80), artist: artist.trim().slice(0, 60), dur: Math.round(dur || 0) };
+  } catch (err) { toast(err.message || 'Upload failed'); }
+  paintMusicEdit();
 });

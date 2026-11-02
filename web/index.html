@@ -23,6 +23,8 @@
   <link rel="stylesheet" href="css/more.css">
   <link rel="stylesheet" href="css/light.css">
   <link rel="stylesheet" href="css/glisse.css">
+  <link rel="stylesheet" href="css/m3.css">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&icon_names=bar_chart,bookmark,call,call_end,chat,check,close,cloud_download,database,delete_forever,delete_sweep,devices,do_not_disturb_on,dynamic_feed,edit,info,lock,lock_reset,logout,mail,music_note,notifications,palette,password,pause,person_add,play_arrow,search,shield,smart_toy,star&display=block">
   <!-- До первого кадра: тема, вошла ли эта вкладка, нужна ли заставка -->
   <script src="js/boot-theme.js"></script>
   <script src="js/vendor/refraction.js" defer></script>
@@ -460,6 +462,9 @@
             <select id="edit-channel" aria-label="Channel or group in profile"></select>
           </div>
           <p class="field-hint">Only your public channels and groups (with a @username).</p>
+          <span class="group-label">Music in profile</span>
+          <div class="music-edit" id="music-edit"></div>
+          <input type="file" id="music-input" accept="audio/*" hidden>
           <button class="btn btn-primary" type="submit">Save</button>
         </form>
       </div>
@@ -646,16 +651,16 @@
     <nav class="tabbar glass" id="tabbar" data-refract="0.8" aria-label="Main">
       <span class="tab-thumb" aria-hidden="true"></span>
       <button class="tab is-active" type="button" data-tab="chats" aria-current="page">
-        <span class="tab-icon"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11.5a7.5 7 0 0 1-10.9 6.2L4 19l1.4-4A7 7 0 0 1 4.5 11.5 7.5 7 0 0 1 20 11.5z"/></svg></span>
+        <span class="tab-icon"><span class="ms" aria-hidden="true">chat</span><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11.5a7.5 7 0 0 1-10.9 6.2L4 19l1.4-4A7 7 0 0 1 4.5 11.5 7.5 7 0 0 1 20 11.5z"/></svg></span>
         <span class="tab-label">Chats</span>
         <span class="tab-badge" id="chats-badge" hidden></span>
       </button>
       <button class="tab" type="button" data-tab="feed">
-        <span class="tab-icon"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="4"/><path d="M8 9h8M8 12.5h8M8 16h5"/></svg></span>
+        <span class="tab-icon"><span class="ms" aria-hidden="true">dynamic_feed</span><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="4"/><path d="M8 9h8M8 12.5h8M8 16h5"/></svg></span>
         <span class="tab-label">Feed</span>
       </button>
       <button class="tab" type="button" data-tab="search">
-        <span class="tab-icon"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="M15.5 15.5L20 20"/></svg></span>
+        <span class="tab-icon"><span class="ms" aria-hidden="true">search</span><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="M15.5 15.5L20 20"/></svg></span>
         <span class="tab-label">Search</span>
       </button>
       <button class="tab" type="button" data-tab="profile">

@@ -11,6 +11,8 @@ const I = {
   send: svg('<path d="M12 19V5M5.5 11.5L12 5l6.5 6.5"/>'),
   flip: svg('<path d="M4 9a8 8 0 0 1 14-3l2 2M20 15a8 8 0 0 1-14 3l-2-2M20 4v4h-4M4 20v-4h4"/>'),
   torch: svg('<path d="M8 3h8l-1.5 5h-5zM9.5 8h5v4.5L13 21h-2l-1.5-8.5z"/><path d="M12 12v2"/>'),
+  pause: svg('<rect x="7" y="5.5" width="3.4" height="13" rx="1.2" fill="currentColor" stroke="none"/><rect x="13.6" y="5.5" width="3.4" height="13" rx="1.2" fill="currentColor" stroke="none"/>'),
+  play: svg('<path d="M8 5.8v12.4a1 1 0 0 0 1.5.86l10-6.2a1 1 0 0 0 0-1.72l-10-6.2A1 1 0 0 0 8 5.8z" fill="currentColor" stroke="none"/>'),
 };
 // Фильтры кружка: CSS-фильтр canvas; «Портрет» — размытый фон
 const FILTERS = [
@@ -108,11 +110,14 @@ export async function openRoundRecorder(onSend, { hold = false } = {}) {
     <div class="round-rec-time"><span class="rec-dot"></span><span id="round-time">0:00</span></div>
     ${hold ? '<p class="round-hint">Release to send · slide up to lock</p>' : ''}
     <div class="round-filters" role="radiogroup" aria-label="Filter">${FILTERS.map(([id, label], i) => `<button class="rf-chip" type="button" role="radio" data-rf="${id}" aria-checked="${i === 0}">${label}</button>`).join('')}</div>
+    <div class="round-rec-tools">
+      <button class="rr-tool" type="button" data-rr="torch" aria-label="Flashlight" aria-pressed="false">${I.torch}</button>
+      <button class="rr-tool" type="button" data-rr="flip" aria-label="Switch camera">${I.flip}</button>
+    </div>
     <div class="round-rec-actions">
-      <button class="v-btn" type="button" data-rr="cancel" aria-label="Cancel">${I.close}</button>
-      <button class="v-btn" type="button" data-rr="torch" aria-label="Flashlight" aria-pressed="false">${I.torch}</button>
+      <button class="rr-btn rr-cancel" type="button" data-rr="cancel" aria-label="Cancel">${I.close}</button>
+      <button class="rr-btn rr-pause" type="button" data-rr="pause" aria-label="Pause" aria-pressed="false">${I.pause}</button>
       <button class="round-rec-send" type="button" data-rr="send" aria-label="Send">${I.send}</button>
-      <button class="v-btn" type="button" data-rr="flip" aria-label="Switch camera">${I.flip}</button>
     </div>`;
   document.body.append(el);
   const video = el.querySelector('video');
@@ -169,8 +174,11 @@ export async function openRoundRecorder(onSend, { hold = false } = {}) {
   let send = false;
   let finished = false;
   const started = Date.now();
+  let pausedTotal = 0;
+  let pausedAt = 0;
+  const activeTime = () => (Date.now() - started - pausedTotal - (pausedAt ? Date.now() - pausedAt : 0)) / 1000;
   rec.onstop = () => {
-    const elapsed = (Date.now() - started) / 1000;
+    const elapsed = activeTime();
     cam.getTracks().forEach((t) => t.stop());
     mic.getTracks().forEach((t) => t.stop());
     out.getTracks().forEach((t) => t.stop());
@@ -184,7 +192,8 @@ export async function openRoundRecorder(onSend, { hold = false } = {}) {
   };
   rec.start(1000);
   const timer = setInterval(() => {
-    const t = (Date.now() - started) / 1000;
+    if (pausedAt) return;
+    const t = activeTime();
     el.querySelector('#round-time').textContent = fmt(t);
     ring.style.strokeDashoffset = String(C * (1 - Math.min(1, t / MAX)));
     if (t >= MAX) finish(true);
@@ -194,6 +203,7 @@ export async function openRoundRecorder(onSend, { hold = false } = {}) {
     if (finished) return;
     finished = true;
     send = ok;
+    if (pausedAt) { pausedTotal += Date.now() - pausedAt; pausedAt = 0; }
     if (rec.state !== 'inactive') rec.stop();
   }
 
@@ -219,6 +229,25 @@ export async function openRoundRecorder(onSend, { hold = false } = {}) {
     if (!b) return;
     if (b.dataset.rr === 'cancel') finish(false);
     if (b.dataset.rr === 'send') finish(true);
+    if (b.dataset.rr === 'pause') {
+      // пауза: запись стоит, время не идёт; продолжить — тем же кружком
+      if (rec.state === 'recording') {
+        rec.pause();
+        pausedAt = Date.now();
+        el.classList.add('is-paused');
+        b.innerHTML = I.play;
+        b.setAttribute('aria-label', 'Resume');
+        b.setAttribute('aria-pressed', 'true');
+      } else if (rec.state === 'paused') {
+        pausedTotal += Date.now() - pausedAt;
+        pausedAt = 0;
+        rec.resume();
+        el.classList.remove('is-paused');
+        b.innerHTML = I.pause;
+        b.setAttribute('aria-label', 'Pause');
+        b.setAttribute('aria-pressed', 'false');
+      }
+    }
     if (b.dataset.rr === 'torch') setTorch(!torch);
     if (b.dataset.rr === 'flip') {
       // другая камера: меняется только картинка, запись продолжается

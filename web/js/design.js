@@ -7,7 +7,7 @@ import {
 } from './core.js';
 import { KOSMO_NAME } from './chats.js';
 import { state, openPanel, panelOpen } from './panels.js';
-import { paintSwatches } from './color.js';
+import { paintSwatches, SCHEME_STYLES, schemeStyle, setSchemeStyle, reapplyColor } from './color.js';
 
 /* ---------------------------------------------------------------------------
    Формы Material 3 (cookie, clover, flower…): строим контур по полярной
@@ -56,7 +56,7 @@ function injectShapes() {
 /* ---------------------------------------------------------------------------
    Обои: рисуются переменными --wp-*, которые считает color.js из палитры
    --------------------------------------------------------------------------- */
-export const WALLPAPERS = { black: 'Black', shapes: 'Cosmos', waves: 'Waves', glow: 'Glow' };
+export const WALLPAPERS = { black: 'Black', shapes: 'Cosmos', waves: 'Waves', glow: 'Glow', halloween: 'Halloween' };
 const STAR = 'M0-10C1.4-1.4 1.4-1.4 10 0 1.4 1.4 1.4 1.4 0 10-1.4 1.4-1.4 1.4-10 0-1.4-1.4-1.4-1.4 0-10Z';
 const ORBIT = 'M-40 520C40 380 330 330 430 400';
 
@@ -91,6 +91,27 @@ function wallpaperHtml(kind) {
       + layer('wp-moon', 0, 0, 20, 20)
       + starLayer(196, 132, 11, '--wp-dot2', 0) + starLayer(58, 330, 7, '--wp-dot', 1.2) + starLayer(350, 470, 9, '--wp-dot2', 2.1)
       + starLayer(150, 560, 6, '--wp-dot', 0.6) + starLayer(250, 40, 6, '--wp-dot', 2.8) + starLayer(40, 790, 8, '--wp-dot2', 1.7);
+  } else if (kind === 'halloween') {
+    // Хэллоуин: ночное небо, луна, холмы, тыквы-фонари, паутина; летают летучие мыши
+    const pumpkin = (x, y, r, rot = 0) => `<g transform="translate(${x} ${y}) rotate(${rot})">
+      <path d="M-2 ${-r * 0.95}q4 -${r * 0.35} 10 -${r * 0.4}" stroke="#3f6b2a" stroke-width="${r * 0.14}" fill="none" stroke-linecap="round"/>
+      <ellipse rx="${r * 0.62}" ry="${r * 0.9}" cx="${-r * 0.45}" fill="#e8590c"/><ellipse rx="${r * 0.62}" ry="${r * 0.9}" cx="${r * 0.45}" fill="#e8590c"/>
+      <ellipse rx="${r * 0.6}" ry="${r * 0.95}" fill="#ff7a1a"/>
+      <path d="M${-r * 0.5} ${-r * 0.2}l${r * 0.22} ${-r * 0.28}l${r * 0.22} ${r * 0.28}zM${r * 0.06} ${-r * 0.2}l${r * 0.22} ${-r * 0.28}l${r * 0.22} ${r * 0.28}z" fill="#ffd43b"/>
+      <path d="M${-r * 0.55} ${r * 0.2}q${r * 0.55} ${r * 0.5} ${r * 1.1} 0l${-r * 0.18} ${r * 0.1}l${-r * 0.12} ${-r * 0.1}l${-r * 0.14} ${r * 0.12}l${-r * 0.14} ${-r * 0.12}l${-r * 0.14} ${r * 0.1}z" fill="#ffd43b"/></g>`;
+    const bat = '<svg viewBox="-30 -14 60 28" width="100%" height="100%"><path d="M0 -4c3 0 4 3 4 5c4-6 10-8 16-6c-3 2-4 5-3 8c-4-2-8-1-10 2c-2-2-4-2-7-1c-3-1-5-1-7 1c-2-3-6-4-10-2c1-3 0-6-3-8c6-2 12 0 16 6c0-2 1-5 4-5z" fill="#1b0f24"/></svg>';
+    still = `<defs><linearGradient id="hw-sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1a0b2e"/><stop offset=".6" stop-color="#3b1450"/><stop offset="1" stop-color="#6a1f3a"/></linearGradient>
+      <radialGradient id="hw-moon" cx=".4" cy=".4" r=".7"><stop offset="0" stop-color="#fff6d5"/><stop offset="1" stop-color="#ffd76a"/></radialGradient></defs>
+      <rect width="390" height="844" fill="url(#hw-sky)"/>
+      <circle cx="292" cy="150" r="74" fill="#ffd76a" opacity=".18"/><circle cx="292" cy="150" r="56" fill="url(#hw-moon)"/>
+      <circle cx="272" cy="136" r="9" fill="#e9c35a" opacity=".6"/><circle cx="306" cy="172" r="6" fill="#e9c35a" opacity=".55"/>
+      <g stroke="#cbb6e6" stroke-width="1" fill="none" opacity=".35"><path d="M0 0L120 110M0 0L60 130M0 0L130 50M0 0L10 140"/>
+      <path d="M38 35q12-14 24 -6q-4 14 6 24q-14 4 -18 22q-10-12 -24 -8q4-16 -8 -24q12-2 20-8z"/><path d="M72 64q20-24 40 -10q-6 24 10 40q-24 8 -30 36q-16-20 -40 -14q6-26 -14 -40q20-4 34-12z"/></g>
+      <path d="M0 700C70 660 150 690 220 668S340 640 390 660V844H0Z" fill="#2a0f30"/>
+      <path d="M0 760C90 720 170 760 250 735S350 715 390 728V844H0Z" fill="#160818"/>
+      ${pumpkin(88, 712, 34, -6)}${pumpkin(300, 744, 26, 8)}${pumpkin(190, 790, 20, 0)}`;
+    layers = layer('wp-bat', 40, 260, 54, 26, bat) + layer('wp-bat wp-bat-2', 230, 330, 40, 20, bat) + layer('wp-bat wp-bat-3', 140, 420, 32, 16, bat)
+      + starLayer(60, 90, 5, '--hw-star', 0) + starLayer(170, 60, 4, '--hw-star', 1.1) + starLayer(360, 300, 5, '--hw-star', 2) + starLayer(30, 520, 4, '--hw-star', 0.6);
   } else if (kind === 'waves') {
     still = `${bg}
       <path d="M0 610C70 570 140 640 210 600S330 560 390 590V844H0Z" style="fill:var(--wp-a)"/>
@@ -156,12 +177,16 @@ const theme = () => (root.dataset.theme === 'material' ? 'material' : 'glass');
 
 function save() { store.setJSON('design', settings); }
 
+export const holiday = () => (store.get('holiday') === 'halloween' ? 'halloween' : '');
 export function applyDesign() {
   const s = settings[theme()];
-  root.dataset.wallpaper = s.wallpaper;
+  const hw = holiday();
+  if (hw) root.dataset.holiday = hw; else delete root.dataset.holiday;
+  const wpKind = hw || s.wallpaper;
+  root.dataset.wallpaper = wpKind;
   root.style.setProperty('--shape-chat', `url(#shape-${settings.material.chatShape})`);
   root.style.setProperty('--shape-profile', `url(#shape-${settings.material.profileShape})`);
-  $$('.wallpaper').forEach((el) => renderWallpaper(el, el.dataset.wp ?? s.wallpaper));
+  $$('.wallpaper').forEach((el) => renderWallpaper(el, el.dataset.wp ?? wpKind));
 }
 
 /* ---------------------------------------------------------------------------
@@ -229,6 +254,19 @@ export function renderDesign() {
         </label>
       </div>
     </section>
+    ${theme() === 'material' ? `<section class="group group-pad">
+      <span class="group-label">Color style</span>
+      <div class="segs segs-wrap" role="radiogroup" aria-label="Color style">
+        ${Object.entries(SCHEME_STYLES).map(([id, [, label]]) => `<button type="button" class="seg-btn" role="radio" data-scheme-style="${id}" aria-checked="${schemeStyle() === id}">${label}</button>`).join('')}
+      </div>
+    </section>` : ''}
+    <section class="group group-pad">
+      <span class="group-label">Holiday theme</span>
+      <div class="segs" role="radiogroup" aria-label="Holiday theme">
+        <button type="button" class="seg-btn" role="radio" data-holiday-pick="" aria-checked="${!holiday()}">Off</button>
+        <button type="button" class="seg-btn" role="radio" data-holiday-pick="halloween" aria-checked="${holiday() === 'halloween'}">🎃 Halloween</button>
+      </div>
+    </section>
     <section class="group group-pad">
       <span class="group-label">Background</span>
       <div class="wp-options" role="radiogroup" aria-label="Background">
@@ -260,6 +298,18 @@ document.addEventListener('click', (e) => {
   if (sp && sp.dataset.schemePick !== schemeMode()) {
     const r = sp.getBoundingClientRect();
     setScheme(sp.dataset.schemePick, r.left + r.width / 2, r.top + r.height / 2);
+  }
+  const st = e.target.closest('[data-scheme-style]');
+  if (st) {
+    $$('[data-scheme-style]').forEach((b) => b.setAttribute('aria-checked', String(b === st)));
+    setSchemeStyle(st.dataset.schemeStyle);
+  }
+  const hp = e.target.closest('[data-holiday-pick]');
+  if (hp) {
+    store.set('holiday', hp.dataset.holidayPick);
+    $$('[data-holiday-pick]').forEach((b) => b.setAttribute('aria-checked', String(b === hp)));
+    reapplyColor();
+    applyDesign();
   }
   const wp = e.target.closest('[data-wallpaper]');
   if (wp) {

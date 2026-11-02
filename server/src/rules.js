@@ -45,7 +45,7 @@ const strip = (m) => {
 /* ---------------------------------------------------------------------------
    Пользователь (только свой документ)
    --------------------------------------------------------------------------- */
-const SELF_FIELDS = ['name', 'username', 'bio', 'avatar', 'privacy', 'chatPrefs', 'settings', 'security', 'reminders', 'messages', 'bookmarks', 'status', 'e2ee', 'profileChannel'];
+const SELF_FIELDS = ['name', 'username', 'bio', 'avatar', 'privacy', 'chatPrefs', 'settings', 'security', 'reminders', 'messages', 'bookmarks', 'status', 'e2ee', 'profileChannel', 'music'];
 
 export function checkAccount(me, patch, current) {
   if (patch.id !== me) deny('You can only change your own profile');
@@ -56,6 +56,13 @@ export function checkAccount(me, patch, current) {
     if (k === 'name') { const n = String(v ?? '').trim().slice(0, 64); if (!n) throw new ApiError(400, 'bad_name', 'Name is required'); set.name = n; continue; }
     if (k === 'bio') { set.bio = String(v ?? '').slice(0, 140); continue; }
     if (k === 'username') { const u = String(v ?? ''); checkUsername(u, me); set.username = u; continue; }
+    // музыка в профиле: свой загруженный аудиофайл
+    if (k === 'music') {
+      if (!v) { set.music = null; continue; }
+      if (!/^[a-f0-9]{32}$/.test(String(v.media ?? ''))) throw new ApiError(400, 'bad_music', 'Bad music file');
+      set.music = { media: v.media, title: String(v.title ?? '').slice(0, 80), artist: String(v.artist ?? '').slice(0, 60), dur: Math.max(0, Math.min(3600, Number(v.dur) || 0)) };
+      continue;
+    }
     // канал/группа в профиле: только публичная, где человек владелец
     if (k === 'profileChannel') {
       if (!v) { set.profileChannel = null; continue; }

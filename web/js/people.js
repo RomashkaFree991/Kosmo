@@ -4,7 +4,7 @@
 import { $, db, toast, escapeHtml, userAvatarHtml, cosmicBadge, userBadge } from './core.js';
 import { openOverlay, closeOverlay, state } from './panels.js';
 import { hydrateMedia } from './media.js';
-import { profileChannelRow } from './info.js';
+import { profileExtras } from './info.js';
 
 const svg = (d) => `<svg class="i" viewBox="0 0 24 24" aria-hidden="true">${d}</svg>`;
 const ICON = {
@@ -52,7 +52,7 @@ export function showUser(userId) {
         <button class="pill-btn${myBlocked ? ' is-danger' : ''}" type="button" data-user-block>${ICON.block}${myBlocked ? 'Unblock' : 'Block'}</button>
       </div>
     </section>
-    ${profileChannelRow(u)}
+    ${profileExtras(u)}
     <section class="tiles" aria-label="Account">
       ${u.username ? tile(ICON.at, 'Username', `@${escapeHtml(u.username)}`, 'data-copy-user="username"') : ''}
       ${tile(ICON.hash, 'ID', escapeHtml(u.publicId), 'data-copy-user="id"')}

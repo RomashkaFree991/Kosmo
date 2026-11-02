@@ -172,6 +172,7 @@ export function project(user, viewerId) {
     publicId: user.publicId,
     role: user.role,
     profileChannel: user.profileChannel ?? null,
+    music: user.music ?? null,
     official: Boolean(user.official),
     premium: Boolean(user.premium),
     bot: Boolean(user.bot),
