@@ -36,14 +36,11 @@ export function emojiSvg(id, cls = '') {
   return `<span class="emoji ${cls}" role="img" aria-label="${emojiLabel(id)}"><i>${ch}</i></span>`;
 }
 
-// Значок Premium — своя анимированная планета (не эмодзи)
-const PLANET_DEFS = `
-  <linearGradient id="k-ring2" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#c7b6ff"/><stop offset="1" stop-color="#7d5cff"/></linearGradient>
-  <radialGradient id="k-fill2" cx="0.38" cy="0.32" r="0.8"><stop offset="0" stop-color="#b9a6ff"/><stop offset="0.55" stop-color="#7d5cff"/><stop offset="1" stop-color="#4b2fd1"/></radialGradient>`;
-const PLANET = `<svg class="emoji premium-planet" viewBox="0 0 64 64" role="img" aria-label="Premium"><defs>${PLANET_DEFS}</defs>
-  <g transform="rotate(-18 32 32)"><path d="M3 32A29 8 0 0 1 61 32" fill="none" stroke="url(#k-ring2)" stroke-width="3.5" stroke-linecap="round"/></g>
-  <circle cx="32" cy="32" r="16" fill="url(#k-fill2)"/>
-  <g transform="rotate(-18 32 32)"><path d="M3 32A29 8 0 0 0 61 32" fill="none" stroke="url(#k-ring2)" stroke-width="3.5" stroke-linecap="round"/></g>
+// Значок Premium — планета-логотип Kosmo (градиенты общие, из спрайта в index.html)
+const PLANET = `<svg class="emoji premium-planet" viewBox="0 0 64 64" role="img" aria-label="Premium">
+  <g transform="rotate(-18 32 32)"><path d="M3 32A29 8 0 0 1 61 32" fill="none" stroke="url(#k-ring)" stroke-width="3.5" stroke-linecap="round"/></g>
+  <circle cx="32" cy="32" r="16" fill="url(#k-fill)"/><circle cx="32" cy="32" r="16" fill="url(#k-shade)"/>
+  <g transform="rotate(-18 32 32)"><path d="M3 32A29 8 0 0 0 61 32" fill="none" stroke="url(#k-ring)" stroke-width="3.5" stroke-linecap="round"/></g>
   <circle class="e-spark" cx="54" cy="12" r="2.4" fill="#fff"/><circle class="e-spark e-delay" cx="10" cy="52" r="1.8" fill="#fff"/></svg>`;
 
 export function initEmoji() {}

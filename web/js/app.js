@@ -22,12 +22,36 @@ initKeyboard();
 initColor();
 
 initHome({ logout: showAuth });
+
+// Заставка при запуске (уже вошли): планета рисуется, кольца, затем экран растворяется
+function showSplash() {
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const logo = $('#logo')?.cloneNode(true);
+  if (!logo) return;
+  logo.removeAttribute('id');
+  // экран входа скрыт, а Chrome не рисует градиенты из скрытого SVG — берём общие из спрайта
+  logo.querySelector('defs')?.remove();
+  logo.querySelectorAll('[fill="url(#planet-fill)"]').forEach((n) => n.setAttribute('fill', 'url(#k-fill)'));
+  logo.querySelectorAll('[fill="url(#planet-shade)"]').forEach((n) => n.setAttribute('fill', 'url(#k-shade)'));
+  logo.querySelectorAll('.ring').forEach((n) => { n.style.stroke = 'url(#k-ring)'; });
+  const el = document.createElement('div');
+  el.className = 'splash';
+  el.setAttribute('aria-hidden', 'true');
+  el.append(logo);
+  document.body.append(el);
+  setTimeout(() => {
+    el.classList.add('is-out');
+    el.addEventListener('animationend', () => el.remove(), { once: true });
+    setTimeout(() => el.remove(), 800);
+  }, 1500);
+}
 initAuth({ signedIn: () => showApp() });
 
 // Уже входили в этом браузере: сразу показываем кеш, затем свежие данные с сервера
 const saved = tab.get();
 if (saved?.token) {
   $('#auth').hidden = true;
+  showSplash();
   const fromCache = showApp();
   boot()
     .then(() => {

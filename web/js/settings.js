@@ -357,10 +357,10 @@ function unlock() {
   setTimeout(() => { lockEl.hidden = true; lockEl.classList.remove('is-leaving'); }, 420);
 }
 
-// Переключили аккаунт — его код-пароль спрашивается всегда (обычный экран блокировки)
+// Переключили аккаунт — его экран блокировки, только если у него включён код-пароль
 export function lockAfterSwitch() {
   unlocked = false;
-  lock();
+  maybeLock();
 }
 
 // Вызывается при показе приложения: нужна ли блокировка

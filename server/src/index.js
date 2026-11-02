@@ -30,6 +30,34 @@ const MIME = {
 };
 
 /* ---------- Вспомогательное ---------- */
+// Заголовки безопасности для всех ответов. CSP разрешает скрипты только с этого
+// сайта (и библиотеку QR с jsDelivr): даже если в текст пролезет HTML, встроенные
+// скрипты и обработчики вроде onerror="…" браузер не выполнит.
+const CSP = [
+  "default-src 'self'",
+  "script-src 'self' https://cdn.jsdelivr.net",
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  "font-src 'self' data: https://fonts.gstatic.com",
+  "img-src 'self' data: blob: https://*.tile.openstreetmap.org https://tile.openstreetmap.org https://flagcdn.com",
+  "media-src 'self' data: blob:",
+  "connect-src 'self' ws: wss: https://api.ipify.org https://ipwho.is https://api.mymemory.translated.net https://cdn.jsdelivr.net",
+  "worker-src 'self'",
+  "frame-src 'none'",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "frame-ancestors 'none'",
+].join('; ');
+function securityHeaders(res) {
+  res.setHeader('Content-Security-Policy', CSP);
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'same-origin');
+  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+  res.setHeader('Permissions-Policy', 'camera=(self), microphone=(self), geolocation=(self), display-capture=(self)');
+  if (config.trustProxy) res.setHeader('Strict-Transport-Security', 'max-age=31536000');
+}
+
 function send(res, status, body, headers = {}) {
   const data = body === undefined ? '' : JSON.stringify(body);
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...headers });
@@ -429,6 +457,8 @@ async function uploadMedia(req, res) {
   const mime = String(req.headers['content-type'] ?? 'application/octet-stream').split(';')[0].slice(0, 80);
   // зашифрованные файлы приходят как application/octet-stream — сервер их не видит
   if (!/^(image|video|audio)\//.test(mime) && mime !== 'application/octet-stream') throw new ApiError(415, 'bad_type', 'Unsupported file type');
+  // SVG может содержать скрипт — такие файлы не принимаем
+  if (/svg|xml|html/i.test(mime)) throw new ApiError(415, 'bad_type', 'Unsupported file type');
   const len = Number(req.headers['content-length'] ?? 0);
   if (len > config.maxUpload) throw new ApiError(413, 'too_large', 'File is too large');
   const id = crypto.randomBytes(16).toString('hex');
@@ -459,7 +489,9 @@ function serveMedia(req, res, id) {
   const file = mediaPath(id);
   const read = (start, end) => (r.enc ? readSealedFile(id, file, start, end) : fs.createReadStream(file, { start, end }));
   const range = req.headers.range?.match(/bytes=(\d*)-(\d*)/);
-  const headers = { 'Content-Type': r.mime, 'Accept-Ranges': 'bytes', 'Cache-Control': 'public, max-age=31536000, immutable' };
+  // загруженный файл открывается «в песочнице»: никаких скриптов, даже если это не картинка
+  const safeMime = /svg|xml|html/i.test(r.mime) ? 'application/octet-stream' : r.mime;
+  const headers = { 'Content-Type': safeMime, 'Accept-Ranges': 'bytes', 'Cache-Control': 'public, max-age=31536000, immutable', 'Content-Security-Policy': "sandbox; default-src 'none'", 'Content-Disposition': 'inline' };
   if (range) {
     const start = range[1] ? Number(range[1]) : 0;
     const end = range[2] ? Math.min(Number(range[2]), r.size - 1) : r.size - 1;
@@ -504,6 +536,7 @@ function findConn(uid, connId) {
 }
 
 const server = http.createServer(async (req, res) => {
+  securityHeaders(res);
   const { pathname } = new URL(req.url, 'http://x');
   try {
     if (req.method === 'POST' && pathname === '/api/media') return await uploadMedia(req, res);

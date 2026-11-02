@@ -465,6 +465,7 @@ export function initKeyboard() {
   if (!vv) return;
   const app = document.getElementById('app');
   let raf = 0;
+  let wasOpen = false;
   const sync = () => {
     cancelAnimationFrame(raf);
     raf = requestAnimationFrame(() => {
@@ -481,9 +482,11 @@ export function initKeyboard() {
         app.style.removeProperty('top');
         app.style.removeProperty('bottom');
       }
-      // переписка прилипает к низу и после смены высоты
+      // клавиатура открылась — переписка листается в самый низ
       const sc = document.getElementById('chat-scroll');
-      if (open && sc && sc.scrollHeight - sc.scrollTop - sc.clientHeight < 160) sc.scrollTop = sc.scrollHeight;
+      if (open && sc && !wasOpen) sc.scrollTo({ top: sc.scrollHeight, behavior: 'smooth' });
+      else if (open && sc && sc.scrollHeight - sc.scrollTop - sc.clientHeight < 160) sc.scrollTop = sc.scrollHeight;
+      wasOpen = open;
     });
   };
   vv.addEventListener('resize', sync);

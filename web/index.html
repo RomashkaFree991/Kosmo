@@ -24,20 +24,7 @@
   <link rel="stylesheet" href="css/light.css">
   <link rel="stylesheet" href="css/glisse.css">
   <!-- До первого кадра: тема, вошла ли эта вкладка, нужна ли заставка -->
-  <script>
-    (function () {
-      var root = document.documentElement;
-      try { if (localStorage.getItem('kosmo:theme') === 'material') root.dataset.theme = 'material'; } catch (e) {}
-      // светлая или тёмная схема: dark | light | auto (как в системе)
-      var mode = 'dark';
-      try { mode = localStorage.getItem('kosmo:scheme') || 'dark'; } catch (e) {}
-      root.dataset.scheme = mode === 'auto' ? (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark') : mode;
-      var signedIn = false;
-      try { signedIn = Boolean(sessionStorage.getItem('kosmo:auth') || localStorage.getItem('kosmo:auth')); } catch (e) {}
-      if (signedIn) root.classList.add('has-session');
-      else if (!matchMedia('(prefers-reduced-motion: reduce)').matches) root.classList.add('is-intro');
-    })();
-  </script>
+  <script src="js/boot-theme.js"></script>
   <script src="js/vendor/refraction.js" defer></script>
   <script src="js/app.js" type="module"></script>
 </head>

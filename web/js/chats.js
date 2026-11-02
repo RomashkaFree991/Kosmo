@@ -899,7 +899,7 @@ function showChat() {
   openPanel('chat');
   toBottom();
   requestAnimationFrame(() => toBottom());
-  if (panel.dataset.composer === 'compose') setTimeout(() => input.focus({ preventScroll: true }), 380);
+  // клавиатура сама не открывается: только когда человек нажмёт на поле
 }
 
 onPanelClose('chat', () => {
@@ -1727,6 +1727,8 @@ function deleteAnimated(id) {
    --------------------------------------------------------------------------- */
 const composer = $('#composer');
 const input = $('#composer-input');
+// нажали на поле — когда клавиатура выедет, лента в самом низу
+input.addEventListener('focus', () => [120, 350].forEach((t) => setTimeout(() => { scroller.scrollTop = scroller.scrollHeight; }, t)));
 const sendBtn = $('#send-btn');
 const attachMenu = $('#attach-menu');
 const picker = $('#emoji-picker');
