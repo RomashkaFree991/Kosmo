@@ -28,7 +28,7 @@ import { pollHtml, openPollCreator, closePoll, retractVote } from './polls.js';
 import { roundHtml, openRoundRecorder } from './round.js';
 import { startCall } from './calls.js';
 import { isPending, onServerMessage, sendTyping } from './api.js';
-import { chatKey, sealFile, isSealed, isEncryptedChat } from './e2ee.js';
+import { isSealed } from './e2ee.js';
 import { pickTime, schedule, myScheduled, openScheduledList, addReminder, TTL_OPTIONS, ttlLabel } from './schedule.js';
 
 export const KOSMO = 'kosmo';
@@ -258,7 +258,7 @@ function kosmoUnread() {
    --------------------------------------------------------------------------- */
 export function previewText(m) {
   if (!m) return '';
-  if (isSealed(m.text) || isSealed(m.caption)) return 'Encrypted message';
+  if (isSealed(m.text) || isSealed(m.caption)) return 'Message unavailable';
   const cap = m.caption ? ` · ${m.caption}` : '';
   switch (m.kind) {
     case 'photo': return m.viewOnce ? 'View-once photo' : `Photo${cap}`;
@@ -788,9 +788,6 @@ function paintHeader() {
     avatar = userAvatarHtml(other ?? { name: '?' }, 'avatar-head');
   }
   if (c?.ttl) sub += ` · auto-delete ${ttlLabel(c.ttl)}`;
-  // сквозное шифрование: замок в шапке
-  const secure = c ? isEncryptedChat(c) : isSavedOpen() || (open.otherId && isEncryptedChat({ id: open.id, members: [state.acc.user.id, open.otherId] }));
-  $('#chat-sub').classList.toggle('is-e2ee', Boolean(secure) && !typingIn(open.id));
   const ty = typingIn(open.id);
   if (ty) sub = ty;
   $('#chat-sub').classList.toggle('is-typing', Boolean(ty));
@@ -1008,7 +1005,7 @@ export function mediaBody(m, chatId = null) {
       </button>`;
     }
     default: {
-      if (isSealed(m.text)) return `<p class="b-text b-sealed">${PI.lock}Encrypted message · unlock encryption to read</p>`;
+      if (isSealed(m.text)) return '<p class="b-text b-sealed">Message unavailable</p>';
       const tr = translationOf(m.id);
       return `<p class="b-text">${linkify(m.text)}</p>${tr ? `<p class="b-translation">${PI.translate}<span>${escapeHtml(tr.text)}</span><button type="button" data-untranslate="${m.id}">Show original</button></p>` : ''}`;
     }
@@ -2465,15 +2462,8 @@ async function runUpload(u) {
   u.status = 'up';
   u.p = 0;
   u.xhrs = [];
-  try {
-    // зашифрованный чат: файл шифруется на устройстве, сервер получает шифротекст
-    if (!u.sealed) {
-      const c = chats.get(u.ctx.chatId) ?? { id: u.ctx.chatId, members: u.ctx.members, saved: u.ctx.saved };
-      const key = await chatKey(c).catch(() => null);
-      u.sealed = key ? await Promise.all(u.parts.map((x) => sealFile(x.blob))) : u.parts.map(() => null);
-    }
-  } catch { u.sealed = u.parts.map(() => null); }
-  const send = u.parts.map((x, i) => u.sealed[i]?.blob ?? x.blob);
+  u.sealed = u.parts.map(() => null);   // файлы шифрует сервер при сохранении
+  const send = u.parts.map((x) => x.blob);
   const total = send.reduce((t, x) => t + (x.size || 1), 0);
   const done = u.parts.map(() => 0);
   try {
@@ -2485,7 +2475,6 @@ async function runUpload(u) {
     })));
     uploads.delete(u.id);
     (u.thumb.revoke ?? []).forEach((url) => url && URL.revokeObjectURL(url));
-    // ключи файлов — внутрь сообщения (оно само зашифруется при отправке)
     const msg = u.build(ids);
     const keyOf = (i) => (u.sealed[i] ? { mk: u.sealed[i].mk, mime: u.sealed[i].mime } : {});
     if (msg.kind === 'album') msg.items = msg.items.map((it, i) => ({ ...it, ...keyOf(i) }));

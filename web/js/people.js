@@ -3,7 +3,6 @@
 
 import { $, db, toast, escapeHtml, userAvatarHtml, cosmicBadge, userBadge } from './core.js';
 import { openOverlay, closeOverlay, state } from './panels.js';
-import { safetyCode } from './plus.js';
 import { hydrateMedia } from './media.js';
 
 const svg = (d) => `<svg class="i" viewBox="0 0 24 24" aria-hidden="true">${d}</svg>`;
@@ -58,12 +57,8 @@ export function showUser(userId) {
       ${u.email ? tile(ICON.mail, 'Email', escapeHtml(u.email), '', true) : tile(ICON.lock, 'Email', 'Hidden')}
       ${u.bio && !p.hideBio ? tile(ICON.quote, 'Bio', escapeHtml(u.bio), '', true) : ''}
       ${tile(ICON.calendar, 'Joined', monthYear.format(u.createdAt))}
-      ${u.e2ee?.pub && state.acc.user.e2ee?.pub ? tile(ICON.lock, 'Encryption code', '<span data-safety>…</span>', '', true) : ''}
     </section>`;
   hydrateMedia($('#user-profile'));
-  // код проверки: совпадает у обоих — значит, переписку никто не подслушивает
-  const sc = $('#user-profile [data-safety]');
-  if (sc) safetyCode(u.e2ee.pub, state.acc.user.e2ee.pub).then((code) => { sc.textContent = code; });
   openOverlay('user');
 }
 

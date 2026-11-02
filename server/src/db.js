@@ -6,6 +6,7 @@ import { DatabaseSync } from 'node:sqlite';
 import fs from 'node:fs';
 import path from 'node:path';
 import { config } from './config.js';
+import { sealDoc, openDoc } from './vault.js';
 
 fs.mkdirSync(config.dataDir, { recursive: true });
 fs.mkdirSync(path.join(config.dataDir, 'media'), { recursive: true });
@@ -107,6 +108,26 @@ sql.exec(`
 `);
 
 export const json = (s) => (s == null ? null : JSON.parse(s));
+// переписка, посты и истории хранятся зашифрованными (vault.js)
+const sealedJson = (s) => (s == null ? null : JSON.parse(openDoc(s)));
+
+// Миграция: колонки для шифрования; старые открытые записи — зашифровать
+(function sealAtRest() {
+  const cols = (t) => sql.prepare(`PRAGMA table_info(${t})`).all().map((c) => c.name);
+  if (!cols('chats').includes('username')) sql.exec('ALTER TABLE chats ADD COLUMN username TEXT');
+  if (!cols('media').includes('enc')) sql.exec('ALTER TABLE media ADD COLUMN enc INTEGER NOT NULL DEFAULT 0');
+  sql.exec('CREATE INDEX IF NOT EXISTS chats_username ON chats(username)');
+  const plain = (t) => sql.prepare(`SELECT id, data FROM ${t} WHERE data NOT LIKE 'enc1:%'`).all();
+  sql.exec('BEGIN');
+  try {
+    for (const r of plain('chats')) {
+      const d = JSON.parse(r.data);
+      sql.prepare('UPDATE chats SET data = ?, username = ? WHERE id = ?').run(sealDoc(r.data), d.username || null, r.id);
+    }
+    for (const t of ['posts', 'stories']) for (const r of plain(t)) sql.prepare(`UPDATE ${t} SET data = ? WHERE id = ?`).run(sealDoc(r.data), r.id);
+    sql.exec('COMMIT');
+  } catch (e) { sql.exec('ROLLBACK'); throw e; }
+})();
 
 // Небольшая обёртка: транзакция
 export function tx(fn) {
@@ -147,7 +168,7 @@ export const users = {
     // (флаг ставится вручную в базе на сервере, через API его не получить)
     if (RESERVED.test(name) && !this.get(exceptId ?? '')?.official) return true;
     if (sql.prepare('SELECT 1 FROM users WHERE username = ? AND id <> ?').get(name, exceptId ?? '')) return true;
-    return Boolean(sql.prepare("SELECT 1 FROM chats WHERE json_extract(data, '$.username') = ? AND id <> ?").get(name, exceptId ?? ''));
+    return Boolean(sql.prepare('SELECT 1 FROM chats WHERE username = ? AND id <> ?').get(name, exceptId ?? ''));
   },
   save(user) {
     const { id, email, phone, ...rest } = user;
@@ -165,33 +186,33 @@ export const users = {
 export const chats = {
   get(id) {
     const r = sql.prepare('SELECT data FROM chats WHERE id = ?').get(id);
-    return r ? json(r.data) : null;
+    return r ? sealedJson(r.data) : null;
   },
   forUser(uid) {
     return sql.prepare(`
       SELECT c.data FROM chats c WHERE c.id IN (SELECT chat_id FROM chat_members WHERE user_id = ?) OR c.public = 1
-    `).all(uid).map((r) => json(r.data));
+    `).all(uid).map((r) => sealedJson(r.data));
   },
   save(chat) {
     const pub = (chat.type === 'group' || chat.type === 'channel') && chat.username ? 1 : 0;
-    sql.prepare('INSERT INTO chats (id, data, public, updated) VALUES (?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data, public = excluded.public, updated = excluded.updated')
-      .run(chat.id, JSON.stringify(chat), pub, Date.now());
+    sql.prepare('INSERT INTO chats (id, data, public, updated, username) VALUES (?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data, public = excluded.public, updated = excluded.updated, username = excluded.username')
+      .run(chat.id, sealDoc(JSON.stringify(chat)), pub, Date.now(), chat.username || null);
     sql.prepare('DELETE FROM chat_members WHERE chat_id = ?').run(chat.id);
     const ins = sql.prepare('INSERT OR IGNORE INTO chat_members (chat_id, user_id) VALUES (?, ?)');
     for (const m of chat.members ?? []) ins.run(chat.id, m);
   },
   remove(id) { sql.prepare('DELETE FROM chats WHERE id = ?').run(id); },
-  all() { return sql.prepare('SELECT data FROM chats').all().map((r) => json(r.data)); },
+  all() { return sql.prepare('SELECT data FROM chats').all().map((r) => sealedJson(r.data)); },
 };
 
 /* ---------- Посты и истории ---------- */
 function docTable(table) {
   return {
-    get(id) { const r = sql.prepare(`SELECT data FROM ${table} WHERE id = ?`).get(id); return r ? json(r.data) : null; },
-    all() { return sql.prepare(`SELECT data FROM ${table} ORDER BY at`).all().map((r) => json(r.data)); },
+    get(id) { const r = sql.prepare(`SELECT data FROM ${table} WHERE id = ?`).get(id); return r ? sealedJson(r.data) : null; },
+    all() { return sql.prepare(`SELECT data FROM ${table} ORDER BY at`).all().map((r) => sealedJson(r.data)); },
     save(doc) {
       sql.prepare(`INSERT INTO ${table} (id, data, at) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data, at = excluded.at`)
-        .run(doc.id, JSON.stringify(doc), doc.at ?? Date.now());
+        .run(doc.id, sealDoc(JSON.stringify(doc)), doc.at ?? Date.now());
     },
     remove(id) { sql.prepare(`DELETE FROM ${table} WHERE id = ?`).run(id); },
   };

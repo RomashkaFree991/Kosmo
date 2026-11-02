@@ -44,7 +44,10 @@ kosmo restart   перезапуск
 kosmo status    состояние
 ```
 
-Резервная копия: `sqlite3 /var/lib/kosmo/kosmo.db ".backup /root/kosmo-backup.db"` и папка `/var/lib/kosmo/media`.
+## Шифрование на сервере
+Переписка, посты и истории хранятся в базе зашифрованными (AES-256-GCM), файлы в `/var/lib/kosmo/media` — тоже (AES-256-CTR). Ключ — `/var/lib/kosmo/data.key`, создаётся сам при первом запуске. Устройствам ничего настраивать не нужно.
+
+Резервная копия: `sqlite3 /var/lib/kosmo/kosmo.db ".backup /root/kosmo-backup.db"`, папка `/var/lib/kosmo/media` **и файл `/var/lib/kosmo/data.key`** — без ключа копия не читается.
 
 ## Локально
 ```bash

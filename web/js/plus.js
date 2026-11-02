@@ -6,11 +6,10 @@ import {
   $, $$, db, uid, toast, escapeHtml, userAvatarHtml, formatDate, formatTime, refreshRefraction, timeAgo,
 } from './core.js';
 import { state } from './panels.js';
-import { api, onServerMessage, wsSend } from './api.js';
+import { api } from './api.js';
 import { EMOJI, emojiSvg } from './emoji.js';
 import { qrSvg, qrReady } from './qrlogin.js';
 import { lang } from './i18n.js';
-import { e2eeReady, myPub, createKeys, keyRequest, keyResponse, acceptKey, transferCode, fingerprint } from './e2ee.js';
 
 const svg = (d) => `<svg class="i" viewBox="0 0 24 24" aria-hidden="true">${d}</svg>`;
 export const PI = {
@@ -475,9 +474,9 @@ const unb64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
 
 export function openBackup(collect) {
   const wrap = openModal('Backup', `
-    <p class="pm-note">Save all your chats to an encrypted file. Only someone with the password can open it.</p>
+    <p class="pm-note">Save all your chats to a file protected with a password.</p>
     <label class="modal-field"><span>Password</span><input type="password" id="bk-pass" minlength="6" autocomplete="new-password" placeholder="At least 6 characters"></label>
-    <button class="btn btn-primary" type="button" data-bk-save>${PI.lock}Download encrypted backup</button>
+    <button class="btn btn-primary" type="button" data-bk-save>Download backup</button>
     <div class="pm-divider"><span>or</span></div>
     <label class="btn btn-secondary glass bk-open">Open a backup file<input type="file" id="bk-file" accept=".kosmo,application/octet-stream" hidden></label>`, {
     onClick: async (e) => {
@@ -548,11 +547,12 @@ export async function openBots() {
       <span class="modal-label">Token — keep it secret, shown once</span>
       <code id="bot-token-text">${escapeHtml(t)}</code>
       <button class="chip-btn" type="button" data-bot-copy>Copy</button>
-      <span class="modal-label">Try it</span>
-      <pre class="bot-example">curl ${escapeHtml(location.origin)}/api/bot/${escapeHtml(t)}/getUpdates?timeout=30
-curl -X POST ${escapeHtml(location.origin)}/api/bot/${escapeHtml(t)}/sendMessage \\
-  -H 'Content-Type: application/json' \\
-  -d '{"chat_id":"CHAT_ID","text":"Hello from @${escapeHtml(username)}"}'</pre>
+      <span class="modal-label">1. Get messages people sent the bot (chat_id is in the answer)</span>
+      <pre class="bot-example" data-cmd>curl '${escapeHtml(location.origin)}/api/bot/${escapeHtml(t)}/getUpdates?timeout=30'</pre>
+      <button class="chip-btn" type="button" data-bot-cmd>Copy command</button>
+      <span class="modal-label">2. Reply (put the chat_id instead of CHAT_ID)</span>
+      <pre class="bot-example" data-cmd>curl -X POST '${escapeHtml(location.origin)}/api/bot/${escapeHtml(t)}/sendMessage' -H 'Content-Type: application/json' -d '{"chat_id":"CHAT_ID","text":"Hello from @${escapeHtml(username)}"}'</pre>
+      <button class="chip-btn" type="button" data-bot-cmd>Copy command</button>
     </div>`;
   const wrap = openModal('My bots', `
     <div id="bot-list">${rows()}</div>
@@ -564,6 +564,9 @@ curl -X POST ${escapeHtml(location.origin)}/api/bot/${escapeHtml(t)}/sendMessage
     <p class="pm-note">Bots get messages people send them (getUpdates) and reply with sendMessage. Docs: GET /api/bot/&lt;token&gt;/getMe.</p>`, {
     onClick: async (e) => {
       if (e.target.closest('[data-bot-copy]')) navigator.clipboard?.writeText($('#bot-token-text', wrap).textContent).then(() => toast('Token copied'));
+      // команда копируется одной строкой — без переносов, которые добавляет выделение на телефоне
+      const cmd = e.target.closest('[data-bot-cmd]');
+      if (cmd) navigator.clipboard?.writeText(cmd.previousElementSibling.textContent.trim()).then(() => toast('Command copied'));
       try {
         if (e.target.closest('[data-bot-create]')) {
           const r = await api('POST', '/api/bots', { name: $('#bot-name', wrap).value, username: $('#bot-username', wrap).value.trim().toLowerCase() });
@@ -616,143 +619,6 @@ export function startTranscriber() {
 }
 
 /* ---------------------------------------------------------------------------
-   Сквозное шифрование: ключ создаётся сам, на новое устройство его передаёт
-   уже вошедшее (как привязка устройств в WhatsApp/Signal)
-   --------------------------------------------------------------------------- */
-let e2eeAsked = '';
-const hasMyKey = () => { const u = me(); return e2eeReady() && Boolean(u?.e2ee?.pub) && myPub()?.x === u.e2ee.pub.x; };
-
-// После входа: ключа нет — создать; он есть у аккаунта, но не здесь — попросить у другого устройства
-export async function ensureE2EE(onUnlocked) {
-  const u = me();
-  if (!u || u.bot || e2eeAsked === u.id) return;
-  e2eeAsked = u.id;
-  if (hasMyKey()) {
-    // старые аккаунты: убрать с сервера копию под ключом восстановления
-    if (u.e2ee.backup) saveMe((x) => { x.e2ee = { pub: x.e2ee.pub, at: x.e2ee.at }; });
-    return;
-  }
-  if (!u.e2ee?.pub) {
-    const { e2ee } = await createKeys();
-    saveMe((x) => { x.e2ee = e2ee; });
-    onUnlocked?.();
-    return;
-  }
-  openUnlock(onUnlocked);
-}
-
-/* ---------- Новое устройство: ждать ключ ---------- */
-let waitKey = null;   // { req, timer, onUnlocked, wrap }
-
-function stopWaiting() {
-  if (!waitKey) return;
-  clearInterval(waitKey.timer);
-  waitKey = null;
-}
-
-export async function openUnlock(onUnlocked) {
-  stopWaiting();
-  const req = await keyRequest();
-  const ask = () => wsSend({ t: 'key-req', epub: req.epub });
-  const wrap = openModal('Unlock encrypted chats', `
-    <div class="e2ee-hero">${PI.lock}</div>
-    <p class="pm-note">Open Kosmo on a device where you’re already signed in and allow this one. Your encryption key will be sent straight to it, encrypted.</p>
-    <span class="modal-label">Check that the other device shows the same code</span>
-    <code class="e2ee-key e2ee-code">${req.code}</code>
-    <p class="pm-note e2ee-wait"><span class="e2ee-dot"></span>Waiting for your other device…</p>
-    <button class="link-btn" type="button" data-rk-reset>No other device? Start over</button>`, {
-    onClick: async (e) => {
-      if (!e.target.closest('[data-rk-reset]')) return;
-      if (!confirm('Create a new encryption key? Old encrypted messages will stay unreadable on all devices.')) return;
-      stopWaiting();
-      const { e2ee } = await createKeys();
-      saveMe((x) => { x.e2ee = e2ee; });
-      closeModal();
-      toast('New encryption key created');
-      onUnlocked?.();
-    },
-  });
-  waitKey = { req, onUnlocked, wrap, timer: setInterval(() => { if (!wrap.isConnected) stopWaiting(); else ask(); }, 4000) };
-  ask();
-}
-
-/* ---------- Вошедшее устройство: разрешить новому ---------- */
-const keyAsks = new Map();   // sid нового устройства → время, когда ответили
-let askOpen = '';
-
-onServerMessage(async (msg) => {
-  if (msg.t === 'key-res' && waitKey) {
-    const w = waitKey;
-    try {
-      await acceptKey(w.req, msg, me()?.e2ee?.pub);
-    } catch { return; }
-    stopWaiting();
-    if (w.wrap.isConnected) closeModal();
-    toast('Encrypted chats unlocked');
-    w.onUnlocked?.();
-    return;
-  }
-  if (msg.t === 'key-deny' && waitKey) {
-    stopWaiting();
-    closeModal();
-    toast('The other device declined');
-    return;
-  }
-  // на запрос уже ответило другое устройство — убрать вопрос
-  if (msg.t === 'key-done') {
-    keyAsks.set(msg.sid, Date.now());
-    if (askOpen === msg.sid) { askOpen = ''; closeModal(); }
-    return;
-  }
-  if (msg.t !== 'key-req' || !hasMyKey() || askOpen === msg.from) return;
-  if (Date.now() - (keyAsks.get(msg.from) ?? 0) < 60_000) return;
-  askOpen = msg.from;
-  const code = await transferCode(msg.epub);
-  const wrap = openModal('New device', `
-    <div class="e2ee-hero is-on">${PI.lock}</div>
-    <p class="pm-note"><b>${escapeHtml(msg.device ?? 'Browser')}</b> wants to read your encrypted chats. Allow only if it’s your device and it shows the same code.</p>
-    <code class="e2ee-key e2ee-code">${code}</code>
-    <button class="btn btn-primary" type="button" data-key-allow>Allow</button>
-    <button class="btn btn-secondary glass" type="button" data-key-deny>Not me</button>`, {
-    onClick: async (e) => {
-      const allow = e.target.closest('[data-key-allow]');
-      if (!allow && !e.target.closest('[data-key-deny]')) return;
-      keyAsks.set(msg.from, Date.now());
-      askOpen = '';
-      closeModal();
-      if (allow) {
-        wsSend({ t: 'key-res', to: msg.from, ...(await keyResponse(msg.epub)) });
-        toast('Key sent');
-      } else wsSend({ t: 'key-deny', to: msg.from });
-    },
-  });
-  // закрыли крестиком — спросить снова при следующем запросе
-  new MutationObserver((_, o) => { if (!wrap.isConnected) { if (askOpen === msg.from) askOpen = ''; o.disconnect(); } }).observe(document.body, { childList: true });
-});
-
-// Профиль → «Шифрование»
-export async function openEncryption(onUnlocked) {
-  const ready = hasMyKey();
-  const fp = ready ? await fingerprint(myPub()) : '';
-  openModal('Encryption', `
-    <div class="e2ee-hero${ready ? ' is-on' : ''}">${PI.lock}</div>
-    <p class="pm-note">${ready ? 'End-to-end encryption is on for private chats, groups and Saved Messages. Public groups and channels are open to everyone and are not encrypted.' : 'Encrypted chats are locked on this device.'}</p>
-    ${ready ? `<span class="modal-label">Your key fingerprint</span><code class="e2ee-key">${fp.match(/.{4}/g).join(' ')}</code>
-      <p class="pm-note">Your key never leaves your devices. To use Kosmo on a new device, sign in there and tap Allow here.</p>`
-    : '<button class="btn btn-primary" type="button" data-e2ee-unlock>Get the key from another device</button>'}`, {
-    onClick: (e) => { if (e.target.closest('[data-e2ee-unlock]')) { closeModal(); openUnlock(onUnlocked); } },
-  });
-}
-
-// Код проверки собеседника: одинаковый у обоих, если ключи никто не подменил
-export async function safetyCode(a, b) {
-  if (!a?.x || !b?.x) return '';
-  const [x, y] = [`${a.x}.${a.y}`, `${b.x}.${b.y}`].sort();
-  const h = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`${x}|${y}`)));
-  return Array.from(h.slice(0, 10), (n) => String(n % 100).padStart(2, '0')).join('').match(/.{5}/g).join(' ');
-}
-
-/* ---------------------------------------------------------------------------
    Статистика сервиса (только ID 1)
    --------------------------------------------------------------------------- */
 const fmtSize = (b) => (b > 1e9 ? `${(b / 1e9).toFixed(1)} GB` : b > 1e6 ? `${(b / 1e6).toFixed(1)} MB` : `${Math.round(b / 1e3)} KB`);
@@ -788,7 +654,7 @@ export async function openStats() {
       const rows = data.rooms.filter((r) => match(r.name, r.username));
       return rows.map((r) => `<div class="st-row">
         <span class="st-id">${r.type === 'channel' ? '📢' : '👥'}</span>
-        <span class="st-main"><b>${r.name == null ? '🔒 Encrypted' : escapeHtml(r.name || '—')}</b>
+        <span class="st-main"><b>${escapeHtml(r.name || '—')}</b>
           <small>${r.type === 'channel' ? 'channel' : 'group'} · ${r.username ? `@${escapeHtml(r.username)}` : 'private'} · owner ID ${escapeHtml(r.owner)}</small></span>
         <span class="st-side"><small>${n(r.members)} members</small><small>${n(r.messages)} msgs</small></span></div>`).join('') || '<p class="pm-note">Nothing found</p>';
     }
@@ -808,7 +674,7 @@ export async function openStats() {
       <div class="st-grid">
         ${tile('Accounts', t.users, `+${n(t.newToday)} today · +${n(t.newWeek)} week`)}
         ${tile('Online now', t.online, `${n(t.activeToday)} active today`)}
-        ${tile('Messages', t.messages, `${n(t.messagesToday)} today · ${n(t.encrypted)} encrypted`)}
+        ${tile('Messages', t.messages, `${n(t.messagesToday)} today`)}
         ${tile('Reactions', t.reactions)}
         ${tile('Channels', t.channel)}
         ${tile('Groups', t.group, `${n(t.publicRooms)} public rooms`)}

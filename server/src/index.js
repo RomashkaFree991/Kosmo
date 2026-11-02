@@ -18,6 +18,7 @@ import { startBot } from './tgbot.js';
 import { snapshot, applyPatches, broadcastUser, housekeeping, findInvite, joinByInvite } from './sync.js';
 import * as bots from './bots.js';
 import { assertStatsAccess, serviceStats } from './stats.js';
+import { fileCipher, readSealedFile, sealFileInPlace } from './vault.js';
 import { attachRealtime, kickSession, qrDeliver, sendTo } from './realtime.js';
 
 const MIME = {
@@ -422,10 +423,11 @@ async function uploadMedia(req, res) {
       size += c.length;
       if (size > config.maxUpload) { req.destroy(); out.destroy(); fs.rm(tmp, () => {}); reject(new ApiError(413, 'too_large')); }
     });
-    req.pipe(out);
+    // на диск файл ложится зашифрованным (vault.js)
+    req.pipe(fileCipher(id)).pipe(out);
     out.on('finish', () => {
       fs.renameSync(tmp, mediaPath(id));
-      sql.prepare('INSERT INTO media (id, owner, mime, size, created_at) VALUES (?, ?, ?, ?, ?)').run(id, s.userId, mime, size, Date.now());
+      sql.prepare('INSERT INTO media (id, owner, mime, size, created_at, enc) VALUES (?, ?, ?, ?, ?, 1)').run(id, s.userId, mime, size, Date.now());
       resolve();
     });
     out.on('error', reject);
@@ -435,22 +437,33 @@ async function uploadMedia(req, res) {
 
 function serveMedia(req, res, id) {
   if (!/^[a-f0-9]{32}$/.test(id)) return send(res, 404, { error: 'not_found' });
-  const r = sql.prepare('SELECT mime, size FROM media WHERE id = ?').get(id);
+  const r = sql.prepare('SELECT mime, size, enc FROM media WHERE id = ?').get(id);
   if (!r) return send(res, 404, { error: 'not_found' });
   const file = mediaPath(id);
+  const read = (start, end) => (r.enc ? readSealedFile(id, file, start, end) : fs.createReadStream(file, { start, end }));
   const range = req.headers.range?.match(/bytes=(\d*)-(\d*)/);
   const headers = { 'Content-Type': r.mime, 'Accept-Ranges': 'bytes', 'Cache-Control': 'public, max-age=31536000, immutable' };
   if (range) {
     const start = range[1] ? Number(range[1]) : 0;
     const end = range[2] ? Math.min(Number(range[2]), r.size - 1) : r.size - 1;
     res.writeHead(206, { ...headers, 'Content-Range': `bytes ${start}-${end}/${r.size}`, 'Content-Length': end - start + 1 });
-    fs.createReadStream(file, { start, end }).pipe(res);
+    read(start, end).pipe(res);
     return undefined;
   }
   res.writeHead(200, { ...headers, 'Content-Length': r.size });
-  fs.createReadStream(file).pipe(res);
+  read(0, Math.max(0, r.size - 1)).pipe(res);
   return undefined;
 }
+
+// Старые файлы (до шифрования) — зашифровать в фоне
+setTimeout(async () => {
+  for (const { id } of sql.prepare('SELECT id FROM media WHERE enc = 0').all()) {
+    try {
+      if (fs.existsSync(mediaPath(id))) await sealFileInPlace(id, mediaPath(id));
+      sql.prepare('UPDATE media SET enc = 1 WHERE id = ?').run(id);
+    } catch (e) { console.error('seal media', id, e.message); }
+  }
+}, 3000);
 
 /* ---------- Статика (для запуска без nginx) ---------- */
 function serveStatic(req, res, pathname) {

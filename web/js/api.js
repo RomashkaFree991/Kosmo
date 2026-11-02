@@ -6,7 +6,7 @@
 import { store, tab, setWriteHook, toast } from './core.js';
 import { COLLECTIONS, diffCollection, applyToCollection } from './patch.js';
 import {
-  loadKeys, chatKey, groupKeysFor, sealMessage, openMessage, openChatDoc, sealAccountPatch, openAccount, isPublicRoom,
+  loadKeys, chatKey, openMessage, openChatDoc, openAccount, notePlainKeys,
 } from './e2ee.js';
 
 const clone = (v) => (v == null ? v : JSON.parse(JSON.stringify(v)));
@@ -56,15 +56,39 @@ function writeRaw(col, value) {
   setWriteHook(onWrite);
 }
 
+// Свои старые зашифрованные сообщения, которые удалось открыть, — на сервер открытыми
+function unsealOwn(snap) {
+  const out = [];
+  for (const c of Object.values(snap.chats)) {
+    const mine = (c.messages ?? []).filter((m) => m.from === me && m.e2e && !hasSealed(m));
+    if (mine.length) out.push({ col: 'chats', id: c.id, op: 'put', msgs: { up: mine.map(({ e2e, ...m }) => m), del: [] } });
+  }
+  const acc = snap.accounts[me];
+  if (acc?._sealedBefore && !hasSealed({ c: acc.chatPrefs, b: acc.bookmarks })) {
+    out.push({ col: 'accounts', id: me, op: 'put', set: { chatPrefs: acc.chatPrefs ?? {}, bookmarks: acc.bookmarks ?? [] } });
+  }
+  if (!out.length) return;
+  queue.push(...out);
+  clearTimeout(flushTimer);
+  flushTimer = setTimeout(flush, 1500);
+}
+const hasSealed = (m) => JSON.stringify(m).includes('"e1:');
+
 export async function loadSnapshot() {
   const snap = await api('GET', '/api/sync');
   me = snap.me;
   await loadKeys(me);
   // сначала профили (в них публичные ключи), потом расшифровка переписки
-  if (snap.accounts[me]) snap.accounts[me] = await openAccount(snap.accounts[me]);
+  if (snap.accounts[me]) {
+    const sealedBefore = hasSealed({ c: snap.accounts[me].chatPrefs, b: snap.accounts[me].bookmarks });
+    snap.accounts[me] = await openAccount(snap.accounts[me]);
+    if (sealedBefore) Object.defineProperty(snap.accounts[me], '_sealedBefore', { value: true, enumerable: false });
+  }
   writeRaw('accounts', snap.accounts);
   shadow.accounts = clone(snap.accounts);
   snap.chats = Object.fromEntries(await Promise.all(Object.entries(snap.chats).map(async ([id, c]) => [id, await openChatDoc(c).catch(() => c)])));
+  Object.values(snap.chats).forEach((c) => (c.messages ?? []).forEach(notePlainKeys));
+  unsealOwn(snap);
   for (const col of COLLECTIONS.filter((x) => x !== 'accounts')) {
     writeRaw(col, snap[col]);
     shadow[col] = clone(snap[col]);
@@ -72,32 +96,11 @@ export async function loadSnapshot() {
   return snap;
 }
 
-/* ---------- Сквозное шифрование патчей ---------- */
-async function sealPatch(p) {
-  try {
-    if (p.col === 'accounts') return p.id === me ? await sealAccountPatch(p) : p;
-    if (p.col !== 'chats' || p.op === 'del') return p;
-    let c = store.getJSON('chats', {})[p.id] ?? { id: p.id, ...(p.set ?? {}) };
-    if (!c.members || isPublicRoom(c)) return p;
-    // группа: ключ участникам (создать при первом сообщении, выдать новым)
-    const ekeys = await groupKeysFor(c);
-    if (ekeys) {
-      p = { ...p, set: { ...(p.set ?? {}), ekeys } };
-      c = { ...c, ekeys };
-      const all = store.getJSON('chats', {});
-      if (all[p.id]) { all[p.id].ekeys = ekeys; writeRaw('chats', all); if (shadow.chats?.[p.id]) shadow.chats[p.id].ekeys = clone(ekeys); }
-    }
-    const key = await chatKey(c);
-    if (!key) return p;
-    const out = { ...p };
-    if (p.msgs?.up?.length) out.msgs = { ...p.msgs, up: await Promise.all(p.msgs.up.map((m) => sealMessage(key, m))) };
-    if (p.set?.scheduled) out.set = { ...out.set, scheduled: await Promise.all(p.set.scheduled.map((x) => sealMessage(key, x))) };
-    return out;
-  } catch (e) {
-    console.error('e2ee seal', e);
-    return p;
-  }
-}
+/* ---------- Старое сквозное шифрование ----------
+   Теперь переписку шифрует сервер (at rest), устройства ничего не шифруют.
+   Старые сообщения с «e1:» ещё открываются ключом этого устройства, если он
+   есть, а свои такие сообщения устройство один раз переотправляет открытыми. */
+const sealPatch = (p) => p;
 
 async function openPatch(p) {
   try {
@@ -108,6 +111,7 @@ async function openPatch(p) {
     }
     if (p.col !== 'chats' || p.op === 'del') return p;
     const base = p.replace ? p.set : { ...(store.getJSON('chats', {})[p.id] ?? {}), ...(p.set ?? {}) };
+    [...(p.msgs?.up ?? []), ...(p.set?.messages ?? [])].forEach(notePlainKeys);
     const key = await chatKey(base).catch(() => null);
     if (!key) return p;
     const out = { ...p };

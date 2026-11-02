@@ -1,4 +1,6 @@
-// Сквозное шифрование Kosmo. Сервер хранит и пересылает только шифротекст.
+// Старое сквозное шифрование Kosmo (больше не используется для новых данных:
+// переписку шифрует сервер, см. server/src/vault.js). Модуль нужен, чтобы
+// открыть старые сообщения «e1:» на устройстве, где остался ключ.
 //
 //  • У каждого пользователя пара ключей ECDH P-256. Закрытый ключ живёт на
 //    его устройствах (IndexedDB). На сервер уходит только публичный ключ.
@@ -50,6 +52,12 @@ let me = null;
 let keys = null;   // { priv, privJwk, pubJwk }
 const cache = new Map();   // ключи чатов
 export const mediaKeys = new Map();   // id файла → { key (b64), mime }
+// Сообщение со старым ключом файла в открытом виде: запомнить, чтобы открыть файл
+export function notePlainKeys(m) {
+  if (!m) return;
+  if (m.mk && !isSealed(m.mk) && m.media) mediaKeys.set(m.media, { key: m.mk, mime: m.mime });
+  for (const it of m.items ?? []) if (it.mk && !isSealed(it.mk)) mediaKeys.set(it.media, { key: it.mk, mime: it.mime });
+}
 
 export const e2eeReady = () => Boolean(keys);
 export const myPub = () => keys?.pubJwk ?? null;
