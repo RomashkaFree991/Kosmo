@@ -357,6 +357,12 @@ function unlock() {
   setTimeout(() => { lockEl.hidden = true; lockEl.classList.remove('is-leaving'); }, 420);
 }
 
+// Переключили аккаунт — его код-пароль спрашивается всегда (обычный экран блокировки)
+export function lockAfterSwitch() {
+  unlocked = false;
+  lock();
+}
+
 // Вызывается при показе приложения: нужна ли блокировка
 export function maybeLock() {
   const s = me().security ?? {};

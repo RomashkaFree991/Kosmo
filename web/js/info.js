@@ -1,4 +1,4 @@
-// Блок сведений профиля (свой и чужой): значение крупно, подпись под ним
+// Канал/группа в профиле (свой и чужой) — плитка над остальными
 
 import { escapeHtml } from './core.js';
 import { chats, chatAvatar, chatTitle } from './chats.js';
@@ -16,7 +16,7 @@ export function profileChannelRow(u) {
   const c = u.profileChannel ? chats.get(u.profileChannel) : null;
   if (!c || !c.username) return '';
   const n = (c.members ?? []).length;
-  return `<button class="info-row info-channel ripple-host" type="button" data-open-profile-channel="${c.id}">
+  return `<button class="tile tile-wide profile-channel ripple-host" type="button" data-open-profile-channel="${c.id}">
     ${chatAvatar(c, 'avatar-sm')}
     <span class="info-ch-text"><span class="info-value">${escapeHtml(chatTitle(c))}</span>
     <span class="info-label">${c.type === 'channel' ? 'Channel' : 'Group'} · ${n} ${c.type === 'channel' ? (n === 1 ? 'subscriber' : 'subscribers') : (n === 1 ? 'member' : 'members')}</span></span>

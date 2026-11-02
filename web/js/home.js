@@ -15,7 +15,7 @@ import { applyDesign } from './design.js';
 import { hydrateMedia } from './media.js';
 import { renderFeed, refreshFeed } from './feed.js';
 import { openCreate, searchRooms, roomPreview, refreshRoom } from './rooms.js';
-import { maybeLock, notify, refreshSettings } from './settings.js';
+import { maybeLock, lockAfterSwitch, notify, refreshSettings } from './settings.js';
 import { isRoom, roomAvatar, searchMessages, allMedia, chatTitle, chatAvatar, openChatAt } from './chats.js';
 import { openViewer } from './viewer.js';
 import { renderStories } from './stories.js';
@@ -336,6 +336,7 @@ document.addEventListener('kosmo:switch-account', async (e) => {
   $('#auth').hidden = true;
   root.classList.add('has-session');
   if (!showApp({ animate: false })) { forgetAccount(e.detail.uid); toast('This session was terminated'); return; }
+  lockAfterSwitch();
   app.animate([{ opacity: 0, transform: 'scale(0.97)' }, { opacity: 1, transform: 'none' }], { duration: 380, easing: 'cubic-bezier(0.2, 0, 0, 1)' });
   toast(`Switched to ${state.acc.user.name}`);
 });

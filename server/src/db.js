@@ -162,11 +162,15 @@ export const users = {
   all() {
     return sql.prepare('SELECT id, email, phone, data FROM users').all().map((r) => ({ ...json(r.data), id: r.id, email: r.email ?? '', phone: r.phone ?? '' }));
   },
-  usernameTaken(name, exceptId) {
+  usernameTaken(name, exceptId, ownerId) {
     if (!name) return false;
     // имена официальных аккаунтов: их может носить только аккаунт с флагом official
     // (флаг ставится вручную в базе на сервере, через API его не получить)
-    if (RESERVED.test(name) && !this.get(exceptId ?? '')?.official) return true;
+    if (RESERVED.test(name)) {
+      // официальное имя: у официального аккаунта или его канала/группы
+      const owner = this.get(ownerId ?? '') ?? this.get(exceptId ?? '') ?? this.get(chats.get(exceptId ?? '')?.owner ?? '');
+      if (!owner?.official) return true;
+    }
     if (sql.prepare('SELECT 1 FROM users WHERE username = ? AND id <> ?').get(name, exceptId ?? '')) return true;
     return Boolean(sql.prepare('SELECT 1 FROM chats WHERE username = ? AND id <> ?').get(name, exceptId ?? ''));
   },

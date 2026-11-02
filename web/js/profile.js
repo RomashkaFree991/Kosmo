@@ -8,7 +8,7 @@ import {
 import { createOtp } from './otp.js';
 import { state, openPanel, overlayOpen, closeOverlay } from './panels.js';
 import { putBlob, hydrateMedia, squareAvatar } from './media.js';
-import { infoRow, profileChannelRow } from './info.js';
+import { profileChannelRow } from './info.js';
 import { ICON as CHAT_ICON, deviceIcon, openSaved, openChatAt, chatTitle, chats, chatAvatar, openChat, isRoom } from './chats.js';
 import {
   PI, openBookmarks, openDnd, dndUntil, openBackup, openBots, bookmarks, openStats,
@@ -83,14 +83,14 @@ export function renderProfile(force = false) {
       <button class="pill-btn" type="button" data-open-edit>${ICON.edit}Edit profile</button>
     </section>
 
-    <section class="group info-block" aria-label="Account">
-      ${profileChannelRow(u)}
-      ${infoRow(u.username ? `@${escapeHtml(u.username)}` : '<span class="tile-muted">Not set</span>', 'Username', u.username ? 'data-copy="username" aria-label="Copy username"' : 'data-open-edit aria-label="Set username"')}
-      ${u.bio ? infoRow(escapeHtml(u.bio), `Bio${u.privacy?.hideBio ? hiddenMark : ''}`, 'data-open-edit', true) : infoRow('<span class="tile-muted">Add a few words about yourself</span>', 'Bio', 'data-open-edit')}
-      ${infoRow(escapeHtml(u.publicId), 'ID', 'data-copy="id" aria-label="Copy ID"')}
-      ${infoRow(escapeHtml(u.email ?? ''), `Email${u.privacy?.showEmail ? '' : hiddenMark}`, 'data-open-email aria-label="Change email"')}
-      ${infoRow(monthYear.format(u.createdAt), 'Joined')}
-      ${infoRow(`${u.sessions.length} active`, 'Sessions', 'data-open-sessions aria-label="Sessions"')}
+    ${profileChannelRow(u)}
+    <section class="tiles" aria-label="Account">
+      ${u.username ? tile(ICON.at, 'Username', `@${escapeHtml(u.username)}`, 'data-copy="username" aria-label="Copy username"') : tile(ICON.at, 'Username', '<span class="tile-muted">Not set</span>', 'data-open-edit aria-label="Set username"')}
+      ${tile(ICON.hash, 'ID', escapeHtml(u.publicId), 'data-copy="id" aria-label="Copy ID"')}
+      ${tile(MAIL_ICON, `Email${u.privacy?.showEmail ? '' : hiddenMark}`, escapeHtml(u.email ?? ''), 'data-open-email aria-label="Change email"', true)}
+      ${u.bio ? tile(ICON.quote, `Bio${u.privacy?.hideBio ? hiddenMark : ''}`, escapeHtml(u.bio), '', true) : ''}
+      ${tile(ICON.calendar, 'Joined', monthYear.format(u.createdAt))}
+      ${tile(ICON.devices, 'Sessions', `${u.sessions.length} active`, 'data-open-sessions aria-label="Sessions"')}
     </section>
 
     <section class="group settings-group" aria-label="Kosmo">
@@ -177,8 +177,8 @@ const editCounter = $('#edit-counter');
 
 // пустой @username тоже можно
 function usernameOk(v) {
-  if (!v) return true;
-  return USERNAME_RE.test(v) && !RESERVED.includes(v) && !db.usernameTaken(v, state.acc.user.id);
+  if (!v || v === state.acc.user.username) return true;   // своё имя не проверяем
+  return USERNAME_RE.test(v) && (!RESERVED.includes(v) || state.acc.user.official) && !db.usernameTaken(v, state.acc.user.id);
 }
 
 function paintEditAvatar() {

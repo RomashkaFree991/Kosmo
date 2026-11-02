@@ -3,31 +3,6 @@
 // из текущих. Входы (токены) хранятся в localStorage.
 
 import { $, db, tab, escapeHtml, userAvatarHtml, toast } from './core.js';
-import { createPad } from './pad.js';
-import { openModal, closeModal } from './plus.js';
-
-// Переключение на другой аккаунт — только с его код-паролем
-function askPasscode(target) {
-  const wrap = openModal('Switch account', `
-    <div class="switch-who">${userAvatarHtml({ name: target.name ?? 'Account', avatar: target.avatar ?? {} }, 'avatar-sm')}<b>${escapeHtml(target.name ?? 'Account')}</b><small>${escapeHtml(target.email ?? '')}</small></div>
-    <p class="pm-note">Enter the passcode of this account</p>
-    <div class="switch-pad"></div>`, { cls: 'switch-modal' });
-  createPad(wrap.querySelector('.switch-pad'), {
-    onComplete: async (code, pad) => {
-      const r = await fetch('/api/passcode/verify', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${target.token}` }, body: JSON.stringify({ code }) }).catch(() => null);
-      const body = r ? await r.json().catch(() => ({})) : {};
-      if (r?.ok) {
-        await pad.success();
-        closeModal();
-        document.dispatchEvent(new CustomEvent('kosmo:switch-account', { detail: target }));
-        return;
-      }
-      if (r?.status === 401 && body.error === 'unauthorized') { closeModal(); forgetAccount(target.uid); toast('This session was terminated'); return; }
-      if (!r) { toast('No connection'); await pad.error(); return; }
-      await pad.fail({ code: body.error, data: body });
-    },
-  });
-}
 
 export const MAX_ACCOUNTS = 5;
 const KEY = 'kosmo:tab-accounts';
@@ -85,7 +60,7 @@ document.addEventListener('click', (e) => {
   if (sw) {
     const target = linkedAccounts().find((a) => a.uid === sw.dataset.switchAccount);
     if (!target) { toast('This session was terminated'); return; }
-    askPasscode(target);
+    document.dispatchEvent(new CustomEvent('kosmo:switch-account', { detail: target }));
   }
   if (e.target.closest('[data-add-account]')) {
     if (linkedAccounts().length >= MAX_ACCOUNTS) { toast(`Maximum ${MAX_ACCOUNTS} accounts`); return; }
@@ -93,7 +68,7 @@ document.addEventListener('click', (e) => {
   }
   if (e.target.closest('#auth-cancel')) {
     const back = linkedAccounts()[0];
-    if (back) askPasscode(back);
+    if (back) document.dispatchEvent(new CustomEvent('kosmo:switch-account', { detail: back }));
   }
 });
 

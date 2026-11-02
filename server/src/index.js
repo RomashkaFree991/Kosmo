@@ -262,7 +262,7 @@ route('GET', '/api/username/:name', (req, p) => {
   const q = new URL(req.url, 'http://x').searchParams;
   let except = s.userId;
   if (q.has('room')) except = chats.get(q.get('room'))?.owner === s.userId ? q.get('room') : '';
-  return { free: /^(?=.*[a-z])[a-z0-9]{3,32}$/.test(name) && !users.usernameTaken(name, except) };
+  return { free: /^(?=.*[a-z])[a-z0-9]{3,32}$/.test(name) && !users.usernameTaken(name, except, s.userId) };
 });
 
 // Статистика сервиса — только ID 1

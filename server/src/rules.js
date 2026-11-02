@@ -13,10 +13,10 @@ const LIMIT_TEXT = 16000;
 // отпечаток публичного ключа (тот же, что считает клиент)
 const pubFingerprint = (pub) => (pub?.x ? crypto.createHash('sha256').update(`${pub.x}.${pub.y}`).digest('hex').slice(0, 32) : '');   // с запасом под шифротекст (e1:…)
 
-function checkUsername(name, exceptId) {
+function checkUsername(name, exceptId, ownerId) {
   if (!name) return;
   if (!USERNAME_RE.test(name)) throw new ApiError(400, 'bad_username', 'Invalid username');
-  if (users.usernameTaken(name, exceptId)) throw new ApiError(409, 'username_taken', 'This username is taken');
+  if (users.usernameTaken(name, exceptId, ownerId)) throw new ApiError(409, 'username_taken', 'This username is taken');
 }
 
 // реакции/голоса: меняется только своё присутствие в списках
@@ -99,7 +99,7 @@ function checkNewChat(me, doc) {
     const owned = chatsDb.forUser(me).filter((c) => c.type === doc.type && c.owner === me && c.id !== doc.id).length;
     if (owned >= ROOM_LIMIT) throw new ApiError(403, 'room_limit', doc.type === 'channel' ? `You can have up to ${ROOM_LIMIT} channels` : `You can have up to ${ROOM_LIMIT} groups`);
     if (!String(doc.name ?? '').trim()) throw new ApiError(400, 'bad_name', 'Name is required');
-    checkUsername(doc.username, doc.id);
+    checkUsername(doc.username, doc.id, me);
     if (!doc.id.startsWith(`${doc.type}_`)) deny('Bad id');
     for (const u of members) {
       if (u === me) continue;
@@ -204,7 +204,7 @@ export function checkChat(me, patch, old) {
         const ch = v ? chatsDb.get(v) : null;
         if (!admin && !(ch && isAdmin(ch, me))) deny('Only admins can change this');
       } else if (!admin) deny('Only admins can change this');
-      if (k === 'username') checkUsername(v, old.id);
+      if (k === 'username' && v !== old.username) checkUsername(v, old.id);   // своё прежнее имя не проверяем
       set[k] = v;
       continue;
     }

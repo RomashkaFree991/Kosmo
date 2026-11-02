@@ -58,10 +58,12 @@ function askServer(name, roomId) {
 }
 function handleError(v, exceptId) {
   if (!v) return '';
+  // имя, которое уже у этой группы/канала, — своё
+  if (exceptId && chats.get(exceptId)?.username === v) return '';
   if (serverTaken.has(v)) return 'This username is taken';
   if (v.length < 3) return 'At least 3 characters';
   if (!USERNAME_RE.test(v)) return 'Add at least one letter';
-  if (RESERVED.includes(v) || handleTaken(v, exceptId)) return 'This username is taken';
+  if ((RESERVED.includes(v) && !state.acc?.user.official) || handleTaken(v, exceptId)) return 'This username is taken';
   return '';
 }
 
