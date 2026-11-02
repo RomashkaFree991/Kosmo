@@ -979,13 +979,12 @@ html[data-theme="material"] .round-rec-send { border-radius: 0; clip-path: url(#
 
 /* ---------- Экран блокировки: кнопки всегда видны, всё помещается в экран ---------- */
 .lock { overflow-y: auto; overscroll-behavior: contain; }
-.lock-actions { position: absolute; z-index: 2; top: max(12px, env(safe-area-inset-top)); left: 12px; right: 12px; display: flex; justify-content: space-between; gap: 8px; }
-.lock-act { min-height: 40px; padding: 0 14px; border: 0; border-radius: 20px; background: rgba(var(--ink), 0.1); color: var(--c-text); font: inherit; font-size: 15px; font-weight: 600; -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); }
-.lock-act:active { scale: 0.95; }
-#lock-forgot { background: color-mix(in srgb, var(--c-accent) 22%, transparent); }
-html[data-theme="material"] .lock-act { background: var(--md-sys-color-surface-container-high); color: var(--md-sys-color-on-surface); }
-html[data-theme="material"] #lock-forgot { background: var(--md-sys-color-secondary-container); color: var(--md-sys-color-on-secondary-container); }
-.lock-inner { padding-top: calc(max(12px, env(safe-area-inset-top)) + 56px); }
+.lock-inner { min-height: 100%; justify-content: center; padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom)); }
+.lock-links { display: flex; flex-wrap: wrap; justify-content: center; gap: 0 18px; margin-top: 18px; }
+.lock .lock-links .link-btn { margin-top: 0; padding: 10px 6px; }
+#lock-forgot { color: var(--c-accent); }
+.lock-hint { margin: -14px 0 18px; text-align: center; color: var(--c-text-2); }
+.lock-otp { margin-top: 8px; }
 @media (max-height: 760px) {
   .lock .avatar-lock { width: 64px; height: 64px; font-size: 24px; }
   .lock-inner .screen-title { margin: 8px 0 14px; font-size: 22px; }
@@ -997,3 +996,44 @@ html[data-theme="material"] #lock-forgot { background: var(--md-sys-color-second
   .lock-inner .keypad { margin-top: 14px; grid-template-columns: repeat(3, 60px); gap: 8px 20px; }
   .lock-inner .key { width: 60px; height: 60px; }
 }
+/* профиль: плитки не «выезжают» заново при каждом входе во вкладку */
+#view-profile :is(.tile, .group, .profile-hero, .section-label) { animation: none; }
+
+/* ---------- Новые обои ---------- */
+.wp-aurora { filter: blur(20px); opacity: 0.75; animation: wp-aurora 16s ease-in-out infinite alternate; }
+.wp-aurora-2 { animation-duration: 21s; animation-delay: -7s; }
+.wp-aurora-3 { animation-duration: 26s; animation-delay: -13s; }
+@keyframes wp-aurora { 0% { transform: translateX(-30px) skewX(-10deg) scaleY(0.9); opacity: 0.45; } 100% { transform: translateX(40px) skewX(12deg) scaleY(1.15); opacity: 0.85; } }
+.wp-bubble { animation: wp-rise 24s linear infinite; animation-delay: var(--d, 0s); }
+@keyframes wp-rise { 0% { transform: translateY(160px); opacity: 0; } 15% { opacity: 0.55; } 85% { opacity: 0.55; } 100% { transform: translateY(-760px); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .wp-aurora, .wp-bubble { animation: none; } }
+
+/* ---------- Канал и музыка в профиле: строки и листы выбора ---------- */
+.pick-rows { display: flex; flex-direction: column; gap: 2px; border-radius: 20px; overflow: hidden; }
+.pick-row, .pick-opt { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 62px; padding: 10px 14px; border: 0; background: rgba(var(--ink), 0.06); color: var(--c-text); font: inherit; text-align: left; transition: background 150ms ease; }
+.pick-row:active, .pick-opt:active { background: rgba(var(--ink), 0.12); }
+.pick-ic { flex: none; width: 40px; height: 40px; display: grid; place-items: center; border-radius: 12px; background: color-mix(in srgb, var(--c-accent) 22%, transparent); color: var(--c-accent); overflow: hidden; }
+.pick-ic .avatar { width: 40px; height: 40px; font-size: 15px; }
+.pick-ic svg { width: 22px; height: 22px; }
+.pick-ic-music { background: linear-gradient(135deg, #ff5e8a, #a855f7); color: #fff; }
+.pick-text { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.pick-text b { font-size: 16px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pick-text small { font-size: 13px; color: var(--c-text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pick-list { display: flex; flex-direction: column; gap: 2px; border-radius: 20px; overflow: hidden; }
+.pick-opt .avatar-sm { width: 40px; height: 40px; flex: none; }
+.pick-check { flex: none; width: 22px; height: 22px; border-radius: 50%; box-shadow: inset 0 0 0 2px var(--c-text-3); transition: background 200ms ease, box-shadow 200ms ease; }
+.pick-opt.is-on .pick-check { background: var(--c-accent); box-shadow: inset 0 0 0 6px var(--c-accent), inset 0 0 0 9px #fff; }
+.music-hero { display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; padding: 6px 0 4px; }
+.music-disc { width: 96px; height: 96px; display: grid; place-items: center; border-radius: 50%; background: conic-gradient(from 30deg, #ff5e8a, #a855f7, #3b82f6, #ff5e8a); color: #fff; box-shadow: inset 0 0 0 30px rgba(0, 0, 0, 0.35); }
+.music-disc svg { width: 34px; height: 34px; }
+.music-disc.is-on { animation: m3-spin 6s linear infinite; }
+.music-hero b { font-size: 18px; }
+.music-hero small { color: var(--c-text-2); max-width: 300px; line-height: 1.35; }
+html[data-theme="material"] .pick-rows, html[data-theme="material"] .pick-list { border-radius: 0; gap: 2px; }
+html[data-theme="material"] :is(.pick-row, .pick-opt) { background: var(--md-sys-color-surface-container-high); border-radius: 6px; }
+html[data-theme="material"] :is(.pick-rows, .pick-list) > :first-child { border-radius: 20px 20px 6px 6px; }
+html[data-theme="material"] :is(.pick-rows, .pick-list) > :last-child { border-radius: 6px 6px 20px 20px; }
+html[data-theme="material"] :is(.pick-rows, .pick-list) > :only-child { border-radius: 20px; }
+html[data-theme="material"] .pick-ic { border-radius: 50%; background: var(--md-sys-color-primary-container); color: var(--md-sys-color-on-primary-container); }
+html[data-theme="material"] .pick-opt.is-on .pick-check { background: var(--md-sys-color-primary); box-shadow: inset 0 0 0 6px var(--md-sys-color-primary), inset 0 0 0 9px var(--md-sys-color-on-primary); }
+@media (prefers-reduced-motion: reduce) { .music-disc.is-on { animation: none; } }

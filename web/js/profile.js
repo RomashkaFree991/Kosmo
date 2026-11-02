@@ -9,6 +9,7 @@ import { createOtp } from './otp.js';
 import { state, openPanel, overlayOpen, closeOverlay } from './panels.js';
 import { putBlob, hydrateMedia, squareAvatar, mediaDuration } from './media.js';
 import { profileExtras } from './info.js';
+import { openModal, closeModal } from './plus.js';
 import { ICON as CHAT_ICON, deviceIcon, openSaved, openChatAt, chatTitle, chats, chatAvatar, openChat, isRoom } from './chats.js';
 import {
   PI, openBookmarks, openDnd, dndUntil, openBackup, openBots, bookmarks, openStats,
@@ -209,7 +210,8 @@ function openEdit() {
   const mine = Object.values(chats.all()).filter((c) => isRoom(c) && c.username && c.owner === u.id);
   draft.music = u.music ?? null;
   paintMusicEdit();
-  $('#edit-channel').innerHTML = `<option value="">None</option>${mine.map((c) => `<option value="${c.id}"${u.profileChannel === c.id ? ' selected' : ''}>${escapeHtml(chatTitle(c))} (@${escapeHtml(c.username)})</option>`).join('')}`;
+  $('#edit-channel').value = mine.some((c) => c.id === u.profileChannel) ? u.profileChannel : '';
+  paintChannelPick();
   $('#avatar-colors').innerHTML = `
     <button class="color-chip color-auto" type="button" role="radio" data-color="null" aria-label="Automatic color">Auto</button>
     ${AVATAR_COLORS.map(([a, b], i) => `<button class="color-chip" type="button" role="radio" data-color="${i}" style="--a1:${a};--a2:${b}" aria-label="Color ${i + 1}"></button>`).join('')}`;
@@ -460,16 +462,60 @@ document.addEventListener('click', (e) => {
   openChat(b.dataset.openProfileChannel);
 });
 
-/* ---------- Музыка в профиле: выбрать аудиофайл ---------- */
+/* ---------- Канал и музыка в профиле: строки-кнопки и листы выбора ---------- */
+const PICK_ICON = {
+  channel: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10v4h3l5 4V6L7 10z"/><path d="M16 9a4 4 0 0 1 0 6"/></svg>',
+  music: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18V6l10-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="16.5" cy="16" r="2.5"/></svg>',
+  chev: '<svg class="i chev-right" viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 6l6 6-6 6"/></svg>',
+};
+const myPublicRooms = () => Object.values(chats.all()).filter((c) => isRoom(c) && c.username && c.owner === state.acc.user.id);
+function paintChannelPick() {
+  const c = chats.get($('#edit-channel').value);
+  $('#edit-channel-btn').innerHTML = `<span class="pick-ic">${c ? chatAvatar(c, 'avatar-xs') : PICK_ICON.channel}</span>
+    <span class="pick-text"><b>${c ? escapeHtml(chatTitle(c)) : 'Channel or group'}</b><small>${c ? `@${escapeHtml(c.username)}` : 'Show one of your public channels or groups'}</small></span>${PICK_ICON.chev}`;
+  hydrateMedia($('#edit-channel-btn'));
+}
 function paintMusicEdit() {
   const m = draft?.music;
-  $('#music-edit').innerHTML = m
-    ? `<div class="music-chip"><span class="ms">music_note</span><span class="mc-text"><b>${escapeHtml(m.title)}</b><small>${escapeHtml(m.artist || '')}</small></span><button class="chip-btn" type="button" data-music-pick>Change</button><button class="chip-btn" type="button" data-music-clear>Remove</button></div>`
-    : '<button class="btn btn-secondary glass" type="button" data-music-pick>🎵 Add a track</button>';
+  $('#edit-music-btn').innerHTML = `<span class="pick-ic pick-ic-music">${PICK_ICON.music}</span>
+    <span class="pick-text"><b>${m ? escapeHtml(m.title) : 'Music'}</b><small>${m ? escapeHtml(m.artist || 'Your track') : 'Add a track people can play in your profile'}</small></span>${PICK_ICON.chev}`;
 }
-$('#music-edit').addEventListener('click', (e) => {
-  if (e.target.closest('[data-music-pick]')) $('#music-input').click();
-  if (e.target.closest('[data-music-clear]')) { draft.music = null; paintMusicEdit(); }
+$('#edit-channel-btn').addEventListener('click', () => {
+  const rooms = myPublicRooms();
+  const cur = $('#edit-channel').value;
+  const wrap = openModal('Channel in profile', `
+    <div class="pick-list">
+      <button class="pick-opt${cur ? '' : ' is-on'}" type="button" data-pick-room=""><span class="pick-ic">${PICK_ICON.channel}</span><span class="pick-text"><b>Don’t show</b><small>Nothing in your profile</small></span><span class="pick-check"></span></button>
+      ${rooms.map((c) => `<button class="pick-opt${cur === c.id ? ' is-on' : ''}" type="button" data-pick-room="${c.id}">${chatAvatar(c, 'avatar-sm')}<span class="pick-text"><b>${escapeHtml(chatTitle(c))}</b><small>${c.type === 'channel' ? 'Channel' : 'Group'} · @${escapeHtml(c.username)} · ${c.members.length}</small></span><span class="pick-check"></span></button>`).join('')}
+    </div>
+    ${rooms.length ? '' : '<p class="pm-note">You have no public channels or groups yet. Create one and give it a @username — then you can show it here.</p>'}`, {
+    cls: 'pick-sheet',
+    onClick: (e) => {
+      const b = e.target.closest('[data-pick-room]');
+      if (!b) return;
+      $('#edit-channel').value = b.dataset.pickRoom;
+      paintChannelPick();
+      closeModal();
+    },
+  });
+  hydrateMedia(wrap);
+});
+$('#edit-music-btn').addEventListener('click', () => {
+  const m = draft?.music;
+  openModal('Music in profile', `
+    <div class="music-hero">
+      <span class="music-disc${m ? ' is-on' : ''}">${PICK_ICON.music}</span>
+      <b>${m ? escapeHtml(m.title) : 'No track yet'}</b>
+      <small>${m ? escapeHtml(m.artist || 'Your track') : 'Pick an audio file from your device (up to 15 MB). Everyone who opens your profile can play it.'}</small>
+    </div>
+    <button class="btn btn-primary" type="button" data-music-pick>${m ? 'Choose another track' : 'Choose a track'}</button>
+    ${m ? '<button class="btn btn-secondary glass" type="button" data-music-clear>Remove from profile</button>' : ''}`, {
+    cls: 'pick-sheet',
+    onClick: (e) => {
+      if (e.target.closest('[data-music-pick]')) { closeModal(); $('#music-input').click(); }
+      if (e.target.closest('[data-music-clear]')) { draft.music = null; paintMusicEdit(); closeModal(); }
+    },
+  });
 });
 $('#music-input').addEventListener('change', async (e) => {
   const file = e.target.files?.[0];
@@ -478,7 +524,7 @@ $('#music-input').addEventListener('change', async (e) => {
   if (file.size > 15 * 1024 * 1024) { toast('The track is too large (max 15 MB)'); return; }
   const name = file.name.replace(/\.[a-z0-9]+$/i, '');
   const [artist, title] = name.includes(' - ') ? name.split(' - ', 2) : ['', name];
-  $('#music-edit').innerHTML = '<p class="field-hint">Uploading…</p>';
+  $('#edit-music-btn').querySelector('small').textContent = 'Uploading…';
   try {
     const dur = await mediaDuration(file).catch(() => 0);
     const media = await putBlob(file, { type: file.type || 'audio/mpeg' });

@@ -10,7 +10,8 @@ import { createPad } from './pad.js';
 import { chats, isRoom, ICON } from './chats.js';
 import { posts } from './feeddata.js';
 import { LANGS, lang, setLang } from './i18n.js';
-import { dndUntil, openModal, closeModal } from './plus.js';
+import { dndUntil } from './plus.js';
+import { createOtp } from './otp.js';
 import { api as serverApi } from './api.js';
 
 const svg = (d, cls = 'i') => `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true">${d}</svg>`;
@@ -207,7 +208,7 @@ $('#security-body').addEventListener('click', (e) => {
   const s = e.target.closest('[data-sec]');
   if (!s) return;
   if (s.dataset.sec === 'passcode') startPasscode('change');
-  if (s.dataset.sec === 'forgot') openForgotPasscode(() => toast('Passcode changed'));
+  if (s.dataset.sec === 'forgot') openForgotPasscode();
   if (s.dataset.sec === 'delete') startPasscode('delete');
   if (s.dataset.sec === 'lock-now') lock();
 });
@@ -346,6 +347,7 @@ export function lock() {
   hydrateMedia($('#lock-avatar'));
   $('#lock-title').textContent = `Hi, ${u.name.split(/\s+/)[0]}`;
   lockPad.reset();
+  if (typeof lockStep === 'function' && fp.step !== 'pass') lockStep('pass');
   unlocked = false;
   lockEl.hidden = false;
   lockEl.classList.remove('is-leaving');
@@ -389,66 +391,66 @@ setInterval(() => {
 }, 10_000);
 
 /* ---------------------------------------------------------------------------
-   Забыли код-пароль: код на почту аккаунта → новый код-пароль
+   Забыли код-пароль — прямо на экране блокировки, как при входе:
+   код из письма в ячейках → новый код-пароль → повтор
    --------------------------------------------------------------------------- */
-export function openForgotPasscode(onDone) {
-  let step = 'send';
-  let mail = '';
-  let code = '';
-  const wrap = openModal('Forgot passcode?', '', { cls: 'forgot-modal' });
-  const body = wrap.querySelector('.pm-body');
-  const paint = () => {
-    if (step === 'send') {
-      body.innerHTML = `
-        <p class="pm-note">We’ll send a code to the email of this account. After that you can set a new passcode — you stay signed in on this device, other sessions will be ended.</p>
-        <button class="btn btn-primary" type="button" data-fp-send>Send code</button>`;
-    } else if (step === 'code') {
-      body.innerHTML = `
-        <p class="pm-note">We sent a code to ${escapeHtml(mail)}</p>
-        <label class="modal-field"><input type="text" id="fp-code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="Code from the email"></label>
-        <button class="btn btn-primary" type="button" data-fp-code>Next</button>
-        <button class="link-btn" type="button" data-fp-send>Send again</button>`;
-      setTimeout(() => $('#fp-code', body)?.focus(), 100);
-    } else {
-      body.innerHTML = `
-        <p class="pm-note">Choose a new 4-digit passcode</p>
-        <label class="modal-field"><input type="password" id="fp-new" inputmode="numeric" maxlength="4" placeholder="New passcode" autocomplete="new-password"></label>
-        <label class="modal-field"><input type="password" id="fp-new2" inputmode="numeric" maxlength="4" placeholder="Repeat passcode" autocomplete="new-password"></label>
-        <button class="btn btn-primary" type="button" data-fp-save>Save</button>`;
-      setTimeout(() => $('#fp-new', body)?.focus(), 100);
-    }
-  };
-  body.addEventListener('click', async (e) => {
+const fp = { step: 'pass', ticket: '', first: '', onDone: null };
+const lockOtp = createOtp($('#lock-otp'), {
+  verify: async (code) => {
     try {
-      if (e.target.closest('[data-fp-send]')) {
-        ({ email: mail } = await serverApi('POST', '/api/passcode/forgot/code', {}));
-        step = 'code';
-        paint();
-        toast('Code sent');
-      } else if (e.target.closest('[data-fp-code]')) {
-        code = $('#fp-code', body).value.trim();
-        if (!/^\d{4,6}$/.test(code)) { toast('Enter the code from the email'); return; }
-        step = 'new';
-        paint();
-      } else if (e.target.closest('[data-fp-save]')) {
-        const a = $('#fp-new', body).value;
-        const b = $('#fp-new2', body).value;
-        if (!/^\d{4}$/.test(a)) { toast('Passcode must be 4 digits'); return; }
-        if (a !== b) { toast('Passcodes don’t match'); return; }
-        await serverApi('POST', '/api/passcode/forgot', { code, next: a });
-        closeModal();
-        onDone?.();
-      }
-    } catch (err) {
-      toast(err.message);
-      if (err.code === 'wrong_code' || err.code === 'code_expired' || err.code === 'too_many') { step = err.code === 'wrong_code' ? 'code' : 'send'; paint(); }
-    }
-  });
-  paint();
-  wrap.classList.add('over-lock');
+      fp.ticket = (await serverApi('POST', '/api/passcode/forgot/verify', { code })).ticket;
+      return true;
+    } catch (err) { toast(err.message); return false; }
+  },
+  onComplete: () => lockStep('new'),
+});
+const newPad = createPad($('#lock-newpad'), {
+  onComplete: async (code, padApi) => {
+    if (fp.step === 'new') { fp.first = code; await padApi.success(); lockStep('repeat'); return; }
+    if (code !== fp.first) { toast('Passcodes don’t match'); await padApi.error(); lockStep('new'); return; }
+    try {
+      await serverApi('POST', '/api/passcode/forgot', { ticket: fp.ticket, next: code });
+      await padApi.success();
+      toast('Passcode changed');
+      const done = fp.onDone;
+      lockStep('pass');
+      unlock();
+      done?.();
+    } catch (err) { toast(err.message); await padApi.error(); if (err.code === 'bad_ticket') lockStep('pass'); }
+  },
+});
+function lockStep(step) {
+  fp.step = step;
+  const pass = step === 'pass';
+  $('#lock-pad').hidden = !pass;
+  $('#lock-otp').hidden = step !== 'code';
+  $('#lock-newpad').hidden = !['new', 'repeat'].includes(step);
+  $('#lock-avatar').hidden = !pass;
+  $('#lock-sub').hidden = pass;
+  $('#lock-forgot').hidden = !pass;
+  $('#lock-resend').hidden = step !== 'code';
+  $('#lock-back').hidden = pass;
+  if (pass) $('#lock-title').textContent = `Hi, ${(me()?.name ?? '').split(/\s+/)[0]}`;
+  if (step === 'code') { $('#lock-title').textContent = 'Check your email'; lockOtp.reset(); setTimeout(() => lockOtp.focus(), 200); }
+  if (step === 'new') { $('#lock-title').textContent = 'New passcode'; $('#lock-sub').textContent = 'Choose a new 4-digit passcode'; newPad.reset(); }
+  if (step === 'repeat') { $('#lock-title').textContent = 'Repeat passcode'; $('#lock-sub').textContent = 'Enter the new passcode again'; newPad.reset(); }
 }
-
-$('#lock-forgot').addEventListener('click', () => openForgotPasscode(() => { toast('Passcode changed'); unlock(); }));
+async function sendForgotCode() {
+  try {
+    const { email } = await serverApi('POST', '/api/passcode/forgot/code', {});
+    $('#lock-sub').textContent = `We sent a code to ${email}`;
+    lockStep('code');
+  } catch (err) { toast(err.message); }
+}
+// Из настроек: тот же экран поверх приложения
+export function openForgotPasscode(onDone) {
+  lock();
+  fp.onDone = onDone;
+  sendForgotCode();
+}
+$('#lock-forgot').addEventListener('click', () => { fp.onDone = null; sendForgotCode(); });
+$('#lock-resend').addEventListener('click', sendForgotCode);
+$('#lock-back').addEventListener('click', () => lockStep('pass'));
 
 $('#lock-logout').addEventListener('click', () => {
   lockEl.hidden = true;

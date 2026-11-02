@@ -17,12 +17,12 @@ const ROLES = [
 ];
 // Стили схем из material-color-utilities (как «Стиль обоев» в Android)
 export const SCHEME_STYLES = {
+  // только стили, которые сохраняют выбранный оттенок (Fruit salad, Rainbow
+  // и Expressive сдвигают оттенок — оранжевый становился розовым)
   tonal: ['SchemeTonalSpot', 'Tonal spot'],
   vibrant: ['SchemeVibrant', 'Vibrant'],
-  expressive: ['SchemeExpressive', 'Expressive'],
   content: ['SchemeContent', 'Content'],
-  fruit: ['SchemeFruitSalad', 'Fruit salad'],
-  rainbow: ['SchemeRainbow', 'Rainbow'],
+  fidelity: ['SchemeFidelity', 'Fidelity'],
   neutral: ['SchemeNeutral', 'Neutral'],
   mono: ['SchemeMonochrome', 'Monochrome'],
 };

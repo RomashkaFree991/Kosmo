@@ -56,7 +56,7 @@ function injectShapes() {
 /* ---------------------------------------------------------------------------
    Обои: рисуются переменными --wp-*, которые считает color.js из палитры
    --------------------------------------------------------------------------- */
-export const WALLPAPERS = { black: 'Black', shapes: 'Cosmos', waves: 'Waves', glow: 'Glow', halloween: 'Halloween' };
+export const WALLPAPERS = { black: 'Black', shapes: 'Cosmos', aurora: 'Aurora', dunes: 'Dunes', bubbles: 'Bubbles', nebula: 'Nebula', waves: 'Waves', glow: 'Glow', halloween: 'Halloween' };
 const STAR = 'M0-10C1.4-1.4 1.4-1.4 10 0 1.4 1.4 1.4 1.4 0 10-1.4 1.4-1.4 1.4-10 0-1.4-1.4-1.4-1.4 0-10Z';
 const ORBIT = 'M-40 520C40 380 330 330 430 400';
 
@@ -112,6 +112,38 @@ function wallpaperHtml(kind) {
       ${pumpkin(88, 712, 34, -6)}${pumpkin(300, 744, 26, 8)}${pumpkin(190, 790, 20, 0)}`;
     layers = layer('wp-bat', 40, 260, 54, 26, bat) + layer('wp-bat wp-bat-2', 230, 330, 40, 20, bat) + layer('wp-bat wp-bat-3', 140, 420, 32, 16, bat)
       + starLayer(60, 90, 5, '--hw-star', 0) + starLayer(170, 60, 4, '--hw-star', 1.1) + starLayer(360, 300, 5, '--hw-star', 2) + starLayer(30, 520, 4, '--hw-star', 0.6);
+  } else if (kind === 'aurora') {
+    // Северное сияние: мягкие полосы света переливаются над тёмным небом
+    still = `${bg}<defs><linearGradient id="au-fade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".35"/></linearGradient></defs>
+      <path d="M0 780C90 760 160 790 240 770S350 750 390 760V844H0Z" style="fill:var(--wp-a);opacity:.5"/>
+      <rect width="390" height="844" fill="url(#au-fade)"/>`;
+    layers = layer('wp-aurora', -120, 60, 640, 360, '', 'background:radial-gradient(60% 40% at 50% 50%,var(--wp-b),transparent 70%)')
+      + layer('wp-aurora wp-aurora-2', -160, 180, 700, 320, '', 'background:radial-gradient(55% 35% at 50% 50%,var(--wp-dot),transparent 70%)')
+      + layer('wp-aurora wp-aurora-3', -100, 300, 600, 300, '', 'background:radial-gradient(50% 30% at 50% 50%,var(--wp-a),transparent 70%)')
+      + starLayer(60, 60, 4, '--wp-dot2', 0) + starLayer(320, 110, 5, '--wp-dot2', 1.4) + starLayer(200, 30, 3, '--wp-dot2', 2.2) + starLayer(350, 640, 4, '--wp-dot2', 0.8);
+  } else if (kind === 'dunes') {
+    // Дюны: плавные слои холмов разных оттенков палитры
+    still = `${bg}
+      <circle cx="300" cy="190" r="54" style="fill:var(--wp-dot);opacity:.55"/>
+      <path d="M0 470C80 420 170 450 240 430S360 400 390 420V844H0Z" style="fill:var(--wp-a);opacity:.55"/>
+      <path d="M0 560C70 520 150 560 220 535S340 500 390 520V844H0Z" style="fill:var(--wp-b);opacity:.7"/>
+      <path d="M0 650C90 610 160 660 250 630S350 600 390 615V844H0Z" style="fill:var(--wp-a);opacity:.85"/>
+      <path d="M0 740C80 700 180 760 260 725S360 700 390 712V844H0Z" style="fill:var(--wp-b)"/>`;
+    layers = starLayer(80, 120, 5, '--wp-dot2', 0.3) + starLayer(180, 70, 4, '--wp-dot2', 1.6);
+  } else if (kind === 'bubbles') {
+    // Пузыри: полупрозрачные круги медленно всплывают
+    still = bg;
+    const bub = (x, y, r, c, d) => layer('wp-bubble', x - r, y - r, r * 2, r * 2, '', `border-radius:50%;background:radial-gradient(circle at 35% 30%,color-mix(in srgb,var(${c}) 55%,#fff 45%),var(${c}) 60%);opacity:.55;--d:${d}s`);
+    layers = bub(70, 700, 46, '--wp-a', 0) + bub(300, 620, 62, '--wp-b', -6) + bub(190, 420, 30, '--wp-dot', -3) + bub(330, 260, 24, '--wp-a', -9)
+      + bub(50, 300, 34, '--wp-b', -12) + bub(230, 150, 18, '--wp-dot', -4) + bub(120, 520, 14, '--wp-dot', -8);
+  } else if (kind === 'nebula') {
+    // Туманность: цветные облака и рассыпанные звёзды
+    const dots = Array.from({ length: 40 }, (_, i) => `<circle cx="${(i * 97) % 390}" cy="${(i * 211) % 844}" r="${(i % 3) * 0.6 + 0.6}" style="fill:var(--wp-dot2);opacity:${0.3 + (i % 5) * 0.12}"/>`).join('');
+    still = `${bg}${dots}`;
+    layers = layer('wp-glow wp-drift', -120, 120, 520, 520, '', 'background:radial-gradient(closest-side,var(--wp-b),transparent)')
+      + layer('wp-glow wp-drift wp-drift-2', 60, 420, 480, 480, '', 'background:radial-gradient(closest-side,var(--wp-dot),transparent)')
+      + layer('wp-glow wp-drift', 160, -80, 360, 360, '', 'background:radial-gradient(closest-side,var(--wp-a),transparent)')
+      + starLayer(90, 200, 7, '--wp-dot2', 0) + starLayer(300, 520, 6, '--wp-dot2', 1.3) + starLayer(220, 760, 5, '--wp-dot2', 2.4);
   } else if (kind === 'waves') {
     still = `${bg}
       <path d="M0 610C70 570 140 640 210 600S330 560 390 590V844H0Z" style="fill:var(--wp-a)"/>

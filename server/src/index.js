@@ -36,8 +36,8 @@ const MIME = {
 const CSP = [
   "default-src 'self'",
   "script-src 'self' https://cdn.jsdelivr.net",
-  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-  "font-src 'self' data: https://fonts.gstatic.com",
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net",
+  "font-src 'self' data: https://fonts.gstatic.com https://cdn.jsdelivr.net",
   "img-src 'self' data: blob: https://*.tile.openstreetmap.org https://tile.openstreetmap.org https://flagcdn.com",
   "media-src 'self' data: blob:",
   "connect-src 'self' ws: wss: https://api.ipify.org https://ipwho.is https://api.mymemory.translated.net https://cdn.jsdelivr.net",
@@ -280,12 +280,19 @@ route('POST', '/api/passcode/forgot/code', async (req) => {
   await startCode(u.email, 'reset', clientIp(req));
   return { sent: true, email: u.email.replace(/^(.)(.*)(.@.*)$/, (_, a, b, c) => a + '*'.repeat(Math.min(b.length, 6)) + c) };
 });
+// код из письма проверяется отдельно (ячейки сразу показывают «неверно»), дальше — билет
+route('POST', '/api/passcode/forgot/verify', async (req) => {
+  const s = auth(req);
+  const { code } = await readBody(req);
+  return { ticket: checkCode(users.get(s.userId).email, 'reset', String(code ?? '')) };
+});
 route('POST', '/api/passcode/forgot', async (req) => {
   const s = auth(req);
-  const { code, next } = await readBody(req);
+  const { code, ticket, next } = await readBody(req);
   const u = users.get(s.userId);
   if (!/^\d{4}$/.test(String(next))) throw new ApiError(400, 'bad_passcode', 'Passcode must be 4 digits');
-  useTicket(checkCode(u.email, 'reset', String(code ?? '')), 'reset');
+  const email = useTicket(ticket ?? checkCode(u.email, 'reset', String(code ?? '')), 'reset');
+  if (email !== u.email) throw new ApiError(401, 'bad_ticket', 'Verification expired, start again');
   setPass(u.id, next);
   sql.prepare('DELETE FROM rate WHERE key = ?').run(`passfail:${u.id}`);   // снять 5-минутную блокировку
   for (const x of sessionsOf(u.id)) if (x.id !== s.id) { deleteSession(x.id); kickSession(x.id); }

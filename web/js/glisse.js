@@ -256,6 +256,8 @@ function attachBar(bar) {
   bar.classList.add('lg-bar');
 
   const st = { x: 0, y: 0, w: 0, h: 0, lift: 0 };
+  let lensOn = false;
+  let pulseUntil = 0;
   let shown = false;
   let gesture = null;
   let suppress = false;
@@ -270,7 +272,7 @@ function attachBar(bar) {
     thumb.style.height = `${h}px`;
     thumb.style.transform = `translate(${st.x}px, ${st.y}px) scale(${sx}, ${sy})`;
     thumb.style.setProperty('--lg-lift', clamp(lift, 0, 1).toFixed(3));
-    bar.toggleAttribute('data-lg-lensing', lift > 0.04);
+    bar.toggleAttribute('data-lg-lensing', lensOn && lift > 0.04);
   };
   const sp = {
     x: createSpring(0, REST[0], REST[1], (v) => { st.x = v; paint(); }),
@@ -297,7 +299,7 @@ function attachBar(bar) {
     bar.toggleAttribute('data-lg-empty', !sel);
     if (!sel || gesture) return;
     moveTo(boxOf(sel), instant || !shown);
-    sp.lift.set(0, instant);
+    if (Date.now() > pulseUntil) sp.lift.set(0, instant);
     shown = true;
   };
   const clear = () => {
@@ -337,6 +339,7 @@ function attachBar(bar) {
     if (!g || g !== gesture || g.lifted) return;
     clearTimeout(g.timer);
     g.lifted = true;
+    lensOn = true;
     bar.dataset.lgLifted = '';
     if (refracts && !matchMedia('(prefers-reduced-transparency: reduce)').matches) {
       const rad = parseFloat(getComputedStyle(thumb).borderTopLeftRadius) || 0;
@@ -373,6 +376,14 @@ function attachBar(bar) {
     gesture = null;
     delete bar.dataset.lgLifted;
     if (bar.hasPointerCapture?.(g.id)) bar.releasePointerCapture(g.id);
+    lensOn = false;
+    // обычный тап: индикатор коротко «пружинит» (растягивается и садится), без линзы
+    if (!g.lifted && e.type === 'pointerup' && !kind.on(g.start)) {
+      pulseUntil = Date.now() + 140;
+      sp.lift.tune(700, 30);
+      sp.lift.set(0.7);
+      setTimeout(() => { sp.lift.tune(REST[2], REST[3]); sp.lift.set(0); }, 130);
+    }
     if (g.moved && e.type === 'pointerup' && g.over) {
       suppress = true;
       setTimeout(() => { suppress = false; }, 400);

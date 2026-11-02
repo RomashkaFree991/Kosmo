@@ -7,6 +7,7 @@ import {
 } from './core.js';
 import { state } from './panels.js';
 import { api } from './api.js';
+import { hydrateMedia } from './media.js';
 import { EMOJI, emojiSvg, emojiChar } from './emoji.js';
 import { qrSvg, qrReady } from './qrlogin.js';
 import { lang } from './i18n.js';
@@ -410,11 +411,11 @@ export async function handleJoinLink(onJoined) {
   history.replaceState(null, '', location.pathname);
   try {
     const info = await api('GET', `/api/invite/${m[1]}`);
-    openModal(info.type === 'channel' ? 'Join channel' : 'Join group', `
+    const jw = openModal(info.type === 'channel' ? 'Join channel' : 'Join group', `
       <div class="join-card">
         ${userAvatarHtml({ name: info.name, avatar: info.avatar }, 'avatar-lg avatar-room')}
         <b>${escapeHtml(info.name)}</b>
-        <small>${info.members} ${info.type === 'channel' ? 'subscribers' : 'members'}</small>
+        <small>${info.members} ${info.type === 'channel' ? (info.members === 1 ? 'subscriber' : 'subscribers') : (info.members === 1 ? 'member' : 'members')}</small>
         ${info.bio ? `<p>${escapeHtml(info.bio)}</p>` : ''}
       </div>
       <button class="btn btn-primary" type="button" data-join-go>${info.type === 'channel' ? 'Join channel' : 'Join group'}</button>`, {
@@ -427,6 +428,7 @@ export async function handleJoinLink(onJoined) {
         } catch (err) { toast(err.message); }
       },
     });
+    hydrateMedia(jw);
   } catch (err) {
     toast(err.message);
   }

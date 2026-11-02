@@ -163,11 +163,11 @@ html[data-theme="material"] .pass-cell {
   transition: clip-path 0s, background-color 250ms var(--m3-ease), scale 350ms var(--m3-spring);
 }
 html[data-theme="material"] .pass-cell.is-active { box-shadow: none; background: var(--md-sys-color-secondary-container); scale: 1.08; }
-html[data-theme="material"] .pass-cell.is-filled { clip-path: url(#shape-cookie9); background: var(--md-sys-color-primary-container); animation: m3-pop 420ms var(--m3-spring); }
+html[data-theme="material"] .pass-cell.is-filled { clip-path: url(#shape-cookie9); background: var(--md-sys-color-primary); animation: m3-pop 420ms var(--m3-spring); }
 html[data-theme="material"] .pass-cell:nth-child(2).is-filled { clip-path: url(#shape-clover); }
 html[data-theme="material"] .pass-cell:nth-child(3).is-filled { clip-path: url(#shape-flower); }
 html[data-theme="material"] .pass-cell:nth-child(4).is-filled { clip-path: url(#shape-cookie7); }
-html[data-theme="material"] .pass-cell::after { background: var(--md-sys-color-on-primary-container); }
+html[data-theme="material"] .pass-cell::after { background: var(--md-sys-color-on-primary); }
 html[data-theme="material"] .pass-cells.is-error .pass-cell { background: var(--md-sys-color-error-container, #8c1d18); }
 html[data-theme="material"] .pass-cells.is-done .pass-cell { clip-path: url(#shape-circle); background: var(--md-sys-color-primary); }
 @keyframes m3-pop { 0% { scale: 0.7; rotate: -25deg; } 100% { scale: 1; rotate: 0deg; } }
@@ -232,10 +232,40 @@ html[data-theme="material"] .emoji-search input,
 html[data-theme="material"] .field-select select { border-radius: 4px 4px 0 0; background: var(--md-sys-color-surface-container-highest); box-shadow: inset 0 -1px 0 var(--md-sys-color-on-surface-variant); }
 html[data-theme="material"] .modal-field input:focus { box-shadow: inset 0 -2px 0 var(--md-sys-color-primary); }
 
-/* ---------- Переключатель вкладок поиска/папок — чипы M3 ---------- */
-html[data-theme="material"] .segs { gap: 0; }
-html[data-theme="material"] .seg-btn { min-height: 40px; font: 600 14px/20px "Roboto Flex", Roboto, system-ui, sans-serif; transition: background-color 250ms var(--m3-ease), border-radius 300ms var(--m3-spring); }
-html[data-theme="material"] .seg-btn[aria-checked="true"]::before { content: "check"; font-family: "Material Symbols Rounded"; font-size: 18px; margin-right: 6px; vertical-align: -4px; font-weight: 400; }
+/* ---------- Выбор из вариантов — отдельные чипы-фильтры M3 (ничего не обрезается) ---------- */
+html[data-theme="material"] .segs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  overflow: visible;
+}
+html[data-theme="material"] .seg-btn,
+html[data-theme="material"] .seg-btn + .seg-btn {
+  min-height: 36px;
+  padding: 0 16px;
+  border-radius: 10px;
+  background: none;
+  box-shadow: inset 0 0 0 1px var(--md-sys-color-outline-variant);
+  color: var(--md-sys-color-on-surface-variant);
+  font: 600 14px/20px "Roboto Flex", Roboto, system-ui, sans-serif;
+  letter-spacing: 0.1px;
+  white-space: nowrap;
+  transition: background-color 250ms var(--m3-ease), border-radius 300ms var(--m3-spring), padding 250ms var(--m3-ease);
+}
+html[data-theme="material"] .seg-btn[aria-checked="true"] {
+  padding-left: 10px;
+  border-radius: 18px;
+  background: var(--md-sys-color-secondary-container);
+  box-shadow: none;
+  color: var(--md-sys-color-on-secondary-container);
+}
+html[data-theme="material"] .seg-btn[aria-checked="true"]::before { content: "check"; display: inline-block; font-family: "Material Symbols Rounded"; font-size: 18px; line-height: 1; margin-right: 6px; vertical-align: -4px; font-weight: 400; }
+html[data-theme="material"] .menu-sub .segs { flex-wrap: wrap; }
+html[data-theme="material"] .menu-sub .seg-btn { flex: 0 1 auto; }
 
 /* ---------- Запись кружка (обе темы): новые кнопки ---------- */
 @media (prefers-reduced-motion: reduce) {
@@ -255,3 +285,19 @@ html[data-holiday="halloween"][data-theme="glass"] { --c-accent: #ff7a1a; }
 html[data-holiday="halloween"] .tab.is-active::after { content: "🎃"; position: absolute; top: -6px; right: 4px; font-size: 13px; }
 .profile-extras .tile-wide { grid-column: auto; }
 html[data-theme="material"] .pm-play:has(> .ms) > svg { display: none; }
+html[data-theme="material"] .choice-row { flex-wrap: wrap; row-gap: 8px; padding: 8px 4px; }
+html[data-theme="material"] .choice-row .segs { flex: 1 1 auto; justify-content: flex-end; }
+
+/* ---------- Liquid Glass: значки Phosphor ---------- */
+.gi { display: none; }
+html[data-theme="glass"] .gi { display: inline-block; font-size: 25px; line-height: 1; }
+html[data-theme="glass"] :is(.tab-icon, .row-icon):has(> .gi) > svg { display: none; }
+html[data-theme="glass"] .tab .gi-on { display: none; }
+html[data-theme="glass"] .tab.is-active .gi:not(.gi-on) { display: none; }
+html[data-theme="glass"] .tab.is-active .gi-on { display: inline-block; }
+html[data-theme="glass"] .tab-icon .gi { transition: scale 300ms var(--spring-bouncy); }
+html[data-theme="glass"] .tab.is-active .gi-on { animation: gi-pop 420ms var(--spring-bouncy); }
+@keyframes gi-pop { 0% { scale: 0.7; } 60% { scale: 1.12; } 100% { scale: 1; } }
+html[data-theme="glass"] .row-icon .gi { font-size: 19px; }
+html[data-theme="glass"] .row-icon { border-radius: 9px; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25), inset 0 -1px 0 rgba(0, 0, 0, 0.12); }
+@media (prefers-reduced-motion: reduce) { html[data-theme="glass"] .tab.is-active .gi-on { animation: none; } }
