@@ -7,7 +7,7 @@ import {
 } from './core.js';
 import { state } from './panels.js';
 import { api } from './api.js';
-import { EMOJI, emojiSvg } from './emoji.js';
+import { EMOJI, emojiSvg, emojiChar } from './emoji.js';
 import { qrSvg, qrReady } from './qrlogin.js';
 import { lang } from './i18n.js';
 
@@ -438,7 +438,7 @@ export async function handleJoinLink(onJoined) {
 export const GENERAL = 'general';
 export function topicsBarHtml(c, current, admin) {
   const topics = c.topics ?? [];
-  const chip = (id, name, emoji) => `<button class="topic-chip" type="button" data-topic="${id}" aria-pressed="${current === id}">${emoji && EMOJI[emoji] ? emojiSvg(emoji, 'topic-emoji') : '#'}<span>${escapeHtml(name)}</span></button>`;
+  const chip = (id, name, emoji) => `<button class="topic-chip" type="button" data-topic="${id}" aria-pressed="${current === id}">${emoji && emojiChar(emoji) ? emojiSvg(emoji, 'topic-emoji') : '#'}<span>${escapeHtml(name)}</span></button>`;
   return `${chip(GENERAL, 'General')}${topics.map((t) => chip(t.id, t.name, t.emoji)).join('')}${admin ? `<button class="topic-chip topic-add" type="button" data-topic-new aria-label="New topic">${PI.plus}</button>` : ''}`;
 }
 export function openTopicCreator(onCreate) {

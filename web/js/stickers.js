@@ -2,7 +2,7 @@
 // у некоторых — подпись-«облачко». Отрисовка одинаковая в чате и в выборе.
 
 import { escapeHtml } from './core.js';
-import { emojiSvg, EMOJI } from './emoji.js';
+import { emojiSvg, emojiChar, emojiLabel } from './emoji.js';
 
 const s = (emoji, anim, text = '') => ({ emoji, anim, text });
 
@@ -36,7 +36,7 @@ export const PACKS = [
 export const stickerKey = (st) => `${st.emoji}:${st.anim}:${st.text}`;
 
 export function stickerHtml(st, cls = '') {
-  if (!EMOJI[st.emoji]) return '';
+  if (!emojiChar(st.emoji)) return '';
   return `<span class="sticker anim-${st.anim} ${cls}">${emojiSvg(st.emoji)}${st.text ? `<span class="sticker-text">${escapeHtml(st.text)}</span>` : ''}</span>`;
 }
 
@@ -46,7 +46,7 @@ export function stickerPickerHtml() {
     <section class="sticker-pack">
       <h4>${escapeHtml(p.name)}</h4>
       <div class="sticker-grid">${p.items.map((st, i) => `
-        <button class="sticker-opt" type="button" style="--i:${i}" data-send-sticker="${p.id}:${i}" aria-label="${escapeHtml(st.text || EMOJI[st.emoji].label)} sticker">${stickerHtml(st)}</button>`).join('')}
+        <button class="sticker-opt" type="button" style="--i:${i}" data-send-sticker="${p.id}:${i}" aria-label="${escapeHtml(st.text || emojiLabel(st.emoji))} sticker">${stickerHtml(st)}</button>`).join('')}
       </div>
     </section>`).join('');
 }

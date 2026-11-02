@@ -85,7 +85,11 @@ const canBeAdded = (u) => u.privacy?.groups !== 'nobody';
    --------------------------------------------------------------------------- */
 let draft = null;
 
+const ROOM_LIMIT = 3;
 export function openCreate(type) {
+  const me = state.acc.user.id;
+  const owned = Object.values(chats.all()).filter((c) => c.type === type && c.owner === me).length;
+  if (owned >= ROOM_LIMIT) { toast(type === 'channel' ? 'You can have up to 3 channels' : 'You can have up to 3 groups'); return; }
   draft = { type, name: '', username: '', bio: '', avatar: { color: null, text: '', photo: null }, members: [] };
   $('#create-title').textContent = type === 'channel' ? 'New channel' : 'New group';
   $('#panel-create').setAttribute('aria-label', $('#create-title').textContent);

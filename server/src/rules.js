@@ -45,7 +45,7 @@ const strip = (m) => {
 /* ---------------------------------------------------------------------------
    Пользователь (только свой документ)
    --------------------------------------------------------------------------- */
-const SELF_FIELDS = ['name', 'username', 'bio', 'avatar', 'privacy', 'chatPrefs', 'settings', 'security', 'reminders', 'messages', 'bookmarks', 'status', 'e2ee'];
+const SELF_FIELDS = ['name', 'username', 'bio', 'avatar', 'privacy', 'chatPrefs', 'settings', 'security', 'reminders', 'messages', 'bookmarks', 'status', 'e2ee', 'profileChannel'];
 
 export function checkAccount(me, patch, current) {
   if (patch.id !== me) deny('You can only change your own profile');
@@ -56,6 +56,14 @@ export function checkAccount(me, patch, current) {
     if (k === 'name') { const n = String(v ?? '').trim().slice(0, 64); if (!n) throw new ApiError(400, 'bad_name', 'Name is required'); set.name = n; continue; }
     if (k === 'bio') { set.bio = String(v ?? '').slice(0, 140); continue; }
     if (k === 'username') { const u = String(v ?? ''); checkUsername(u, me); set.username = u; continue; }
+    // канал/группа в профиле: только публичная, где человек владелец
+    if (k === 'profileChannel') {
+      if (!v) { set.profileChannel = null; continue; }
+      const c = chatsDb.get(String(v));
+      if (!c || !isRoom(c) || !c.username || c.owner !== me) throw new ApiError(400, 'bad_channel', 'Only your public channel or group can be shown in your profile');
+      set.profileChannel = c.id;
+      continue;
+    }
     if (k === 'messages') {
       // клиент может только добавлять напоминания; остальное создаёт сервер
       const known = new Set((current.messages ?? []).map((m) => m.id));
@@ -86,6 +94,10 @@ function checkNewChat(me, doc) {
   if (!members.includes(me)) deny('You must be a member');
   if (isRoom(doc)) {
     if (doc.owner !== me) deny('Owner must be you');
+    // не больше 3 своих каналов и 3 своих групп
+    const ROOM_LIMIT = 3;
+    const owned = chatsDb.forUser(me).filter((c) => c.type === doc.type && c.owner === me && c.id !== doc.id).length;
+    if (owned >= ROOM_LIMIT) throw new ApiError(403, 'room_limit', doc.type === 'channel' ? `You can have up to ${ROOM_LIMIT} channels` : `You can have up to ${ROOM_LIMIT} groups`);
     if (!String(doc.name ?? '').trim()) throw new ApiError(400, 'bad_name', 'Name is required');
     checkUsername(doc.username, doc.id);
     if (!doc.id.startsWith(`${doc.type}_`)) deny('Bad id');

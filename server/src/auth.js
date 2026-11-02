@@ -171,6 +171,7 @@ export function project(user, viewerId) {
     avatar: p.avatar === 'nobody' ? { ...(user.avatar ?? {}), photo: null } : user.avatar ?? {},
     publicId: user.publicId,
     role: user.role,
+    profileChannel: user.profileChannel ?? null,
     official: Boolean(user.official),
     premium: Boolean(user.premium),
     bot: Boolean(user.bot),

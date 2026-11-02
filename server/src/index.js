@@ -18,6 +18,7 @@ import { startBot } from './tgbot.js';
 import { snapshot, applyPatches, broadcastUser, housekeeping, findInvite, joinByInvite } from './sync.js';
 import * as bots from './bots.js';
 import { assertStatsAccess, serviceStats } from './stats.js';
+import { pushKey, subscribe as pushSubscribe, unsubscribeSession, unsubscribe as pushUnsubscribe } from './push.js';
 import { fileCipher, readSealedFile, sealFileInPlace } from './vault.js';
 import { attachRealtime, kickSession, qrDeliver, sendTo } from './realtime.js';
 
@@ -188,8 +189,24 @@ route('POST', '/api/sync', async (req) => {
   return { results: applyPatches(s.userId, patches, conn ? findConn(s.userId, conn) : undefined) };
 });
 
+// Push-уведомления: ключ сервера и подписка этого устройства
+route('GET', '/api/push/key', () => ({ key: pushKey() }));
+route('POST', '/api/push/subscribe', async (req) => {
+  const s = auth(req);
+  const { sub } = await readBody(req);
+  if (!pushSubscribe(s.userId, s.id, sub)) throw new ApiError(400, 'bad_subscription', 'Bad subscription');
+  return { ok: true };
+});
+route('POST', '/api/push/unsubscribe', async (req) => {
+  auth(req);
+  const { endpoint } = await readBody(req);
+  pushUnsubscribe(endpoint);
+  return { ok: true };
+});
+
 route('POST', '/api/logout', (req) => {
   const s = auth(req);
+  unsubscribeSession(s.id);
   deleteSession(s.id);
   kickSession(s.id);
   broadcastUser(s.userId);

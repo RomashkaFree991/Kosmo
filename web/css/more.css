@@ -839,3 +839,68 @@ html[data-theme="material"] .avatar.avatar-room { clip-path: none !important; bo
 .st-tag { font-style: normal; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; padding: 1px 5px; border-radius: 6px; background: rgba(var(--ink), 0.1); color: var(--c-text-2); vertical-align: 2px; }
 .st-prem { background: color-mix(in srgb, #a970ff 25%, transparent); color: #a970ff; }
 .st-on { color: #34c759; font-weight: 600; }
+
+/* ---------- Системные эмодзи (на iPhone/Mac — Apple) ---------- */
+span.emoji { display: inline-grid; place-items: center; width: 1.2em; height: 1.2em; container-type: size; flex: none; line-height: 1; vertical-align: -0.2em; }
+span.emoji > i { font-style: normal; font-size: 86cqh; line-height: 1; font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Twemoji Mozilla", sans-serif; }
+span.emoji-big { width: 112px; height: 112px; filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.3)); }
+.emoji-picker { display: flex; flex-direction: column; gap: 6px; width: min(360px, calc(100% - 20px)); max-height: min(420px, 60vh); }
+.emoji-picker .picker-tabs { position: static; margin: 0; padding: 0; background: none; }
+.emoji-picker .picker-body { overflow-y: auto; min-height: 0; flex: 1; overscroll-behavior: contain; margin: 0 -4px; padding: 0 4px; }
+.emoji-search input { width: 100%; height: 36px; padding: 0 12px; border: 0; border-radius: 12px; background: rgba(var(--ink), 0.08); color: var(--c-text); font: inherit; font-size: 15px; outline: none; }
+.emoji-jump { display: flex; justify-content: space-between; gap: 2px; }
+.emoji-jump button { flex: 1; height: 30px; border: 0; border-radius: 10px; background: none; font-size: 18px; line-height: 1; padding: 0; font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif; }
+.emoji-jump button:active { background: rgba(var(--ink), 0.1); }
+.emoji-picker .emoji-grid { grid-template-columns: repeat(8, 1fr); gap: 0; content-visibility: auto; contain-intrinsic-size: auto 400px; }
+.emoji-picker .emoji-opt { animation: none; border-radius: 10px; }
+.emoji-picker .emoji-opt span.emoji { width: 32px; height: 32px; }
+.emoji-picker .emoji-opt:active { background: rgba(var(--ink), 0.12); scale: 0.9; }
+.emoji-cat { margin: 8px 4px 4px; font-size: 12px; font-weight: 600; color: var(--c-text-2); text-transform: uppercase; letter-spacing: 0.04em; }
+.emoji-none { padding: 24px; text-align: center; color: var(--c-text-2); }
+.emoji-loading { min-height: 200px; }
+.react-grid { max-height: 220px; overflow-y: auto; }
+
+/* ---------- Профиль: всё в одном блоке ---------- */
+.info-block { display: flex; flex-direction: column; padding: 4px 0; overflow: hidden; }
+.info-row { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; padding: 10px 16px; border: 0; background: none; color: inherit; font: inherit; text-align: left; position: relative; }
+.info-row + .info-row::before { content: ""; position: absolute; top: 0; left: 16px; right: 0; height: 1px; background: var(--c-hairline, rgba(var(--ink), 0.1)); }
+button.info-row:active { background: rgba(var(--ink), 0.06); }
+.info-value { font-size: 16px; line-height: 1.3; word-break: break-word; }
+.info-row.is-multi .info-value { white-space: pre-wrap; }
+.info-label { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--c-text-2); }
+.info-label .tile-hidden { font-size: 11px; }
+.info-channel { flex-direction: row; align-items: center; gap: 12px; }
+.info-channel .avatar { width: 44px; height: 44px; flex: none; }
+.info-ch-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.field-select select { width: 100%; height: 100%; min-height: 48px; padding: 0 14px; border: 0; background: none; color: var(--c-text); font: inherit; font-size: 16px; appearance: none; }
+#chat-list > .chat:not(.is-new) { animation: none; }
+.switch-who { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.switch-who .avatar { width: 64px; height: 64px; margin-bottom: 4px; }
+.switch-who small { color: var(--c-text-2); }
+.switch-modal .pm-note { text-align: center; }
+.switch-pad { display: flex; flex-direction: column; align-items: center; }
+
+/* ---------- Шторка галочек ---------- */
+.b-meta .ticks { cursor: pointer; }
+.rc-hero { align-self: center; width: 96px; height: 96px; display: grid; place-items: center; border-radius: 50%; background: rgba(var(--ink), 0.07); color: var(--c-text-2); }
+.rc-hero.is-read { background: color-mix(in srgb, var(--c-accent) 18%, transparent); color: var(--c-accent); }
+.rc-hero svg { width: 60px; height: 60px; animation: rc-pop 560ms var(--spring-bouncy) both; }
+.rc-hero .ticks { stroke-width: 1.6; }
+@keyframes rc-pop { from { scale: 0.3; opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .rc-hero svg { animation: none; } }
+.rc-note { text-align: center; }
+.rc-list { display: flex; flex-direction: column; border-radius: 16px; background: rgba(var(--ink), 0.05); overflow: hidden; }
+.rc-row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; }
+.rc-list .rc-row + .rc-row { box-shadow: inset 0 1px 0 var(--c-hairline, rgba(var(--ink), 0.08)); }
+.rc-sent { border-radius: 14px; background: rgba(var(--ink), 0.05); }
+.rc-name { flex: 1; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rc-row small { color: var(--c-text-2); font-size: 13px; }
+
+/* ---------- Баннер «Включить уведомления» ---------- */
+.push-banner { display: flex; align-items: center; gap: 10px; margin: 0 16px 8px; padding: 10px 10px 10px 14px; border-radius: 20px; background: color-mix(in srgb, var(--c-accent) 14%, transparent); animation: chat-in 420ms var(--spring) both; }
+.push-banner[hidden] { display: none; }
+.pb-ic { font-size: 22px; flex: none; }
+.pb-text { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.pb-text b { font-size: 15px; }
+.pb-text small { font-size: 13px; color: var(--c-text-2); line-height: 1.3; }
+.pb-x { flex: none; width: 30px; height: 30px; border: 0; border-radius: 50%; background: none; color: var(--c-text-2); font-size: 14px; }

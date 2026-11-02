@@ -3,7 +3,8 @@
 
 import { WebSocketServer } from 'ws';
 import { sessionByToken, touchSession } from './auth.js';
-import { chats } from './db.js';
+import { chats, users } from './db.js';
+import { pushTo } from './push.js';
 
 // Кто в чате: участники, а у ещё не созданного личного чата — двое из его id
 function membersOf(chatId) {
@@ -18,6 +19,7 @@ const qrWaiters = new Map();   // QR-код → ws экрана входа
 let onActive = () => {};
 
 export const connectedUsers = () => [...byUser.keys()];
+export const isOnline = (uid) => byUser.has(uid);
 
 export function sendTo(uid, msg, exceptConn) {
   const set = byUser.get(uid);
@@ -79,6 +81,11 @@ export function attachRealtime(server, { onActivity, onGateway }) {
       if (msg.t === 'signal' && typeof msg.to === 'string') {
         // звонок: пересылаем собеседнику (во все его вкладки) и своим другим вкладкам
         sendTo(msg.to, { t: 'signal', from: ws.uid, data: msg.data }, ws);
+        // Kosmo у собеседника закрыт — входящий звонок приходит push-уведомлением
+        if (msg.data?.type === 'ring' && msg.to !== ws.uid && !byUser.has(msg.to)) {
+          const from = users.get(ws.uid);
+          pushTo(msg.to, { t: 'call', title: String(from?.name ?? 'Kosmo'), body: msg.data.video ? 'Incoming video call' : 'Incoming call', tag: `call-${String(msg.data.callId ?? '').slice(0, 20)}`, from: ws.uid });
+        }
         if (msg.mirror) sendTo(ws.uid, { t: 'signal', from: ws.uid, data: msg.data }, ws);
         return;
       }

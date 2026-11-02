@@ -6,11 +6,19 @@ import { users, chats, posts, stories, tx } from './db.js';
 import { project, ApiError } from './auth.js';
 import { checkAccount, checkChat, checkPost, checkStory } from './rules.js';
 import { noteMessages } from './bots.js';
-import { sendTo, sendAll, connectedUsers } from './realtime.js';
+import { sendTo, sendAll, connectedUsers, isOnline } from './realtime.js';
+import { pushMessages } from './push.js';
 
 const DAY = 24 * 3600 * 1000;
 const isPublicRoom = (c) => (c?.type === 'group' || c?.type === 'channel') && Boolean(c.username);
 const visibleMsgs = (c, now = Date.now()) => ({ ...c, messages: (c.messages ?? []).filter((m) => !m.expiresAt || m.expiresAt > now) });
+
+// Истории видят только те, у кого есть личный чат с автором (и сам автор)
+const dmId = (a, b) => [a, b].sort().join('_');
+export function storyVisible(s, uid) {
+  if (!s || s.author === uid) return true;
+  return Boolean(chats.get(dmId(s.author, uid)) || chats.get(`secret_${dmId(s.author, uid)}`));
+}
 
 export function snapshot(uid) {
   const accounts = {};
@@ -22,7 +30,7 @@ export function snapshot(uid) {
     accounts,
     chats: myChats,
     feed: posts.all().sort((a, b) => b.at - a.at),
-    stories: stories.all().filter((s) => now - s.at < DAY),
+    stories: stories.all().filter((s) => now - s.at < DAY && storyVisible(s, uid)),
   };
 }
 
@@ -37,6 +45,7 @@ export function broadcastUser(userId, exceptConn) {
 
 function broadcastChat(patch, before, after, exceptConn) {
   noteMessages(patch, before, after);   // входящие для ботов-участников
+  try { pushMessages(patch, before, after, isOnline); } catch (e) { console.error('push', e.message); }
   const audience = new Set([...(before?.members ?? []), ...(after?.members ?? [])]);
   // публичные группы и каналы видят все
   if (isPublicRoom(before) || isPublicRoom(after)) connectedUsers().forEach((u) => audience.add(u));
@@ -107,7 +116,11 @@ function applyOne(uid, raw, conn) {
       const p = checkStory(uid, { ...raw, id }, before);
       if (p.op === 'del') stories.remove(id);
       else stories.save(applyToDoc('stories', before, p));
-      sendAll({ t: 'patch', patch: p }, conn);
+      if (p.op === 'del') sendAll({ t: 'patch', patch: p }, conn);
+      else {
+        const story = stories.get(id);
+        for (const viewer of connectedUsers()) if (storyVisible(story, viewer)) sendTo(viewer, { t: 'patch', patch: p }, conn);
+      }
       return p;
     }
     default:
@@ -120,7 +133,7 @@ function resync(uid, col, id) {
   if (col === 'accounts') doc = project(users.get(id), uid);
   if (col === 'chats') { const c = chats.get(id); doc = c && (c.members.includes(uid) || isPublicRoom(c)) ? visibleMsgs(c) : null; }
   if (col === 'feed') doc = posts.get(id);
-  if (col === 'stories') doc = stories.get(id);
+  if (col === 'stories') { const st = stories.get(id); doc = storyVisible(st, uid) ? st : null; }
   sendTo(uid, { t: 'patch', patch: doc ? { col, id, op: 'put', replace: true, set: doc } : { col, id, op: 'del' } });
 }
 

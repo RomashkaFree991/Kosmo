@@ -21,6 +21,7 @@ import { openViewer } from './viewer.js';
 import { renderStories } from './stories.js';
 import { rememberAccount, forgetAccount, linkedAccounts, paintAuthCancel } from './accounts.js';
 import { handleJoinLink } from './plus.js';
+import { pushState, enablePush, syncPush } from './push.js';
 import { api, boot, shutdown, loadSnapshot } from './api.js';
 
 const app = $('#app');
@@ -426,8 +427,39 @@ export function showApp({ animate = true } = {}) {
   heartbeat();
   // открыли сайт по ссылке-приглашению …/#join=КОД
   handleJoinLink((id) => { renderChatList(); openChat(id); });
+  // открыли из push-уведомления: …/?chat=ID
+  const fromPush = new URLSearchParams(location.search).get('chat');
+  if (fromPush) {
+    history.replaceState(null, '', location.pathname + location.hash);
+    setTimeout(() => openChat(fromPush), 300);
+  }
   return true;
 }
+
+/* ---------- Уведомления, когда Kosmo закрыт ---------- */
+const PUSH_HIDE = 'kosmo:push-banner-off';
+function paintPushBanner() {
+  const box = $('#push-banner');
+  const st = pushState();
+  let off = false;
+  try { off = localStorage.getItem(PUSH_HIDE) === st; } catch { /* */ }
+  if (off || !['default', 'install'].includes(st)) { box.hidden = true; return; }
+  box.innerHTML = st === 'install'
+    ? `<span class="pb-ic">🔔</span><span class="pb-text"><b>Notifications on iPhone</b><small>Tap Share → “Add to Home Screen”, then open Kosmo from the Home Screen and turn notifications on.</small></span><button class="pb-x" type="button" data-push-off aria-label="Close">✕</button>`
+    : `<span class="pb-ic">🔔</span><span class="pb-text"><b>Turn on notifications</b><small>Get messages and calls even when Kosmo is closed.</small></span><button class="chip-btn" type="button" data-push-on>Turn on</button><button class="pb-x" type="button" data-push-off aria-label="Close">✕</button>`;
+  box.hidden = false;
+}
+document.addEventListener('click', async (e) => {
+  if (e.target.closest('[data-push-off]')) { try { localStorage.setItem(PUSH_HIDE, pushState()); } catch { /* */ } paintPushBanner(); }
+  if (e.target.closest('[data-push-on]')) {
+    const r = await enablePush();
+    if (r === 'granted') toast('Notifications are on');
+    else if (r === 'denied') toast('Notifications are blocked in browser settings');
+    paintPushBanner();
+  }
+});
+document.addEventListener('kosmo:booted', () => { syncPush(); paintPushBanner(); });
+document.addEventListener('kosmo:open-chat', (e) => { if (state.reload()) openChat(e.detail); });
 
 export function initHome({ logout }) {
   onLogout = logout;

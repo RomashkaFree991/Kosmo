@@ -4,6 +4,7 @@
 import { $, db, toast, escapeHtml, userAvatarHtml, cosmicBadge, userBadge } from './core.js';
 import { openOverlay, closeOverlay, state } from './panels.js';
 import { hydrateMedia } from './media.js';
+import { infoRow, profileChannelRow } from './info.js';
 
 const svg = (d) => `<svg class="i" viewBox="0 0 24 24" aria-hidden="true">${d}</svg>`;
 const ICON = {
@@ -51,12 +52,13 @@ export function showUser(userId) {
         <button class="pill-btn${myBlocked ? ' is-danger' : ''}" type="button" data-user-block>${ICON.block}${myBlocked ? 'Unblock' : 'Block'}</button>
       </div>
     </section>
-    <section class="tiles" aria-label="Account">
-      ${u.username ? tile(ICON.at, 'Username', `@${escapeHtml(u.username)}`, 'data-copy-user="username"') : ''}
-      ${tile(ICON.hash, 'ID', escapeHtml(u.publicId), 'data-copy-user="id"')}
-      ${u.email ? tile(ICON.mail, 'Email', escapeHtml(u.email), '', true) : tile(ICON.lock, 'Email', 'Hidden')}
-      ${u.bio && !p.hideBio ? tile(ICON.quote, 'Bio', escapeHtml(u.bio), '', true) : ''}
-      ${tile(ICON.calendar, 'Joined', monthYear.format(u.createdAt))}
+    <section class="group info-block" aria-label="Account">
+      ${profileChannelRow(u)}
+      ${u.username ? infoRow(`@${escapeHtml(u.username)}`, 'Username', 'data-copy-user="username"') : ''}
+      ${u.bio && !p.hideBio ? infoRow(escapeHtml(u.bio), 'Bio', '', true) : ''}
+      ${infoRow(escapeHtml(u.publicId), 'ID', 'data-copy-user="id"')}
+      ${u.email ? infoRow(escapeHtml(u.email), 'Email') : ''}
+      ${infoRow(monthYear.format(u.createdAt), 'Joined')}
     </section>`;
   hydrateMedia($('#user-profile'));
   openOverlay('user');

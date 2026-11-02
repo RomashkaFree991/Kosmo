@@ -5,6 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
   <meta name="theme-color" content="#000000">
   <title>Kosmo</title>
+  <link rel="manifest" href="/manifest.json">
+  <link rel="icon" href="/icons/icon-192.png">
+  <link rel="apple-touch-icon" href="/icons/icon-180.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Kosmo">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Roboto+Flex:opsz,wght@8..144,400;8..144,500;8..144,600;8..144,700&display=swap" rel="stylesheet">
@@ -243,6 +250,7 @@
           </button>
         </header>
         <div class="folders" id="folders" role="tablist" aria-label="Folders"></div>
+        <div class="push-banner" id="push-banner" hidden></div>
         <ul class="chat-list" id="chat-list"></ul>
       </section>
 
@@ -460,6 +468,11 @@
             <textarea id="edit-bio" rows="3" maxlength="70" placeholder="Bio" aria-label="Bio"></textarea>
             <span class="counter" id="edit-counter" aria-hidden="true">70</span>
           </div>
+          <span class="group-label">Channel or group in profile</span>
+          <div class="field glass field-select" data-refract="0.6">
+            <select id="edit-channel" aria-label="Channel or group in profile"></select>
+          </div>
+          <p class="field-hint">Only your public channels and groups (with a @username).</p>
           <button class="btn btn-primary" type="submit">Save</button>
         </form>
       </div>

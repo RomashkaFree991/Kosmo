@@ -125,10 +125,13 @@ export async function getUpdates(bot, offset = 0, timeout = 0) {
 export function sendMessage(bot, { chat_id: chatId, text, reply_to: replyTo }) {
   const body = String(text ?? '').trim();
   if (!body) throw new ApiError(400, 'bad_text', 'Text is required');
-  let id = String(chatId ?? '');
-  // можно указать и id пользователя — тогда это личный чат с ботом
-  if (users.get(id)) id = [bot.id, id].sort().join('_');
+  let id = String(chatId ?? '').trim();
+  // можно указать и пользователя (внутренний id, ID из профиля или @username) — тогда это личный чат с ботом
+  const who = users.get(id) ?? users.all().find((u) => !u.bot && (String(u.publicId) === id || (u.username && `@${u.username}` === id.toLowerCase()) || (u.username && u.username === id.toLowerCase())));
+  if (who) id = [bot.id, who.id].sort().join('_');
   const c = chats.get(id);
+  if (!c && !who) throw new ApiError(404, 'chat_not_found', 'Chat not found. Use chat.id from getUpdates, a user ID or @username');
+  if (c && !c.members.includes(bot.id)) throw new ApiError(403, 'not_member', 'The bot is not a member of this chat');
   const m = { id: newId(), at: Date.now(), from: bot.id, kind: 'text', text: body.slice(0, 4000), ...(replyTo ? { replyTo: String(replyTo) } : {}) };
   const patch = c
     ? { col: 'chats', id, op: 'put', msgs: { up: [m], del: [] } }

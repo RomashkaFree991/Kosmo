@@ -14,7 +14,7 @@ import {
 import { formatPhone, openSheet } from './phone.js';
 import { state, openPanel, panelOpen, onPanelClose, overlayOpen } from './panels.js';
 import { putBlob, mediaUrl, hydrateMedia, compressImage, mediaDuration, analyzeAudio } from './media.js';
-import { EMOJI, EMOJI_IDS, REACTIONS, emojiSvg } from './emoji.js';
+import { EMOJI, REACTIONS, emojiSvg, emojiChar, emojiLabel, isEmojiChar } from './emoji.js';
 import { showUser } from './people.js';
 import { openViewer } from './viewer.js';
 import { posts } from './feeddata.js';
@@ -29,6 +29,7 @@ import { roundHtml, openRoundRecorder } from './round.js';
 import { startCall } from './calls.js';
 import { isPending, onServerMessage, sendTyping } from './api.js';
 import { isSealed } from './e2ee.js';
+import { openModal as openPlusModal } from './plus.js';
 import { pickTime, schedule, myScheduled, openScheduledList, addReminder, TTL_OPTIONS, ttlLabel } from './schedule.js';
 
 export const KOSMO = 'kosmo';
@@ -266,7 +267,7 @@ export function previewText(m) {
     case 'voice': return `Voice message · ${fmtDur(m.duration ?? 0)}`;
     case 'audio': return m.name ?? 'Music';
     case 'code': return `Code · ${m.lang}${cap}`;
-    case 'emoji': return `${EMOJI[m.emoji]?.label ?? 'Emoji'} emoji`;
+    case 'emoji': return emojiChar(m.emoji) || 'Emoji';
     case 'post': return 'Shared post';
     case 'album': return `Album · ${m.items.length}${cap}`;
     case 'round': return `Video message · ${fmtDur(m.duration ?? 0)}`;
@@ -437,7 +438,7 @@ export function renderChatList() {
         <span class="avatar archive-avatar">${ICON.archive}</span>
         <div class="chat-top"><span class="chat-name">Archived chats</span></div>
         <div class="chat-meta">${archived.some((a) => a.unread) ? `<span class="badge is-muted">${archived.reduce((n, a) => n + a.unread, 0)}</span>` : ''}</div>
-        <div class="chat-bottom"><span class="chat-text">${archived.map((a) => (a.kosmo ? 'Kosmo' : escapeHtml(a.room?.name ?? a.other.name))).join(', ')}</span></div>
+        <div class="chat-bottom"><span class="chat-text">${archived.map((a) => (a.kosmo ? 'Kosmo' : a.saved ? 'Saved Messages' : escapeHtml(a.room?.name ?? a.other?.name ?? ''))).join(', ')}</span></div>
       </li>` : '';
     if (archiveRow) add('archive', archiveRow);
     main.forEach((it, i) => add(it.id, chatRow(it, i)));
@@ -548,7 +549,7 @@ document.addEventListener('click', (e) => {
         <button class="menu-item" type="button" data-ctx="cancel">Cancel</button>`;
       return;
     }
-    const name = item.kosmo ? 'Kosmo' : escapeHtml(item.other.name.split(/\s+/)[0]);
+    const name = item.kosmo ? 'Kosmo' : item.saved ? 'Saved Messages' : escapeHtml((item.other?.name ?? '').split(/\s+/)[0]);
     ctx.el.innerHTML = `
       <p class="ctx-confirm">Delete this chat?</p>
       <button class="menu-item danger" type="button" data-ctx="delete-me">${ICON.user}Delete for me</button>
@@ -599,6 +600,8 @@ document.addEventListener('click', (e) => {
   });
   list.addEventListener('click', (e) => {
     if (ctx.suppressClick) { ctx.suppressClick = false; e.stopPropagation(); return; }
+    // открыто меню чата: нажатие по строке только закрывает его
+    if (ctx.el) { e.stopPropagation(); closeCtx(); return; }
     if (e.target.closest('[data-archive-open]')) { setArchiveMode(true); return; }
     const row = e.target.closest('.chat[data-chat]');
     if (row) openChat(row.dataset.chat);
@@ -622,6 +625,33 @@ document.addEventListener('click', (e) => {
     closeAttach();
   });
 })();
+
+/* ---------------------------------------------------------------------------
+   Галочки: шторка «кто и когда прочитал»
+   --------------------------------------------------------------------------- */
+function openReceipt(msgId) {
+  const c = curChat();
+  const m = c?.messages.find((x) => x.id === msgId);
+  if (!m) return;
+  const me = state.acc.user.id;
+  const pending = isPending(m.id);
+  const hidden = state.acc.user.privacy?.readReceipts === false;
+  const readers = hidden ? [] : c.members.filter((u) => u !== me && (c.read[u] ?? 0) >= m.at && db.get(u)?.privacy?.readReceipts !== false);
+  const room = isRoom(c);
+  const state2 = pending ? 'pending' : readers.length ? 'read' : 'sent';
+  const title = { pending: 'Sending…', read: 'Read', sent: 'Delivered' }[state2];
+  const when = (t) => `${new Date(t).toDateString() === new Date().toDateString() ? 'today' : formatDate(t).split(',')[0]} at ${formatTime(t)}`;
+  const note = pending ? 'The message is waiting for the connection and will be sent automatically.'
+    : state2 === 'sent' ? (hidden ? 'You turned off read receipts, so you don’t see when others read your messages.' : room ? 'Nobody has read it yet. It’s delivered to the server and everyone in the chat will get it.' : 'Delivered. One check — not read yet.')
+      : room ? `Read by ${readers.length} of ${c.members.length - 1}.` : 'Two checks — the message was read.';
+  const people = readers.map((u) => db.get(u)).filter(Boolean).map((u) => `
+    <div class="rc-row">${userAvatarHtml(u, 'avatar-xs')}<span class="rc-name">${escapeHtml(u.name)}</span><small>${(c.read[u.id] ?? 0) ? when(c.read[u.id]) : ''}</small></div>`).join('');
+  openPlusModal(title, `
+    <div class="rc-hero is-${state2}">${state2 === 'pending' ? CLOCK : ticks(state2 === 'read', 'rc-ticks')}</div>
+    <p class="pm-note rc-note">${note}</p>
+    <div class="rc-row rc-sent"><span class="rc-name">Sent</span><small>${when(m.at)}</small></div>
+    ${people ? `<span class="modal-label">${room ? 'Seen by' : 'Read'}</span><div class="rc-list">${people}</div>` : ''}`, { cls: 'rc-sheet' });
+}
 
 /* ---------------------------------------------------------------------------
    Окно чата
@@ -788,6 +818,8 @@ function paintHeader() {
     avatar = userAvatarHtml(other ?? { name: '?' }, 'avatar-head');
   }
   if (c?.ttl) sub += ` · auto-delete ${ttlLabel(c.ttl)}`;
+  // замок: переписка хранится на сервере зашифрованной (кроме публичных групп и каналов)
+  $('#chat-sub').classList.toggle('is-e2ee', open.id !== KOSMO && !(c && isRoom(c) && c.username) && !typingIn(open.id));
   const ty = typingIn(open.id);
   if (ty) sub = ty;
   $('#chat-sub').classList.toggle('is-typing', Boolean(ty));
@@ -900,7 +932,7 @@ export function reactionsHtml(m, scope = 'msg', anim = false) {
   const prev = reactMemo.get(m.id) ?? {};
   return `<div class="reactions">${entries.map(([id, users]) => {
     const changed = anim && (prev[id]?.length ?? 0) < users.length;
-    return `<button class="reaction${users.includes(me) ? ' is-mine' : ''}${changed ? ' is-new' : ''}" type="button" data-react-toggle="${id}" data-${scope}="${m.id}" aria-label="${EMOJI[id]?.label} ${users.length}">
+    return `<button class="reaction${users.includes(me) ? ' is-mine' : ''}${changed ? ' is-new' : ''}" type="button" data-react-toggle="${id}" data-${scope}="${m.id}" aria-label="${emojiLabel(id)} ${users.length}">
       ${emojiSvg(id)}<span>${users.length}</span>
     </button>`;
   }).join('')}</div>`;
@@ -1173,8 +1205,15 @@ $('#pinned-close').addEventListener('click', () => {
    --------------------------------------------------------------------------- */
 let compose = null;   // { mode: 'reply' | 'edit', id }
 
+const graphemes = (t) => [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(t)].length;
+const MORE_REACTIONS = ['😁', '🥰', '🤔', '🤯', '😱', '🤬', '🙏', '👏', '💯', '🤝', '👌', '😴', '🥳', '😇', '🤡', '💔', '🏆', '🍓', '⚡', '🌚', '🌭', '🍾', '💋', '🖕', '😈', '👀', '🎃', '🙈', '😘', '🦄', '💅', '🤪', '🗿', '🆒', '💘', '🙉', '😐', '🤓', '👻', '🕊️'];
+
 function send(msg, { at = null, silent = false } = {}) {
   const me = state.acc.user.id;
+  // одно эмодзи без текста — большим
+  const lone = !msg.kind && typeof msg.text === 'string' ? msg.text.trim() : '';
+  if (lone && graphemes(lone) === 1 && isEmojiChar(lone)) msg = { ...msg, kind: 'emoji', emoji: lone, text: undefined };
+  closePicker();
   const extra = compose?.mode === 'reply' ? { replyTo: compose.id, ...(compose.quote ? { quote: compose.quote } : {}) } : {};
   if (isSavedOpen() && !curChat()) chats.save({ id: open.id, saved: true, members: [me], messages: [], read: {}, createdAt: Date.now() });
   const c = curChat();
@@ -1466,10 +1505,10 @@ function openMsgMenu(row) {
   ].filter(Boolean);
   wrap.innerHTML = `
     ${reactable ? `<div class="react-bar glass glass-text" role="group" aria-label="Reactions">
-      ${REACTIONS.map((e, i) => `<button class="react-opt${e === myReaction ? ' is-mine' : ''}" type="button" style="--i:${i}" data-react-pick="${e}" aria-label="${EMOJI[e].label}">${emojiSvg(e)}</button>`).join('')}
+      ${REACTIONS.map((e, i) => `<button class="react-opt${e === myReaction ? ' is-mine' : ''}" type="button" style="--i:${i}" data-react-pick="${e}" aria-label="${emojiLabel(e)}">${emojiSvg(e)}</button>`).join('')}
       <button class="react-opt react-more" type="button" style="--i:${REACTIONS.length}" data-react-more aria-label="More reactions">${PI.plus}</button>
     </div>
-    <div class="react-grid glass glass-text" hidden>${Object.keys(EMOJI).filter((e) => !REACTIONS.includes(e)).map((e) => `<button class="react-opt${e === myReaction ? ' is-mine' : ''}" type="button" data-react-pick="${e}" aria-label="${EMOJI[e].label}">${emojiSvg(e)}</button>`).join('')}</div>` : ''}
+    <div class="react-grid glass glass-text" hidden>${MORE_REACTIONS.map((e) => `<button class="react-opt${e === myReaction ? ' is-mine' : ''}" type="button" data-react-pick="${e}" aria-label="${emojiLabel(e)}">${emojiSvg(e)}</button>`).join('')}</div>` : ''}
     <div class="menu msg-actions glass glass-text" role="menu">${actions.join('')}</div>`;
   $('#app').append(scrim, clone, wrap);
   mm.el = wrap;
@@ -1607,6 +1646,8 @@ function deleteAnimated(id) {
   let swipe = null;
   let swallowClick = 0;
   messagesBox.addEventListener('click', (ev) => {
+    const tk = ev.target.closest('.b-meta .ticks');
+    if (tk) { ev.stopPropagation(); ev.preventDefault(); openReceipt(tk.closest('[data-id]')?.dataset.id); return; }
     if (Date.now() < swallowClick) { ev.stopPropagation(); ev.preventDefault(); swallowClick = 0; }
   }, true);
   const SWIPE = 64;
@@ -1799,28 +1840,62 @@ $('#emoji-btn').addEventListener('click', (e) => {
   refreshRefraction();
 });
 let pickerTab = 'emoji';
+let emojiGroups = null;   // полный набор, грузится при первом открытии
+let emojiQuery = '';
+const RECENT_KEY = 'emoji-recent';
+const recentEmoji = () => { try { return JSON.parse(localStorage.getItem(RECENT_KEY)) ?? []; } catch { return []; } };
+function rememberEmoji(ch) {
+  const list = [ch, ...recentEmoji().filter((x) => x !== ch)].slice(0, 32);
+  try { localStorage.setItem(RECENT_KEY, JSON.stringify(list)); } catch { /* приватный режим */ }
+}
+const emojiBtn = (ch) => `<button class="emoji-opt" type="button" data-send-emoji="${ch}" aria-label="${ch}"><span class="emoji"><i>${ch}</i></span></button>`;
+function emojiBody() {
+  if (!emojiGroups) {
+    import('./emoji-data.js').then((m) => { emojiGroups = m.EMOJI_GROUPS; if (!picker.hidden && pickerTab === 'emoji') paintPicker(); });
+    return '<div class="emoji-loading"></div>';
+  }
+  const q = emojiQuery.trim().toLowerCase();
+  if (q) {
+    const hits = emojiGroups.flatMap(([, list]) => list).filter(([, words]) => words.includes(q)).slice(0, 160);
+    return hits.length ? `<div class="emoji-grid">${hits.map(([ch]) => emojiBtn(ch)).join('')}</div>` : '<p class="emoji-none">No emoji found</p>';
+  }
+  const recent = recentEmoji();
+  return `${recent.length ? `<p class="emoji-cat">Recent</p><div class="emoji-grid">${recent.map(emojiBtn).join('')}</div>` : ''}
+    ${emojiGroups.map(([name, list], gi) => `<p class="emoji-cat" id="emoji-cat-${gi}">${name}</p><div class="emoji-grid">${list.map(([ch]) => emojiBtn(ch)).join('')}</div>`).join('')}`;
+}
 function paintPicker() {
   picker.innerHTML = `
     <div class="picker-tabs" role="tablist">
       <button type="button" role="tab" data-picker-tab="emoji" aria-selected="${pickerTab === 'emoji'}">Emoji</button>
       <button type="button" role="tab" data-picker-tab="stickers" aria-selected="${pickerTab === 'stickers'}">Stickers</button>
     </div>
-    <div class="picker-body">${pickerTab === 'emoji'
-    ? `<div class="emoji-grid">${EMOJI_IDS.map((id, i) => `
-        <button class="emoji-opt" type="button" style="--i:${i}" data-send-emoji="${id}" aria-label="${EMOJI[id].label}">${emojiSvg(id)}</button>`).join('')}</div>`
-    : stickerPickerHtml()}</div>`;
+    ${pickerTab === 'emoji' ? `<label class="emoji-search"><input type="search" id="emoji-q" placeholder="Search emoji" value="${escapeHtml(emojiQuery)}" autocomplete="off"></label>
+      ${emojiGroups && !emojiQuery ? `<div class="emoji-jump">${emojiGroups.map(([name, list], gi) => `<button type="button" data-emoji-jump="${gi}" aria-label="${name}">${list[0][0]}</button>`).join('')}</div>` : ''}` : ''}
+    <div class="picker-body">${pickerTab === 'emoji' ? emojiBody() : stickerPickerHtml()}</div>`;
 }
+picker.addEventListener('input', (e) => {
+  if (e.target.id !== 'emoji-q') return;
+  emojiQuery = e.target.value;
+  $('.picker-body', picker).innerHTML = emojiBody();
+  $('.emoji-jump', picker)?.toggleAttribute('hidden', Boolean(emojiQuery));
+});
 picker.addEventListener('click', (e) => {
   const tab = e.target.closest('[data-picker-tab]');
   // перерисовка отрывает цель клика от DOM — не даём «клику снаружи» закрыть выбор
   if (tab) { e.stopPropagation(); pickerTab = tab.dataset.pickerTab; paintPicker(); return; }
+  const jump = e.target.closest('[data-emoji-jump]');
+  if (jump) { $(`#emoji-cat-${jump.dataset.emojiJump}`, picker)?.scrollIntoView({ block: 'start', behavior: 'smooth' }); return; }
   const st = e.target.closest('[data-send-sticker]');
   if (st) { closePicker(); send({ kind: 'sticker', sticker: stickerByRef(st.dataset.sendSticker) }); return; }
   const b = e.target.closest('[data-send-emoji]');
   if (!b) return;
-  // эмодзи вставляется в текст как знак, если уже что-то пишут; иначе отправляется большой
-  closePicker();
-  send({ kind: 'emoji', emoji: b.dataset.sendEmoji });
+  // эмодзи вставляется в текст (выбор остаётся открытым); одно эмодзи без текста уйдёт большим
+  const ch = b.dataset.sendEmoji;
+  rememberEmoji(ch);
+  const at = input.selectionStart ?? input.value.length;
+  input.value = input.value.slice(0, at) + ch + input.value.slice(input.selectionEnd ?? at);
+  input.selectionStart = input.selectionEnd = at + ch.length;
+  input.dispatchEvent(new Event('input', { bubbles: true }));
 });
 
 /* ---------- Вложения (с подписью) ---------- */

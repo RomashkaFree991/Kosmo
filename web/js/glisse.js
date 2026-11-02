@@ -217,7 +217,7 @@ function lensFilter(w, h, radius) {
   }
   ctx.putImageData(img, 0, 0);
   const id = `lg-lens-${lensCache.size}`;
-  const s = bezel * 1.1;
+  const s = bezel * 0.75;
   defs.insertAdjacentHTML('beforeend', `
     <filter id="${id}" x="0" y="0" width="${w}" height="${h}" filterUnits="userSpaceOnUse" primitiveUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
       <feImage href="${c.toDataURL()}" x="0" y="0" width="${w}" height="${h}" preserveAspectRatio="none" result="map"/>
@@ -231,7 +231,7 @@ function lensFilter(w, h, radius) {
    Selection: the indicator springs between choices, follows a drag and lifts
    into a clear lens while held (tab bar, .seg, .segs)
    --------------------------------------------------------------------------- */
-const REST = [1024, 58.9, 676, 47.8];   // slide k/d, lift k/d
+const REST = [520, 40, 676, 47.8];   // slide k/d, lift k/d (glisse: 1024/58.9 — для вкладок слишком резко)
 const DRAG = [2500, 94, 576, 44.2];
 const BARS = '.tabbar, .seg, .segs';
 const bars = new WeakMap();
@@ -328,14 +328,21 @@ function attachBar(bar) {
     const b = boxOf(it);
     gesture = { id: e.pointerId, x: e.clientX, y: e.clientY, start: it, b, moved: false, over: it };
     suppress = false;
-    bar.dataset.lgLifted = '';
     const r = it.getBoundingClientRect();
     thumb.style.setProperty('--lg-x', `${clamp(((e.clientX - r.left) / r.width) * 100, 0, 100)}%`);
+    // линза — только если палец задержался или повёл: обычный тап просто переключает
+    gesture.timer = setTimeout(() => lift(gesture), 180);
+  };
+  const lift = (g) => {
+    if (!g || g !== gesture || g.lifted) return;
+    clearTimeout(g.timer);
+    g.lifted = true;
+    bar.dataset.lgLifted = '';
     if (refracts && !matchMedia('(prefers-reduced-transparency: reduce)').matches) {
       const rad = parseFloat(getComputedStyle(thumb).borderTopLeftRadius) || 0;
-      thumb.style.setProperty('--lg-lens-filter', `url(#${lensFilter(b.w, b.h, rad)}) saturate(1.6) brightness(1.08)`);
+      thumb.style.setProperty('--lg-lens-filter', `url(#${lensFilter(g.b.w, g.b.h, rad)}) saturate(1.6) brightness(1.08)`);
     }
-    moveTo(b, !shown);
+    moveTo(g.b, !shown);
     shown = true;
     sp.lift.set(1);
   };
@@ -344,6 +351,7 @@ function attachBar(bar) {
     const dx = e.clientX - gesture.x;
     if (!gesture.moved && Math.abs(dx) > 6) {
       gesture.moved = true;
+      lift(gesture);
       try { bar.setPointerCapture(e.pointerId); } catch { /* touch already captured */ }
     }
     if (!gesture.moved) return;
@@ -361,6 +369,7 @@ function attachBar(bar) {
   const up = (e) => {
     if (!gesture || e.pointerId !== gesture.id) return;
     const g = gesture;
+    clearTimeout(g.timer);
     gesture = null;
     delete bar.dataset.lgLifted;
     if (bar.hasPointerCapture?.(g.id)) bar.releasePointerCapture(g.id);

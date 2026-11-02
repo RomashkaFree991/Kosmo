@@ -6,9 +6,10 @@ import {
   timeAgo, refreshRefraction, initials,
 } from './core.js';
 import { createOtp } from './otp.js';
-import { state, openPanel } from './panels.js';
+import { state, openPanel, overlayOpen, closeOverlay } from './panels.js';
 import { putBlob, hydrateMedia, squareAvatar } from './media.js';
-import { ICON as CHAT_ICON, deviceIcon, openSaved, openChatAt, chatTitle, chats } from './chats.js';
+import { infoRow, profileChannelRow } from './info.js';
+import { ICON as CHAT_ICON, deviceIcon, openSaved, openChatAt, chatTitle, chats, chatAvatar, openChat, isRoom } from './chats.js';
 import {
   PI, openBookmarks, openDnd, dndUntil, openBackup, openBots, bookmarks, openStats,
 } from './plus.js';
@@ -67,7 +68,7 @@ const MAIL_ICON = '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x
 let sig = '';
 export function renderProfile(force = false) {
   const u = state.acc.user;
-  const next = JSON.stringify([u.premium, u.settings?.dnd, (u.bookmarks ?? []).length, u.name, u.username, u.email, u.bio, u.role, u.avatar, u.publicId, u.sessions.length, u.privacy, u.security?.lock, linkedAccounts().map((a) => a.uid)]);
+  const next = JSON.stringify([u.profileChannel, u.profileChannel && chats.get(u.profileChannel)?.members?.length, u.premium, u.settings?.dnd, (u.bookmarks ?? []).length, u.name, u.username, u.email, u.bio, u.role, u.avatar, u.publicId, u.sessions.length, u.privacy, u.security?.lock, linkedAccounts().map((a) => a.uid)]);
   if (next === sig && !force) return;
   sig = next;
   $('#profile').innerHTML = `
@@ -82,13 +83,14 @@ export function renderProfile(force = false) {
       <button class="pill-btn" type="button" data-open-edit>${ICON.edit}Edit profile</button>
     </section>
 
-    <section class="tiles" aria-label="Account">
-      ${u.username ? tile(ICON.at, 'Username', `@${escapeHtml(u.username)}`, 'data-copy="username" aria-label="Copy username"') : tile(ICON.at, 'Username', '<span class="tile-muted">Not set</span>', 'data-open-edit aria-label="Set username"')}
-      ${tile(ICON.hash, 'ID', escapeHtml(u.publicId), 'data-copy="id" aria-label="Copy ID"')}
-      ${tile(MAIL_ICON, `Email${u.privacy?.showEmail ? '' : hiddenMark}`, escapeHtml(u.email ?? ''), 'data-open-email aria-label="Change email"', true)}
-      ${u.bio ? tile(ICON.quote, `Bio${u.privacy?.hideBio ? hiddenMark : ''}`, escapeHtml(u.bio), '', true) : ''}
-      ${tile(ICON.calendar, 'Joined', monthYear.format(u.createdAt))}
-      ${tile(ICON.devices, 'Sessions', `${u.sessions.length} active`, 'data-open-sessions aria-label="Sessions"')}
+    <section class="group info-block" aria-label="Account">
+      ${profileChannelRow(u)}
+      ${infoRow(u.username ? `@${escapeHtml(u.username)}` : '<span class="tile-muted">Not set</span>', 'Username', u.username ? 'data-copy="username" aria-label="Copy username"' : 'data-open-edit aria-label="Set username"')}
+      ${u.bio ? infoRow(escapeHtml(u.bio), `Bio${u.privacy?.hideBio ? hiddenMark : ''}`, 'data-open-edit', true) : infoRow('<span class="tile-muted">Add a few words about yourself</span>', 'Bio', 'data-open-edit')}
+      ${infoRow(escapeHtml(u.publicId), 'ID', 'data-copy="id" aria-label="Copy ID"')}
+      ${infoRow(escapeHtml(u.email ?? ''), `Email${u.privacy?.showEmail ? '' : hiddenMark}`, 'data-open-email aria-label="Change email"')}
+      ${infoRow(monthYear.format(u.createdAt), 'Joined')}
+      ${infoRow(`${u.sessions.length} active`, 'Sessions', 'data-open-sessions aria-label="Sessions"')}
     </section>
 
     <section class="group settings-group" aria-label="Kosmo">
@@ -204,6 +206,8 @@ function openEdit() {
   editBio.value = u.bio ?? '';
   $('#avatar-text').value = draft.avatar.text ?? '';
   editCounter.textContent = 70 - editBio.value.length;
+  const mine = Object.values(chats.all()).filter((c) => isRoom(c) && c.username && c.owner === u.id);
+  $('#edit-channel').innerHTML = `<option value="">None</option>${mine.map((c) => `<option value="${c.id}"${u.profileChannel === c.id ? ' selected' : ''}>${escapeHtml(chatTitle(c))} (@${escapeHtml(c.username)})</option>`).join('')}`;
   $('#avatar-colors').innerHTML = `
     <button class="color-chip color-auto" type="button" role="radio" data-color="null" aria-label="Automatic color">Auto</button>
     ${AVATAR_COLORS.map(([a, b], i) => `<button class="color-chip" type="button" role="radio" data-color="${i}" style="--a1:${a};--a2:${b}" aria-label="Color ${i + 1}"></button>`).join('')}`;
@@ -272,6 +276,7 @@ $('#edit-form').addEventListener('submit', async (e) => {
     u.username = username;
     u.bio = editBio.value.trim();
     u.avatar = draft.avatar;
+    u.profileChannel = $('#edit-channel').value || null;
   });
   state.reload();
   renderProfile(true);
@@ -443,3 +448,11 @@ $('#cp-new-form').addEventListener('submit', (e) => {
 });
 
 export const resetProfileCache = () => { sig = ''; };
+
+// канал/группа из профиля
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-open-profile-channel]');
+  if (!b) return;
+  if (overlayOpen()) closeOverlay();
+  openChat(b.dataset.openProfileChannel);
+});

@@ -7,7 +7,7 @@ import {
 import { state, openPanel, closePanel, openOverlay, closeOverlay, overlayOpen } from './panels.js';
 import { putBlob, hydrateMedia, compressImage, mediaDuration } from './media.js';
 import { posts } from './feeddata.js';
-import { EMOJI, REACTIONS, emojiSvg } from './emoji.js';
+import { REACTIONS, emojiSvg, emojiLabel } from './emoji.js';
 import { openSheet } from './phone.js';
 import { openViewer } from './viewer.js';
 import { publicUser, forwardTargets, sendToChat, flyReaction, ICON, fmtDur } from './chats.js';
@@ -43,7 +43,7 @@ function reactionRow(p) {
   const me = state.acc.user.id;
   const entries = Object.entries(p.reactions ?? {}).filter(([, u]) => u.length);
   return `<div class="reactions post-reactions">${entries.map(([id, users]) => `
-    <button class="reaction${users.includes(me) ? ' is-mine' : ''}" type="button" data-post-react="${id}" data-post="${p.id}" aria-label="${EMOJI[id]?.label} ${users.length}">${emojiSvg(id)}<span>${users.length}</span></button>`).join('')}
+    <button class="reaction${users.includes(me) ? ' is-mine' : ''}" type="button" data-post-react="${id}" data-post="${p.id}" aria-label="${emojiLabel(id)} ${users.length}">${emojiSvg(id)}<span>${users.length}</span></button>`).join('')}
     <button class="reaction reaction-add" type="button" data-post-react-open="${p.id}" aria-label="Add reaction">${I.smile}</button>
   </div>`;
 }
@@ -153,7 +153,7 @@ function openReactPop(btn, id) {
   const r = btn.getBoundingClientRect();
   pop = document.createElement('div');
   pop.className = 'react-bar react-pop glass glass-text';
-  pop.innerHTML = REACTIONS.map((e, i) => `<button class="react-opt" type="button" style="--i:${i}" data-pop-react="${e}" aria-label="${EMOJI[e].label}">${emojiSvg(e)}</button>`).join('');
+  pop.innerHTML = REACTIONS.map((e, i) => `<button class="react-opt" type="button" style="--i:${i}" data-pop-react="${e}" aria-label="${emojiLabel(e)}">${emojiSvg(e)}</button>`).join('');
   document.body.append(pop);
   const w = pop.offsetWidth;
   pop.style.left = `${Math.max(10, Math.min(r.left, innerWidth - w - 10))}px`;
