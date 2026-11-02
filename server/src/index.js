@@ -270,6 +270,31 @@ route('POST', '/api/passcode/verify', async (req) => {
   return { ok: verifyPass(s.userId, code) };
 });
 
+// Забыли код-пароль, но вход на этом устройстве ещё жив: код на почту → новый код-пароль.
+// Этот сеанс остаётся, остальные завершаются; на почту — уведомление.
+route('POST', '/api/passcode/forgot/code', async (req) => {
+  const s = auth(req);
+  const u = users.get(s.userId);
+  if (!u?.email) throw new ApiError(400, 'no_email', 'No email on this account');
+  if (!rateLimit(`reset:${u.id}`, 5, 24 * 3_600_000)) throw new ApiError(429, 'too_many', 'Too many resets today, try tomorrow');
+  await startCode(u.email, 'reset', clientIp(req));
+  return { sent: true, email: u.email.replace(/^(.)(.*)(.@.*)$/, (_, a, b, c) => a + '*'.repeat(Math.min(b.length, 6)) + c) };
+});
+route('POST', '/api/passcode/forgot', async (req) => {
+  const s = auth(req);
+  const { code, next } = await readBody(req);
+  const u = users.get(s.userId);
+  if (!/^\d{4}$/.test(String(next))) throw new ApiError(400, 'bad_passcode', 'Passcode must be 4 digits');
+  useTicket(checkCode(u.email, 'reset', String(code ?? '')), 'reset');
+  setPass(u.id, next);
+  sql.prepare('DELETE FROM rate WHERE key = ?').run(`passfail:${u.id}`);   // снять 5-минутную блокировку
+  for (const x of sessionsOf(u.id)) if (x.id !== s.id) { deleteSession(x.id); kickSession(x.id); }
+  broadcastUser(u.id);
+  noticeMail(u.email, 'Код-пароль сброшен', `Код-пароль аккаунта Kosmo изменён по коду из письма, другие сеансы завершены. IP: ${clientIp(req)}.`)
+    .catch((e) => console.error('[mail]', e.message));
+  return { ok: true };
+});
+
 route('POST', '/api/passcode/change', async (req) => {
   const s = auth(req);
   const { current, next } = await readBody(req);

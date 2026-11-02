@@ -10,7 +10,7 @@ import { createPad } from './pad.js';
 import { chats, isRoom, ICON } from './chats.js';
 import { posts } from './feeddata.js';
 import { LANGS, lang, setLang } from './i18n.js';
-import { dndUntil } from './plus.js';
+import { dndUntil, openModal, closeModal } from './plus.js';
 import { api as serverApi } from './api.js';
 
 const svg = (d, cls = 'i') => `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true">${d}</svg>`;
@@ -161,6 +161,7 @@ function renderSecurity() {
     <p class="section-label">Passcode</p>
     <section class="group">
       ${row('data-sec="passcode"', SICON.key, 'Change passcode', SICON.chevron)}
+      ${row('data-sec="forgot"', SICON.key, 'Forgot passcode?', SICON.chevron)}
     </section>
     <section class="group group-pad">
       ${sw('lock', 'Passcode lock', s.lock, 'Ask for the 4-digit passcode when Kosmo opens.')}
@@ -206,6 +207,7 @@ $('#security-body').addEventListener('click', (e) => {
   const s = e.target.closest('[data-sec]');
   if (!s) return;
   if (s.dataset.sec === 'passcode') startPasscode('change');
+  if (s.dataset.sec === 'forgot') openForgotPasscode(() => toast('Passcode changed'));
   if (s.dataset.sec === 'delete') startPasscode('delete');
   if (s.dataset.sec === 'lock-now') lock();
 });
@@ -385,6 +387,68 @@ document.addEventListener('visibilitychange', () => {
 setInterval(() => {
   if (state.acc && !$('#app').hidden && lockEl.hidden && awayTooLong(lastActivity)) lock();
 }, 10_000);
+
+/* ---------------------------------------------------------------------------
+   Забыли код-пароль: код на почту аккаунта → новый код-пароль
+   --------------------------------------------------------------------------- */
+export function openForgotPasscode(onDone) {
+  let step = 'send';
+  let mail = '';
+  let code = '';
+  const wrap = openModal('Forgot passcode?', '', { cls: 'forgot-modal' });
+  const body = wrap.querySelector('.pm-body');
+  const paint = () => {
+    if (step === 'send') {
+      body.innerHTML = `
+        <p class="pm-note">We’ll send a code to the email of this account. After that you can set a new passcode — you stay signed in on this device, other sessions will be ended.</p>
+        <button class="btn btn-primary" type="button" data-fp-send>Send code</button>`;
+    } else if (step === 'code') {
+      body.innerHTML = `
+        <p class="pm-note">We sent a code to ${escapeHtml(mail)}</p>
+        <label class="modal-field"><input type="text" id="fp-code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="Code from the email"></label>
+        <button class="btn btn-primary" type="button" data-fp-code>Next</button>
+        <button class="link-btn" type="button" data-fp-send>Send again</button>`;
+      setTimeout(() => $('#fp-code', body)?.focus(), 100);
+    } else {
+      body.innerHTML = `
+        <p class="pm-note">Choose a new 4-digit passcode</p>
+        <label class="modal-field"><input type="password" id="fp-new" inputmode="numeric" maxlength="4" placeholder="New passcode" autocomplete="new-password"></label>
+        <label class="modal-field"><input type="password" id="fp-new2" inputmode="numeric" maxlength="4" placeholder="Repeat passcode" autocomplete="new-password"></label>
+        <button class="btn btn-primary" type="button" data-fp-save>Save</button>`;
+      setTimeout(() => $('#fp-new', body)?.focus(), 100);
+    }
+  };
+  body.addEventListener('click', async (e) => {
+    try {
+      if (e.target.closest('[data-fp-send]')) {
+        ({ email: mail } = await serverApi('POST', '/api/passcode/forgot/code', {}));
+        step = 'code';
+        paint();
+        toast('Code sent');
+      } else if (e.target.closest('[data-fp-code]')) {
+        code = $('#fp-code', body).value.trim();
+        if (!/^\d{4,6}$/.test(code)) { toast('Enter the code from the email'); return; }
+        step = 'new';
+        paint();
+      } else if (e.target.closest('[data-fp-save]')) {
+        const a = $('#fp-new', body).value;
+        const b = $('#fp-new2', body).value;
+        if (!/^\d{4}$/.test(a)) { toast('Passcode must be 4 digits'); return; }
+        if (a !== b) { toast('Passcodes don’t match'); return; }
+        await serverApi('POST', '/api/passcode/forgot', { code, next: a });
+        closeModal();
+        onDone?.();
+      }
+    } catch (err) {
+      toast(err.message);
+      if (err.code === 'wrong_code' || err.code === 'code_expired' || err.code === 'too_many') { step = err.code === 'wrong_code' ? 'code' : 'send'; paint(); }
+    }
+  });
+  paint();
+  wrap.classList.add('over-lock');
+}
+
+$('#lock-forgot').addEventListener('click', () => openForgotPasscode(() => { toast('Passcode changed'); unlock(); }));
 
 $('#lock-logout').addEventListener('click', () => {
   lockEl.hidden = true;

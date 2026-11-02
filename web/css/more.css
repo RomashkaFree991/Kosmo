@@ -919,3 +919,4 @@ button.info-row:active { background: rgba(var(--ink), 0.06); }
 .splash .ring-inner:not(.ring-front) { animation-delay: 870ms; }
 .splash.is-out { animation: splash-out 420ms ease both; }
 @keyframes splash-out { to { opacity: 0; transform: scale(1.06); } }
+.modal-wrap.over-lock { z-index: 320; }
