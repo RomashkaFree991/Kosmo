@@ -302,3 +302,36 @@ html[data-theme="glass"] .tab.is-active .gi-on { animation: gi-pop 420ms var(--s
 html[data-theme="glass"] .row-icon .gi { font-size: 19px; }
 html[data-theme="glass"] .row-icon { border-radius: 9px; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25), inset 0 -1px 0 rgba(0, 0, 0, 0.12); }
 @media (prefers-reduced-motion: reduce) { html[data-theme="glass"] .tab.is-active .gi-on { animation: none; } }
+
+/* ---------- Обои «Цвет»: просто выбранный цвет ---------- */
+.wp-color { position: absolute; inset: 0; background: var(--md-sys-color-primary-container, var(--wp-a)); }
+html[data-theme="glass"] .wp-color { background: var(--wp-a); }
+
+/* ---------- Кнопки и ячейки — в цвете палитры ---------- */
+html[data-theme="material"] {
+  --c-btn-bg: var(--md-sys-color-primary);
+  --c-btn-fg: var(--md-sys-color-on-primary);
+  --c-cell-bg: var(--md-sys-color-surface-container-highest);
+  --c-cell-border: transparent;
+  --c-field-bg: var(--md-sys-color-surface-container-highest);
+}
+html[data-theme="material"] .qr-box { background: var(--md-sys-color-primary-container); color: var(--md-sys-color-on-primary-container); }
+html[data-theme="material"] .pass-cell { background: color-mix(in srgb, var(--md-sys-color-primary) 14%, var(--md-sys-color-surface-container-highest)); }
+html[data-theme="material"] .key { background: color-mix(in srgb, var(--md-sys-color-primary) 10%, var(--md-sys-color-surface-container-high)); }
+
+/* ---------- Код из почты (вход и сброс): ячейки — фигуры M3 Expressive ---------- */
+html[data-theme="material"] .otp-cell {
+  border: 0;
+  border-radius: 0;
+  clip-path: url(#shape-squircle);
+  background: color-mix(in srgb, var(--md-sys-color-primary) 14%, var(--md-sys-color-surface-container-highest));
+  color: var(--md-sys-color-on-surface);
+  transition: background-color 250ms var(--m3-ease), scale 350ms var(--m3-spring);
+}
+html[data-theme="material"] .otp.is-focused .otp-cell.is-active { box-shadow: none; background: var(--md-sys-color-secondary-container); scale: 1.08; }
+html[data-theme="material"] .otp-cell.is-filled { clip-path: url(#shape-cookie9); background: var(--md-sys-color-primary); color: var(--md-sys-color-on-primary); animation: m3-pop 420ms var(--m3-spring); }
+html[data-theme="material"] .otp-cell.is-filled:nth-child(3n+2) { clip-path: url(#shape-clover); }
+html[data-theme="material"] .otp-cell.is-filled:nth-child(3n) { clip-path: url(#shape-flower); }
+html[data-theme="material"] .otp.is-error .otp-cell { background: var(--md-sys-color-error-container); color: var(--md-sys-color-on-error-container); }
+html[data-theme="material"] .otp.is-done .otp-cell { background: #6dd58c; color: #00391a; }
+html[data-theme="material"] .otp-cell .digit { font-family: "Roboto Flex", Roboto, system-ui, sans-serif; font-weight: 600; }

@@ -56,7 +56,12 @@ function injectShapes() {
 /* ---------------------------------------------------------------------------
    Обои: рисуются переменными --wp-*, которые считает color.js из палитры
    --------------------------------------------------------------------------- */
-export const WALLPAPERS = { black: 'Black', shapes: 'Cosmos', aurora: 'Aurora', dunes: 'Dunes', bubbles: 'Bubbles', nebula: 'Nebula', waves: 'Waves', glow: 'Glow', halloween: 'Halloween' };
+export const WALLPAPERS = { black: 'Black', color: 'Color', shapes: 'Cosmos', aurora: 'Aurora', dunes: 'Dunes', bubbles: 'Bubbles', nebula: 'Nebula', waves: 'Waves', glow: 'Glow', halloween: 'Halloween' };
+// какие обои предлагать в каждом стиле (Хэллоуин включается праздничной темой)
+const WP_FOR = {
+  material: ['color', 'shapes', 'waves', 'glow', 'black'],
+  glass: ['black', 'shapes', 'aurora', 'dunes', 'bubbles', 'nebula', 'waves', 'glow'],
+};
 const STAR = 'M0-10C1.4-1.4 1.4-1.4 10 0 1.4 1.4 1.4 1.4 0 10-1.4 1.4-1.4 1.4-10 0-1.4-1.4-1.4-1.4 0-10Z';
 const ORBIT = 'M-40 520C40 380 330 330 430 400';
 
@@ -71,6 +76,8 @@ const starLayer = (x, y, r, color, delay) => layer('wp-star', x - r, y - r, r * 
 
 function wallpaperHtml(kind) {
   if (kind === 'black') return '';
+  // «Цвет»: просто выбранный цвет палитры (тональный контейнер Material)
+  if (kind === 'color') return '<div class="wp-color"></div>';
   const bg = '<rect width="390" height="844" style="fill:var(--wp-bg)"/>';
   let still = '';
   let layers = '';
@@ -214,7 +221,7 @@ export function applyDesign() {
   const s = settings[theme()];
   const hw = holiday();
   if (hw) root.dataset.holiday = hw; else delete root.dataset.holiday;
-  const wpKind = hw || s.wallpaper;
+  const wpKind = hw || (WP_FOR[theme()].includes(s.wallpaper) ? s.wallpaper : WP_FOR[theme()][0]);
   root.dataset.wallpaper = wpKind;
   root.style.setProperty('--shape-chat', `url(#shape-${settings.material.chatShape})`);
   root.style.setProperty('--shape-profile', `url(#shape-${settings.material.profileShape})`);
@@ -302,7 +309,7 @@ export function renderDesign() {
     <section class="group group-pad">
       <span class="group-label">Background</span>
       <div class="wp-options" role="radiogroup" aria-label="Background">
-        ${Object.entries(WALLPAPERS).map(([id, label]) => `
+        ${WP_FOR[theme()].map((id) => [id, WALLPAPERS[id]]).map(([id, label]) => `
           <button class="wp-option" type="button" role="radio" data-wallpaper="${id}" aria-checked="${s.wallpaper === id}">
             <span class="wp-thumb"><span class="wallpaper" data-wp="${id}"></span></span>
             <span class="wp-label">${label}</span>
