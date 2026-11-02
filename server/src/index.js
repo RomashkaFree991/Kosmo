@@ -17,6 +17,7 @@ import { handleGatewayUpgrade, gatewayStatus } from './gateway.js';
 import { startBot } from './tgbot.js';
 import { snapshot, applyPatches, broadcastUser, housekeeping, findInvite, joinByInvite } from './sync.js';
 import * as bots from './bots.js';
+import { assertStatsAccess, serviceStats } from './stats.js';
 import { attachRealtime, kickSession, qrDeliver, sendTo } from './realtime.js';
 
 const MIME = {
@@ -235,6 +236,23 @@ route('POST', '/api/passcode/change', async (req) => {
 });
 
 // Приглашение в группу/канал по ссылке: превью и вход
+// Свободен ли @username (для формы профиля и группы/канала: клиент знает не всех)
+route('GET', '/api/username/:name', (req, p) => {
+  const s = auth(req);
+  const name = String(p.name ?? '').toLowerCase();
+  // ?room=<id> — проверка для своей группы/канала (новой — без id); иначе для своего профиля
+  const q = new URL(req.url, 'http://x').searchParams;
+  let except = s.userId;
+  if (q.has('room')) except = chats.get(q.get('room'))?.owner === s.userId ? q.get('room') : '';
+  return { free: /^(?=.*[a-z])[a-z0-9]{3,32}$/.test(name) && !users.usernameTaken(name, except) };
+});
+
+// Статистика сервиса — только ID 1
+route('GET', '/api/admin/stats', (req) => {
+  assertStatsAccess(auth(req).userId);
+  return serviceStats();
+});
+
 route('GET', '/api/invite/:code', (req, p) => {
   auth(req);
   const { c, inv } = findInvite(p.code);

@@ -10,12 +10,14 @@ import { state, openPanel } from './panels.js';
 import { putBlob, hydrateMedia, squareAvatar } from './media.js';
 import { ICON as CHAT_ICON, deviceIcon, openSaved, openChatAt, chatTitle, chats } from './chats.js';
 import {
-  PI, openBookmarks, openDnd, dndUntil, openBackup, openBots, bookmarks, openEncryption,
+  PI, openBookmarks, openDnd, dndUntil, openBackup, openBots, bookmarks, openEncryption, openStats,
 } from './plus.js';
 import { SICON } from './settings.js';
 import { accountsHtml, linkedAccounts } from './accounts.js';
 import { api, loadSnapshot } from './api.js';
 import { e2eeReady } from './e2ee.js';
+
+const STATS_ICON = '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20V11M12 20V5M19 20v-6"/></svg>';
 import './qrlogin.js';
 
 const svg = (d, cls = 'i') => `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true">${d}</svg>`;
@@ -93,6 +95,7 @@ export function renderProfile(force = false) {
     <section class="group settings-group" aria-label="Kosmo">
       ${row('data-open-saved', PI.bookmark, 'Saved Messages', ICON.chevron, 'ic-blue')}
       ${row('data-open-bookmarks', PI.star, 'Bookmarks', `<span class="row-value">${bookmarks().length || ''}</span>${ICON.chevron}`, 'ic-orange')}
+      ${String(u.publicId) === '1' ? row('data-open-stats', STATS_ICON, 'Statistics', ICON.chevron, 'ic-violet') : ''}
       ${row('data-open-e2ee', PI.lock, 'Encryption', `<span class="row-value">${e2eeReady() ? 'On' : 'Locked'}</span>${ICON.chevron}`, 'ic-green')}
       ${row('data-open-dnd', PI.moon, 'Do not disturb', `<span class="row-value">${dndUntil() ? `until ${new Date(dndUntil()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'Off'}</span>${ICON.chevron}`, 'ic-violet')}
     </section>
@@ -148,6 +151,7 @@ document.addEventListener('click', async (e) => {
   if (e.target.closest('[data-open-dnd]')) openDnd(() => renderProfile(true));
   if (e.target.closest('[data-open-e2ee]')) openEncryption(async () => { await loadSnapshot(); document.dispatchEvent(new CustomEvent('kosmo:remote')); renderProfile(true); });
   if (e.target.closest('[data-open-bots]')) openBots();
+  if (e.target.closest('[data-open-stats]')) openStats();
   if (e.target.closest('[data-open-backup]')) {
     openBackup(() => {
       const me = state.acc.user;
@@ -248,15 +252,20 @@ editBio.addEventListener('input', () => {
   editCounter.classList.toggle('is-low', left <= 10);
 });
 
-$('#edit-form').addEventListener('submit', (e) => {
+$('#edit-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   const name = editName.value.trim();
   const username = editUsername.value;
   if (!name) { shake($('#edit-name-field')); editName.focus(); return; }
-  if (!usernameOk(username)) {
+  // этот браузер знает не всех: занятость имени проверяет сервер
+  let free = true;
+  if (usernameOk(username) && username && username !== state.acc.user.username) {
+    try { ({ free } = await api('GET', `/api/username/${username}`)); } catch { /* нет связи — проверит сервер при сохранении */ }
+  }
+  if (!free || !usernameOk(username)) {
     shake(editUsernameField);
     editUsername.focus();
-    if (USERNAME_RE.test(username)) toast('This username is taken');
+    if (!free || USERNAME_RE.test(username)) toast('This username is taken');
     else if (username.length < 3) toast('At least 3 characters');
     else toast('Add at least one letter');
     return;

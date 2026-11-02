@@ -158,7 +158,11 @@ async function flush() {
     const sealed = await Promise.all(batch.map(sealPatch));
     const { results } = await api('POST', '/api/sync', { patches: sealed, conn: connId });
     const failed = results.filter((r) => !r.ok);
-    if (failed.length) toast(failed[0].message || 'Could not save the change');
+    if (failed.length) {
+      toast(failed[0].message || 'Could not save the change');
+      // сервер отказал (например, имя занято) — вернуть экран к тому, что сохранено на сервере
+      loadSnapshot().then(() => document.dispatchEvent(new CustomEvent('kosmo:remote'))).catch(() => {});
+    }
     const ids = myMsgIds(batch);
     if (ids.length) { ids.forEach((id) => pending.delete(id)); pendingChanged(); }
   } catch (e) {

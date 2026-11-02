@@ -751,3 +751,92 @@ export async function safetyCode(a, b) {
   const h = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`${x}|${y}`)));
   return Array.from(h.slice(0, 10), (n) => String(n % 100).padStart(2, '0')).join('').match(/.{5}/g).join(' ');
 }
+
+/* ---------------------------------------------------------------------------
+   Статистика сервиса (только ID 1)
+   --------------------------------------------------------------------------- */
+const fmtSize = (b) => (b > 1e9 ? `${(b / 1e9).toFixed(1)} GB` : b > 1e6 ? `${(b / 1e6).toFixed(1)} MB` : `${Math.round(b / 1e3)} KB`);
+const fmtDay = (t) => (t ? new Date(t).toLocaleDateString([], { day: 'numeric', month: 'short', year: '2-digit' }) : '—');
+const fmtSeen = (u) => (u.online ? '<b class="st-on">online</b>' : u.lastActive ? `${timeAgo(u.lastActive)}` : '—');
+
+export async function openStats() {
+  const wrap = openModal('Statistics', '<div class="st-loading"><span class="e2ee-dot"></span></div>', {
+    cls: 'stats-modal',
+    onClick: (e) => {
+      const t = e.target.closest('[data-st-tab]');
+      if (t) { tab = t.dataset.stTab; paint(); return; }
+      if (e.target.closest('[data-st-refresh]')) load();
+    },
+  });
+  let data = null;
+  let tab = 'users';
+  let q = '';
+  const n = (v) => Number(v ?? 0).toLocaleString();
+  const tile = (label, v, sub = '') => `<div class="st-tile"><b>${n(v)}</b><span>${label}</span>${sub ? `<small>${sub}</small>` : ''}</div>`;
+  const match = (...xs) => !q || xs.some((x) => String(x ?? '').toLowerCase().includes(q));
+
+  function listHtml() {
+    if (tab === 'users') {
+      const rows = data.users.filter((u) => match(u.publicId, u.name, u.username, u.email));
+      return rows.map((u) => `<div class="st-row">
+        <span class="st-id">${escapeHtml(u.publicId)}</span>
+        <span class="st-main"><b>${escapeHtml(u.name || '—')}${u.bot ? ' <i class="st-tag">bot</i>' : ''}${u.premium ? ' <i class="st-tag st-prem">premium</i>' : ''}${u.official ? ' <i class="st-tag">official</i>' : ''}</b>
+          <small>${u.username ? `@${escapeHtml(u.username)} · ` : ''}${escapeHtml(u.email || '')}</small></span>
+        <span class="st-side"><small>${fmtSeen(u)}</small><small>${fmtDay(u.createdAt)}</small></span></div>`).join('') || '<p class="pm-note">Nothing found</p>';
+    }
+    if (tab === 'rooms') {
+      const rows = data.rooms.filter((r) => match(r.name, r.username));
+      return rows.map((r) => `<div class="st-row">
+        <span class="st-id">${r.type === 'channel' ? '📢' : '👥'}</span>
+        <span class="st-main"><b>${r.name == null ? '🔒 Encrypted' : escapeHtml(r.name || '—')}</b>
+          <small>${r.type === 'channel' ? 'channel' : 'group'} · ${r.username ? `@${escapeHtml(r.username)}` : 'private'} · owner ID ${escapeHtml(r.owner)}</small></span>
+        <span class="st-side"><small>${n(r.members)} members</small><small>${n(r.messages)} msgs</small></span></div>`).join('') || '<p class="pm-note">Nothing found</p>';
+    }
+    const names = [
+      ...data.users.filter((u) => u.username).map((u) => ({ u: u.username, who: `${u.bot ? 'bot' : 'user'} · ID ${u.publicId}` })),
+      ...data.rooms.filter((r) => r.username).map((r) => ({ u: r.username, who: r.type })),
+    ].filter((x) => match(x.u)).sort((a, b) => a.u.localeCompare(b.u));
+    return names.map((x) => `<div class="st-row"><span class="st-main"><b>@${escapeHtml(x.u)}</b></span><span class="st-side"><small>${escapeHtml(x.who)}</small></span></div>`).join('') || '<p class="pm-note">Nothing found</p>';
+  }
+
+  function paint() {
+    if (!data) return;
+    const t = data.totals;
+    const body = $('.pm-body', wrap);
+    const focus = document.activeElement?.id === 'st-q';
+    body.innerHTML = `
+      <div class="st-grid">
+        ${tile('Accounts', t.users, `+${n(t.newToday)} today · +${n(t.newWeek)} week`)}
+        ${tile('Online now', t.online, `${n(t.activeToday)} active today`)}
+        ${tile('Messages', t.messages, `${n(t.messagesToday)} today · ${n(t.encrypted)} encrypted`)}
+        ${tile('Reactions', t.reactions)}
+        ${tile('Channels', t.channel)}
+        ${tile('Groups', t.group, `${n(t.publicRooms)} public rooms`)}
+        ${tile('Private chats', t.dm, `${n(t.secret)} secret · ${n(t.saved)} saved`)}
+        ${tile('Usernames', t.withUsername, `${n(t.premium)} premium`)}
+        ${tile('Posts', t.posts, `${n(t.comments)} comments`)}
+        ${tile('Stories', t.stories, 'last 24 h')}
+        ${tile('Files', t.files, fmtSize(t.filesSize))}
+        ${tile('Sessions', t.sessions, `${n(t.bots)} bots`)}
+      </div>
+      ${data.topReactions.length ? `<span class="modal-label">Top reactions</span>
+        <div class="st-reacts">${data.topReactions.map((r) => `<span class="st-react">${emojiSvg(r.key) || escapeHtml(r.key.slice(0, 6))}<b>${n(r.n)}</b></span>`).join('')}</div>` : ''}
+      <div class="segs st-tabs" role="radiogroup" aria-label="List">
+        ${[['users', 'Accounts'], ['rooms', 'Channels'], ['names', 'Usernames']].map(([v, l]) => `<button type="button" class="seg-btn" role="radio" data-st-tab="${v}" aria-checked="${tab === v}">${l}</button>`).join('')}
+      </div>
+      <label class="modal-field"><input type="search" id="st-q" placeholder="Search" value="${escapeHtml(q)}" autocomplete="off"></label>
+      <div class="st-list">${listHtml()}</div>
+      <p class="pm-note">Updated ${new Date(data.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} · <button class="link-btn" type="button" data-st-refresh>Refresh</button></p>`;
+    const input = $('#st-q', body);
+    input.addEventListener('input', () => { q = input.value.trim().toLowerCase().replace(/^@/, ''); $('.st-list', body).innerHTML = listHtml(); });
+    if (focus) { input.focus(); input.setSelectionRange(input.value.length, input.value.length); }
+  }
+
+  async function load() {
+    try {
+      data = await api('GET', '/api/admin/stats');
+      if (wrap.isConnected) paint();
+    } catch (e) { toast(e.message || 'Could not load statistics'); }
+  }
+  load();
+}

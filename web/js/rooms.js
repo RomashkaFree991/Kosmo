@@ -6,6 +6,7 @@ import {
   $, $$, db, toast, shake, escapeHtml, userAvatarHtml, cosmicBadge, userBadge, formatTime, formatDate, refreshRefraction,
 } from './core.js';
 import { state, openPanel, closePanel, openOverlay, closeOverlay, overlayOpen } from './panels.js';
+import { api } from './api.js';
 import { putBlob, hydrateMedia, squareAvatar } from './media.js';
 import {
   chats, isRoom, roleOf, isAdmin, publicUser, roomAvatar, displayName, mediaBody, ICON, openChat, openChatId,
@@ -37,8 +38,27 @@ export function handleTaken(name, exceptId) {
   if (db.usernameTaken(name)) return true;
   return Object.values(chats.all()).some((c) => isRoom(c) && c.username === name && c.id !== exceptId);
 }
+// сервер знает всех: занятые там имена, которых нет в локальной базе
+const serverTaken = new Set();
+let takenTimer = 0;
+function askServer(name, roomId) {
+  clearTimeout(takenTimer);
+  if (!USERNAME_RE.test(name) || name.length < 3) return;
+  takenTimer = setTimeout(async () => {
+    try {
+      const { free } = await api('GET', `/api/username/${name}?room=${encodeURIComponent(roomId ?? '')}`);
+      if (free) serverTaken.delete(name); else serverTaken.add(name);
+      const el = $('#room-username');
+      if (el?.value !== name) return;
+      const err = handleError(name, roomId);
+      $('#room-username-field')?.classList.toggle('is-invalid', Boolean(err));
+      $('#room-username-hint').textContent = err || `kosmo.app/${name}`;
+    } catch { /* нет связи — проверит сервер при сохранении */ }
+  }, 250);
+}
 function handleError(v, exceptId) {
   if (!v) return '';
+  if (serverTaken.has(v)) return 'This username is taken';
   if (v.length < 3) return 'At least 3 characters';
   if (!USERNAME_RE.test(v)) return 'Add at least one letter';
   if (RESERVED.includes(v) || handleTaken(v, exceptId)) return 'This username is taken';
@@ -226,6 +246,7 @@ document.addEventListener('input', (e) => {
     const clean = el.value.toLowerCase().replace(/[^a-z0-9]/g, '');
     if (clean !== el.value) el.value = clean;
     const err = handleError(clean, edit?.id);
+    if (!err) askServer(clean, edit?.id);
     $('#room-username-field').classList.toggle('is-invalid', Boolean(err) && clean.length >= 3);
     $('#room-username-hint').textContent = clean ? (err || `kosmo.app/${clean}`) : 'With a username anyone can find it in Search.';
   }
