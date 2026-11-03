@@ -147,14 +147,22 @@ fun Data.unread(c: JsonObject): Int {
     return visibleMessages(c).count { it.str("from") != me && (it.num("at") ?: 0) > read && it.str("kind") != "join" }
 }
 
-/** Мои чаты, свежие сверху; закреплённые и архив — из chatPrefs. */
-fun Data.chatList(): List<JsonObject> {
+fun Data.pref(id: String?): JsonObject? = id?.let { user?.obj("chatPrefs")?.obj(it) }
+
+fun Data.muted(c: JsonObject): Boolean {
+    val p = pref(c.str("id")) ?: return false
+    val until = p.num("mutedUntil")
+    return p.bool("muted") || (until != null && until > System.currentTimeMillis())
+}
+
+/** Мои чаты, свежие сверху; закреплённые выше; архив — отдельно. */
+fun Data.chatList(archived: Boolean = false): List<JsonObject> {
     val me = me ?: return emptyList()
-    val prefs = user?.obj("chatPrefs")
     return chats.values
-        .filter { me in it.strings("members") && prefs?.obj(it.str("id") ?: "")?.bool("archived") != true }
+        .filter { me in it.strings("members") && (pref(it.str("id"))?.bool("archived") == true) == archived }
+        .filter { it.str("id")?.startsWith("secret_") != true || visibleMessages(it).isNotEmpty() }
         .filter { visibleMessages(it).isNotEmpty() || isRoom(it) || isSaved(it) }
-        .sortedWith(compareByDescending<JsonObject> { prefs?.obj(it.str("id") ?: "")?.bool("pinned") == true }
+        .sortedWith(compareByDescending<JsonObject> { pref(it.str("id"))?.bool("pinned") == true }
             .thenByDescending { visibleMessages(it).lastOrNull()?.num("at") ?: it.num("createdAt") ?: 0 })
 }
 

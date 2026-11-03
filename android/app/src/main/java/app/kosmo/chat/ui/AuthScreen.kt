@@ -202,7 +202,7 @@ private fun EmailStep(initial: String, busy: Boolean, error: String?, onNext: (S
     Spacer(Modifier.height(28.dp))
     OutlinedTextField(
         value = email, onValueChange = { email = it }, singleLine = true,
-        placeholder = { Text("your@email.com") },
+        placeholder = { Text(tr("your@email.com")) },
         shape = RoundedCornerShape(18.dp),
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Go),
         keyboardActions = KeyboardActions(onGo = { if (ok && !busy) onNext(email) }),
@@ -210,11 +210,11 @@ private fun EmailStep(initial: String, busy: Boolean, error: String?, onNext: (S
     )
     Spacer(Modifier.height(12.dp))
     Button(onClick = { onNext(email) }, enabled = ok && !busy, modifier = Modifier.fillMaxWidth().height(54.dp), shape = RoundedCornerShape(18.dp)) {
-        if (busy) CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.5.dp, color = MaterialTheme.colorScheme.onPrimary) else Text("Continue", fontSize = 17.sp)
+        if (busy) CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.5.dp, color = MaterialTheme.colorScheme.onPrimary) else Text(tr("Continue"), fontSize = 17.sp)
     }
     ErrorText(error)
     Spacer(Modifier.height(8.dp))
-    Text("We’ll send a code to this email", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Text(tr("We’ll send a code to this email"), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
 /** Код из письма: 6 клеток, ввод — скрытым полем. */
@@ -313,11 +313,11 @@ private fun NameStep(app: AppState, busy: Boolean, error: String?, onDone: (Stri
     val userOk = username.isEmpty() || (Regex("^(?=.*[a-z])[a-z0-9]{3,32}$").matches(username) && free != false)
     Title("Your name")
     Spacer(Modifier.height(20.dp))
-    OutlinedTextField(name, { name = it.take(40) }, singleLine = true, placeholder = { Text("Name") }, shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(name, { name = it.take(40) }, singleLine = true, placeholder = { Text(tr("Name")) }, shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxWidth())
     Spacer(Modifier.height(10.dp))
     OutlinedTextField(
         username, { username = it.lowercase().filter { c -> c in 'a'..'z' || c in '0'..'9' }.take(32) }, singleLine = true,
-        prefix = { Text("@") }, placeholder = { Text("username (optional)") }, shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxWidth(),
+        prefix = { Text("@") }, placeholder = { Text(tr("username (optional)")) }, shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxWidth(),
         isError = !userOk,
         supportingText = {
             Text(
@@ -334,7 +334,7 @@ private fun NameStep(app: AppState, busy: Boolean, error: String?, onDone: (Stri
     )
     Spacer(Modifier.height(10.dp))
     Button(onClick = { onDone(name.trim(), username) }, enabled = name.isNotBlank() && userOk && !busy, modifier = Modifier.fillMaxWidth().height(54.dp), shape = RoundedCornerShape(18.dp)) {
-        if (busy) CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.5.dp, color = MaterialTheme.colorScheme.onPrimary) else Text("Sign up", fontSize = 17.sp)
+        if (busy) CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.5.dp, color = MaterialTheme.colorScheme.onPrimary) else Text(tr("Sign up"), fontSize = 17.sp)
     }
     ErrorText(error)
 }

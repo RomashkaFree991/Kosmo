@@ -52,6 +52,12 @@ import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Devices
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Image
+import androidx.compose.material.icons.rounded.Archive
+import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.Notifications
+import androidx.compose.material.icons.rounded.Shield
+import androidx.compose.material.icons.rounded.Storage
 import androidx.compose.material.icons.rounded.Mail
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.Palette
@@ -142,7 +148,7 @@ private fun Tile(t: TileSpec, modifier: Modifier) {
                 Icon(t.icon, null, tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.size(20.dp))
             }
             Spacer(Modifier.height(10.dp))
-            Text(t.label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(tr(t.label), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(
                 t.value, style = if (t.wide) MaterialTheme.typography.bodyLarge else MaterialTheme.typography.titleMedium,
                 color = if (t.muted) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
@@ -185,39 +191,61 @@ private fun Hero(u: JsonObject?, big: Boolean = true, top: androidx.compose.ui.u
 @Composable
 fun ProfileScreen(app: AppState, data: Data) {
     val u = data.user
+    val look = LocalLook.current
     val clip = LocalClipboardManager.current
     var confirmLogout by remember { mutableStateOf(false) }
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
-        Hero(u, avatarClick = { app.push(Screen.EditProfile) }) {
-            OutlinedButton({ app.push(Screen.EditProfile) }, Modifier.padding(top = 12.dp), shape = CircleShape) {
-                Icon(Icons.Rounded.Edit, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("Edit profile")
-            }
+    Box(Modifier.fillMaxSize()) {
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 120.dp)) {
+        Hero(u, top = 64.dp, avatarClick = { app.push(Screen.EditProfile) }) {
+            Row(
+                Modifier.padding(top = 12.dp).height(40.dp).chrome(look, CircleShape).clickable { app.push(Screen.EditProfile) }.padding(horizontal = 18.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) { Icon(Icons.Rounded.Edit, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text(tr("Edit profile"), fontWeight = FontWeight.SemiBold) }
         }
         Column(Modifier.padding(horizontal = 16.dp).padding(top = 18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Extras(app, data, u)
             Tiles(listOfNotNull(
-                TileSpec(Icons.Rounded.AlternateEmail, "Username", u?.str("username")?.takeIf { it.isNotEmpty() }?.let { "@$it" } ?: "Not set", muted = u?.str("username").isNullOrEmpty()) {
+                TileSpec(Icons.Rounded.AlternateEmail, "Username", u?.str("username")?.takeIf { it.isNotEmpty() }?.let { "@$it" } ?: tr("Not set"), muted = u?.str("username").isNullOrEmpty()) {
                     u?.str("username")?.takeIf { it.isNotEmpty() }?.let { clip.setText(AnnotatedString("@$it")); app.toast = "Username copied" } ?: app.push(Screen.EditProfile)
                 },
-                TileSpec(Icons.Rounded.Tag, "ID", u?.str("publicId") ?: u?.num("publicId")?.toString() ?: "") { clip.setText(AnnotatedString(u?.num("publicId")?.toString() ?: "")); app.toast = "ID copied" },
+                TileSpec(Icons.Rounded.Tag, "ID", u?.str("publicId") ?: u?.num("publicId")?.toString() ?: "") { clip.setText(AnnotatedString(u?.str("publicId") ?: u?.num("publicId")?.toString() ?: "")); app.toast = "ID copied" },
                 TileSpec(Icons.Rounded.Mail, "Email", u?.str("email") ?: "", wide = true),
                 u?.str("bio")?.takeIf { it.isNotEmpty() }?.let { TileSpec(Icons.AutoMirrored.Rounded.Notes, "Bio", it, wide = true) },
                 TileSpec(Icons.Rounded.CalendarMonth, "Joined", u?.num("createdAt")?.let { monthYear.format(Date(it)) } ?: ""),
-                TileSpec(Icons.Rounded.Devices, "Sessions", "${u?.arr("sessions")?.size ?: 0} active") { app.push(Screen.Sessions) },
+                TileSpec(Icons.Rounded.Devices, "Sessions", tr("${u?.arr("sessions")?.size ?: 0} active")) { app.push(Screen.Sessions) },
             ))
-            Spacer(Modifier.height(6.dp))
-            SettingsRow(Icons.Rounded.Bookmark, "Saved Messages") { data.me?.let { app.openChat("saved_$it") } }
-            SettingsRow(Icons.Rounded.Devices, "Sessions") { app.push(Screen.Sessions) }
-            SettingsRow(Icons.Rounded.Palette, "Edit profile") { app.push(Screen.EditProfile) }
-            SettingsRow(Icons.AutoMirrored.Rounded.Logout, "Log out", danger = true) { confirmLogout = true }
-            Text("Kosmo for Android ${app.kosmo.api.base.removePrefix("https://")}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.align(Alignment.CenterHorizontally).padding(top = 8.dp))
         }
+        Spacer(Modifier.height(14.dp))
+        Group {
+            GroupRow(Icons.Rounded.Bookmark, "Saved Messages", tint = Color(0xFF0A84FF)) { data.me?.let { app.openChat("saved_$it") } }
+            GroupRow(Icons.Rounded.Archive, "Archived chats", tint = Color(0xFF8E8E93)) { app.push(Screen.Archive) }
+        }
+        Spacer(Modifier.height(12.dp))
+        Group {
+            GroupRow(Icons.Rounded.Edit, "Edit profile", tint = Color(0xFF0A84FF)) { app.push(Screen.EditProfile) }
+            GroupRow(Icons.Rounded.Palette, "Designs", tint = Color(0xFFFF375F)) { app.push(Screen.Settings("designs")) }
+        }
+        Spacer(Modifier.height(12.dp))
+        Group {
+            GroupRow(Icons.Rounded.Lock, "Privacy", tint = Color(0xFFBF5AF2)) { app.push(Screen.Settings("privacy")) }
+            GroupRow(Icons.Rounded.Shield, "Security", tint = Color(0xFF30D158), value = if (u?.obj("security")?.bool("lock") == true) tr("Passcode lock") else null) { app.push(Screen.Settings("security")) }
+            GroupRow(Icons.Rounded.Notifications, "Notifications", tint = Color(0xFFFF453A)) { app.push(Screen.Settings("notifications")) }
+            GroupRow(Icons.Rounded.Storage, "Data and storage", tint = Color(0xFFFF9F0A)) { app.push(Screen.Settings("storage")) }
+            GroupRow(Icons.Rounded.Devices, "Sessions", tint = Color(0xFF64D2FF), value = "${u?.arr("sessions")?.size ?: 0}") { app.push(Screen.Sessions) }
+        }
+        Spacer(Modifier.height(12.dp))
+        Group {
+            GroupRow(Icons.Rounded.Info, "About Kosmo", tint = Color(0xFF0A84FF)) { app.push(Screen.Settings("about")) }
+            GroupRow(Icons.AutoMirrored.Rounded.Logout, "Log out", danger = true) { confirmLogout = true }
+        }
+    }
+    Header { CircleSpacer(); TitlePill("Profile"); CircleSpacer() }
     }
     if (confirmLogout) AlertDialog(
         onDismissRequest = { confirmLogout = false },
-        title = { Text("Log out?") }, text = { Text("You can sign in again with your email and passcode.") },
-        confirmButton = { TextButton({ confirmLogout = false; app.signOut() }) { Text("Log out", color = MaterialTheme.colorScheme.error) } },
-        dismissButton = { TextButton({ confirmLogout = false }) { Text("Cancel") } },
+        title = { Text(tr("Log out?")) }, text = { Text(tr("You can sign in again with your email and passcode.")) },
+        confirmButton = { TextButton({ confirmLogout = false; app.signOut() }) { Text(tr("Log out"), color = MaterialTheme.colorScheme.error) } },
+        dismissButton = { TextButton({ confirmLogout = false }) { Text(tr("Cancel")) } },
     )
 }
 
@@ -276,7 +304,7 @@ fun UserScreen(app: AppState, id: String) {
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).navigationBarsPadding().padding(bottom = 24.dp)) {
             Hero(u, big = false, top = 64.dp) {
-                if (u?.bool("official") == true) Text("Official account", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge)
+                if (u?.bool("official") == true) Text(tr("Official account"), color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge)
                 Text(u?.let { lastSeen(it) } ?: "", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 4.dp))
                 Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Action(Icons.Rounded.ChatBubble, "Message", Modifier.weight(1f)) { app.openDm(id) }
@@ -309,7 +337,7 @@ private fun Action(icon: ImageVector, label: String, modifier: Modifier, danger:
     Surface(onClick = onClick, shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh, modifier = modifier) {
         Column(Modifier.padding(vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Icon(icon, null, tint = if (danger) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
-            Text(label, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 4.dp), maxLines = 1)
+            Text(tr(label), style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 4.dp), maxLines = 1)
         }
     }
 }
@@ -369,7 +397,7 @@ fun EditProfileScreen(app: AppState) {
                 Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).navigationBarsPadding().padding(bottom = 24.dp)) {
                     Box {
                         Hero(preview, top = 76.dp, avatarClick = { pickAvatar.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }) {
-                            if (busy) Text("Uploading…", color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 6.dp))
+                            if (busy) Text(tr("Uploading…"), color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 6.dp))
                         }
                         Box(Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = if (banner != null) 216.dp else 182.dp).offset(x = 50.dp).size(36.dp).background(MaterialTheme.colorScheme.primary, CircleShape), contentAlignment = Alignment.Center) {
                             Icon(Icons.Rounded.PhotoCamera, null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(20.dp))
@@ -391,7 +419,7 @@ fun EditProfileScreen(app: AppState) {
                 Row(Modifier.statusBarsPadding().padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     BackCircle(app, onClick = { if (dirty) askLeave = true else app.pop() })
                     Box(Modifier.weight(1f).height(48.dp).clip(RoundedCornerShape(24.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh), contentAlignment = Alignment.Center) {
-                        Text("Edit profile", style = MaterialTheme.typography.titleMedium)
+                        Text(tr("Edit profile"), style = MaterialTheme.typography.titleMedium)
                     }
                     FilledIconButton(onClick = { save() }, modifier = Modifier.size(48.dp)) { Icon(Icons.Rounded.Check, "Save") }
                 }
@@ -400,9 +428,9 @@ fun EditProfileScreen(app: AppState) {
     }
     if (askLeave) AlertDialog(
         onDismissRequest = { askLeave = false },
-        title = { Text("Save changes?") }, text = { Text("You changed your profile. Save it before leaving?") },
-        confirmButton = { TextButton({ askLeave = false; save() }) { Text("Save") } },
-        dismissButton = { TextButton({ askLeave = false; app.pop() }) { Text("Discard") } },
+        title = { Text(tr("Save changes?")) }, text = { Text(tr("You changed your profile. Save it before leaving?")) },
+        confirmButton = { TextButton({ askLeave = false; save() }) { Text(tr("Save")) } },
+        dismissButton = { TextButton({ askLeave = false; app.pop() }) { Text(tr("Discard")) } },
     )
 }
 
@@ -413,7 +441,7 @@ private fun AddTile(icon: ImageVector, label: String, modifier: Modifier, onClic
             Box(Modifier.size(34.dp).background(MaterialTheme.colorScheme.primaryContainer, CircleShape), contentAlignment = Alignment.Center) {
                 Icon(if (label.startsWith("Add")) Icons.Rounded.Add else icon, null, tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.size(20.dp))
             }
-            Text(label, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 8.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(tr(label), style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 8.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -505,7 +533,7 @@ fun SessionsScreen(app: AppState) {
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).statusBarsPadding().navigationBarsPadding()) {
         Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             BackCircle(app)
-            Box(Modifier.weight(1f).height(48.dp).clip(RoundedCornerShape(24.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh), contentAlignment = Alignment.Center) { Text("Sessions", style = MaterialTheme.typography.titleMedium) }
+            Box(Modifier.weight(1f).height(48.dp).clip(RoundedCornerShape(24.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh), contentAlignment = Alignment.Center) { Text(tr("Sessions"), style = MaterialTheme.typography.titleMedium) }
             Spacer(Modifier.width(48.dp))
         }
         Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -517,12 +545,12 @@ fun SessionsScreen(app: AppState) {
                             Text(s.str("name") ?: "Device", style = MaterialTheme.typography.titleSmall)
                             Text("${s.str("location") ?: ""} · ${listTime(s.num("lastActive"))}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
-                        if (s.bool("current")) Text("This device", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium)
+                        if (s.bool("current")) Text(tr("This device"), color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium)
                         else if (!s.bool("first")) TextButton({
                             scope.launch {
                                 try { app.api.call("DELETE", "/api/sessions/${s.str("id")}"); app.kosmo.load() } catch (e: Exception) { app.toast = e.message }
                             }
-                        }) { Text("End", color = MaterialTheme.colorScheme.error) }
+                        }) { Text(tr("End"), color = MaterialTheme.colorScheme.error) }
                     }
                 }
             }

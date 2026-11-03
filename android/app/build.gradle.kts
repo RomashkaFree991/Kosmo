@@ -16,8 +16,8 @@ android {
         applicationId = "app.kosmo.chat"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "2.0"
         buildConfigField("String", "KOSMO_URL", "\"$kosmoUrl\"")
         // звонки (WebRTC): только ARM-телефоны — так APK меньше
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
@@ -66,6 +66,12 @@ dependencies {
     implementation("io.coil-kt:coil-compose:2.7.0")
     implementation("io.coil-kt:coil-video:2.7.0")
     implementation("io.getstream:stream-webrtc-android:1.3.8")
+    implementation("com.materialkolor:material-kolor:2.0.2")
+    val camerax = "1.4.1"
+    implementation("androidx.camera:camera-camera2:$camerax")
+    implementation("androidx.camera:camera-lifecycle:$camerax")
+    implementation("androidx.camera:camera-video:$camerax")
+    implementation("androidx.camera:camera-view:$camerax")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")

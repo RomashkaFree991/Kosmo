@@ -135,7 +135,7 @@ fun Cropper(uri: Uri, circle: Boolean, aspect: Float, title: String, onCancel: (
                 }
             }
         }
-        Text("Drag to move, pinch to zoom", color = Color.White.copy(alpha = 0.6f), style = MaterialTheme.typography.bodySmall, modifier = Modifier.align(Alignment.CenterHorizontally).padding(16.dp))
+        Text(tr("Drag to move, pinch to zoom"), color = Color.White.copy(alpha = 0.6f), style = MaterialTheme.typography.bodySmall, modifier = Modifier.align(Alignment.CenterHorizontally).padding(16.dp))
     }
 }
 

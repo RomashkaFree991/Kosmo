@@ -70,15 +70,37 @@ class Screens {
         CompositionLocalProvider(LocalMedia provides { "" }, androidx.activity.compose.LocalActivityResultRegistryOwner provides registry) { KosmoTheme(dark = true) { Box(Modifier.background(MaterialTheme.colorScheme.background)) { content() } } }
     }
 
+    private fun both(name: String, block: (AppState) -> Unit = {}, content: @Composable (AppState) -> Unit) {
+        for (glass in listOf(true, false)) {
+            val a = app(); block(a)
+            app.kosmo.chat.ui.Design.glass = glass
+            paparazzi.snapshot(name = name + if (glass) "_glass" else "_material") {
+                CompositionLocalProvider(LocalMedia provides { "" }, androidx.activity.compose.LocalActivityResultRegistryOwner provides registry) { KosmoTheme(dark = true) { content(a) } }
+            }
+        }
+    }
+
     @Test fun planet() = shot { Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { PlanetLogo(Modifier.size(280.dp)) } }
-    @Test fun chats() { val a = app(); shot { ChatListScreen(a, a.kosmo.data.value) } }
-    @Test fun chat() { val a = app(); shot { ChatScreen(a, "b_me", "b") } }
-    @Test fun profile() { val a = app(); shot { ProfileScreen(a, a.kosmo.data.value) } }
-    @Test fun editProfile() { val a = app(); shot { EditProfileScreen(a) } }
-    @Test fun user() { val a = app(); shot { UserScreen(a, "b") } }
-    @Test fun tabs() { val a = app(); shot { KosmoRoot(a) } }
-    @Test fun call() { val a = app(); a.calls.ui = Calls.Ui("c", "b", video = false, outgoing = true, status = "Calling…"); shot { KosmoRoot(a) } }
-    @Test fun login() { val a = app(); a.token = null; shot { KosmoRoot(a) } }
+    @Test fun tabs() = both("tabs") { KosmoRoot(it) }
+    @Test fun chat() = both("chat", { it.push(Screen.Chat("b_me", "b")) }) { KosmoRoot(it) }
+    @Test fun profile() = both("profile", { it.tab = app.kosmo.chat.ui.Tab.Profile }) { KosmoRoot(it) }
+    @Test fun feed() = both("feed", { it.tab = app.kosmo.chat.ui.Tab.Feed }) { KosmoRoot(it) }
+    @Test fun search() = both("search", { it.tab = app.kosmo.chat.ui.Tab.Search }) { KosmoRoot(it) }
+    @Test fun privacy() = both("privacy", { it.push(Screen.Settings("privacy")) }) { KosmoRoot(it) }
+    @Test fun designs() = both("designs", { it.push(Screen.Settings("designs")) }) { KosmoRoot(it) }
+    @Test fun security() = both("security", { it.push(Screen.Settings("security")) }) { KosmoRoot(it) }
+    @Test fun newGroup() = both("newGroup", { it.push(Screen.NewRoom("group")) }) { KosmoRoot(it) }
+    @Test fun editProfile() = both("editProfile", { it.push(Screen.EditProfile) }) { KosmoRoot(it) }
+    @Test fun call() = both("call", { it.calls.ui = Calls.Ui("c", "b", video = false, outgoing = true, status = "Calling…") }) { KosmoRoot(it) }
+    @Test fun russian() {
+        val a = app(); app.kosmo.chat.ui.Design.glass = true; app.kosmo.chat.ui.I18n.lang = "ru"
+        a.push(Screen.Settings("privacy"))
+        paparazzi.snapshot { CompositionLocalProvider(LocalMedia provides { "" }, androidx.activity.compose.LocalActivityResultRegistryOwner provides registry) { KosmoTheme(dark = true) { KosmoRoot(a) } } }
+        a.pop()
+        paparazzi.snapshot { CompositionLocalProvider(LocalMedia provides { "" }, androidx.activity.compose.LocalActivityResultRegistryOwner provides registry) { KosmoTheme(dark = true) { KosmoRoot(a) } } }
+        app.kosmo.chat.ui.I18n.lang = "en"
+    }
+    @Test fun login() = both("login", { it.token = null }) { KosmoRoot(it) }
     @Suppress("unused") private fun keep() = Screen.KosmoChat
 
 }
