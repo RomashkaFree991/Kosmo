@@ -30,7 +30,8 @@ import { startCall } from './calls.js';
 import { isPending, onServerMessage, sendTyping } from './api.js';
 import { isSealed } from './e2ee.js';
 import { openPhotoEditor } from './editor.js';
-import { openModal as openPlusModal } from './plus.js';
+import { openModal as openPlusModal, closeModal as closePlusModal } from './plus.js';
+import { applyDesign } from './design.js';
 import { pickTime, schedule, myScheduled, openScheduledList, addReminder, TTL_OPTIONS, ttlLabel } from './schedule.js';
 
 export const KOSMO = 'kosmo';
@@ -896,6 +897,7 @@ function showChat() {
   // черновик этого чата
   const draft = prefs(open.id).draft?.text;
   if (draft) { input.value = draft; autosize(); setMode('send'); }
+  applyChatWallpaper();
   renderMessages();
   renderChatList();
   openPanel('chat');
@@ -1185,6 +1187,7 @@ export function renderMessages({ scroll = false } = {}) {
   if (searchQ) markSearch();
   hydrateMedia(messagesBox);
   if (scroll) toBottom(true);
+  document.dispatchEvent(new CustomEvent('kosmo:messages-painted'));
 }
 
 document.addEventListener('kosmo:chat-updated', (e) => { if (openChatId() && e.detail === open.id) renderMessages({ scroll: stick }); renderChatList(); });
@@ -2121,11 +2124,13 @@ async function startRecording() {
     clearInterval(recTimer);
     setMode(input.value.trim() ? 'send' : 'voice');
     if (!shouldSend || elapsed < 0.5) { transcriber?.stop(); return; }
-    // настоящая волна и точная длина — из самой записи
-    const info = await analyzeAudio(blob);
-    const transcript = transcriber ? await transcriber.stop() : '';
-    const duration = info?.duration || elapsed;
-    startUpload([{ blob }], ([media]) => ({ kind: 'voice', media, duration, wave: info?.wave, ...(transcript ? { transcript } : {}) }), { kind: 'voice' });
+    // сообщение появляется сразу; волна, точная длина и расшифровка считаются, пока файл грузится
+    const infoP = analyzeAudio(blob).catch(() => null);
+    const textP = transcriber ? transcriber.stop().catch(() => '') : Promise.resolve('');
+    startUpload([{ blob }], async ([media]) => {
+      const [info, transcript] = await Promise.all([infoP, textP]);
+      return { kind: 'voice', media, duration: info?.duration || elapsed, wave: info?.wave, ...(transcript ? { transcript } : {}) };
+    }, { kind: 'voice', url: URL.createObjectURL(blob), duration: elapsed });
   };
   recorder.start();
   recStart = Date.now();
@@ -2144,38 +2149,55 @@ $('#rec-cancel').addEventListener('click', () => stopRecording(false));
 
 /* ---------- Плеер для голосовых и музыки ---------- */
 const player = new Audio();
-let playing = null;
+let playingId = null;   // id файла, который играет (элемент чата может перерисоваться)
+const liveBox = () => (playingId ? document.querySelector(`.b-player[data-player="${playingId}"]`) : null);
 // у записей webm браузер часто не знает длительность — берём сохранённую
-const playerDuration = () => (Number.isFinite(player.duration) && player.duration > 0 ? player.duration : Number(playing?.dataset.dur) || 0);
+const playerDuration = () => (Number.isFinite(player.duration) && player.duration > 0 ? player.duration : Number(liveBox()?.dataset.dur) || 0);
+function paintPlayer() {
+  const box = liveBox();
+  if (!box) return;
+  const d = playerDuration();
+  const on = !player.paused;
+  box.classList.toggle('is-playing', on || player.currentTime > 0);
+  box.style.setProperty('--p', d ? Math.min(1, player.currentTime / d) : 0);
+  $('.b-play', box).innerHTML = on ? ICON.pause : ICON.play;
+  $('.b-dur', box).textContent = fmtDur(player.currentTime > 0 ? player.currentTime : Number(box.dataset.dur) || 0);
+}
+// после перерисовки чата — вернуть прогресс играющему сообщению
+document.addEventListener('kosmo:messages-painted', paintPlayer);
 
 document.addEventListener('click', async (e) => {
+  // перемотка: нажатие по волне или полосе
+  const track = e.target.closest('.b-wave-wrap, .b-progress');
+  if (track && track.closest('.b-player')?.dataset.player === playingId) {
+    const r = track.getBoundingClientRect();
+    const d = playerDuration();
+    if (d) { player.currentTime = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) * d; paintPlayer(); }
+    return;
+  }
   const btn = e.target.closest('.b-play');
   if (!btn) return;
   const box = btn.closest('.b-player');
-  if (playing === box && !player.paused) { player.pause(); return; }
+  if (playingId === box.dataset.player && !player.paused) { player.pause(); return; }
   const url = await mediaUrl(box.dataset.player);
   if (!url) { toast('File not found'); return; }
-  if (playing !== box) {
-    playing?.classList.remove('is-playing');
-    playing = box;
+  if (playingId !== box.dataset.player) {
+    const old = liveBox();
+    if (old) { old.classList.remove('is-playing'); old.style.setProperty('--p', 0); $('.b-play', old).innerHTML = ICON.play; $('.b-dur', old).textContent = fmtDur(Number(old.dataset.dur) || 0); }
+    playingId = box.dataset.player;
     player.src = url;
   }
   player.play();
 });
-player.addEventListener('play', () => { playing?.classList.add('is-playing'); if (playing) $('.b-play', playing).innerHTML = ICON.pause; });
-player.addEventListener('pause', () => { if (playing) $('.b-play', playing).innerHTML = ICON.play; });
+player.addEventListener('play', paintPlayer);
+player.addEventListener('pause', paintPlayer);
 player.addEventListener('ended', () => {
-  if (!playing) return;
-  playing.classList.remove('is-playing');
-  playing.style.setProperty('--p', 0);
-  $('.b-dur', playing).textContent = fmtDur(Number(playing.dataset.dur) || 0);
+  const box = liveBox();
+  player.currentTime = 0;
+  if (box) { box.classList.remove('is-playing'); box.style.setProperty('--p', 0); $('.b-play', box).innerHTML = ICON.play; $('.b-dur', box).textContent = fmtDur(Number(box.dataset.dur) || 0); }
+  playingId = null;
 });
-player.addEventListener('timeupdate', () => {
-  const d = playerDuration();
-  if (!playing || !d) return;
-  playing.style.setProperty('--p', Math.min(1, player.currentTime / d));
-  $('.b-dur', playing).textContent = fmtDur(player.currentTime);
-});
+player.addEventListener('timeupdate', paintPlayer);
 
 // для home.js: закрыто ли что-то поверх чата
 export const chatOverlayOpen = () => Boolean(mm.el || ctx.el || overlayOpen());
@@ -2209,7 +2231,7 @@ function openSendMenu() {
 
 // Кнопка записи: короткое нажатие — голосовое ↔ кружок; зажать — запись,
 // отпустить — отправить, увести палец вверх — запись закрепляется
-const roundDone = (r) => startUpload([{ blob: r.blob }], ([media]) => ({ kind: 'round', media, duration: r.duration }), { kind: 'round' });
+const roundDone = (r) => startUpload([{ blob: r.blob }], ([media]) => ({ kind: 'round', media, duration: r.duration }), { kind: 'round', url: URL.createObjectURL(r.blob) });
 (() => {
   let timer = null;
   let fired = false;
@@ -2315,6 +2337,7 @@ $('#chat-more').addEventListener('click', (e) => {
       <button class="menu-item" type="button" data-cm="call">${ICON.call}Voice call</button>
       <button class="menu-item" type="button" data-cm="video">${ICON.video}Video call</button>
       ${isSecret(c) ? '' : `<button class="menu-item" type="button" data-cm="secret">${ICON.lock}Start secret chat</button>`}` : ''}
+    <button class="menu-item" type="button" data-cm="wallpaper">${svg('<rect x="3" y="5" width="18" height="14" rx="3"/><circle cx="8.5" cy="10" r="1.6"/><path d="M4 17l5-4.5 3.5 3 3-3L20 16"/>')}Wallpaper</button>
     ${isRoom(c) ? `<button class="menu-item" type="button" data-cm="info">${ICON.users}${c.type === 'channel' ? 'Channel info' : 'Group info'}</button>` : ''}
     ${canTimer ? `
       <div class="menu-sub"><span>${ICON.timer}Auto-delete</span>
@@ -2350,9 +2373,57 @@ document.addEventListener('click', (e) => {
     case 'video': startCall(open.otherId, true); break;
     case 'secret': startSecret(open.otherId); break;
     case 'info': emit('kosmo:open-room', open.id); break;
+    case 'wallpaper': openChatWallpaper(); break;
     default:
   }
 });
+
+/* ---------- Свои обои для этого чата (меню чата → «Обои») ---------- */
+export function applyChatWallpaper() {
+  const el = $('.chat-wallpaper');
+  if (!el || !open.id) return;
+  const wp = prefs(open.id).wp;
+  if (wp) {
+    if (el.dataset.kind === `chatwp:${wp}`) return;
+    el.dataset.own = '1';
+    el.dataset.kind = `chatwp:${wp}`;
+    el.innerHTML = `<div class="wp-photo"><img data-media="${wp}" alt=""></div>`;
+    hydrateMedia(el);
+  } else if (el.dataset.own) {
+    delete el.dataset.own;
+    delete el.dataset.kind;
+    applyDesign();
+  }
+}
+function openChatWallpaper() {
+  const id = open.id;
+  const has = Boolean(prefs(id).wp);
+  const wrap = openPlusModal('Chat wallpaper', `
+    <div class="bn-preview cw-preview">${has ? `<img data-media="${prefs(id).wp}" alt="">` : '<span class="bn-empty"><small>Your own photo behind the messages of this chat. Only you see it.</small></span>'}</div>
+    <button class="btn btn-primary" type="button" data-cw-pick>Choose photo</button>
+    ${has ? '<button class="btn btn-secondary glass" type="button" data-cw-reset>Reset to default</button>' : ''}`, {
+    cls: 'pick-sheet',
+    onClick: (e) => {
+      if (e.target.closest('[data-cw-reset]')) { setPref(id, { wp: null }); applyChatWallpaper(); closePlusModal(); }
+      if (!e.target.closest('[data-cw-pick]')) return;
+      const inp = document.createElement('input');
+      inp.type = 'file';
+      inp.accept = 'image/*';
+      inp.addEventListener('change', async () => {
+        const f = inp.files?.[0];
+        if (!f) return;
+        try {
+          const media = await putBlob((await compressImage(f, 1800)).blob);
+          setPref(id, { wp: media });
+          if (open.id === id) applyChatWallpaper();
+          closePlusModal();
+        } catch { toast('Could not read this photo'); }
+      });
+      inp.click();
+    },
+  });
+  hydrateMedia(wrap);
+}
 
 // Секретный чат: отдельная переписка с замком, без пересылки и копирования
 export function startSecret(userId) {
@@ -2580,9 +2651,9 @@ async function runUpload(u) {
       onXhr: (x) => u.xhrs.push(x),
       onProgress: (f) => { done[i] = f * (send[i].size || 1); u.p = done.reduce((a, b) => a + b, 0) / total; paintUpload(u); },
     })));
+    const msg = await u.build(ids);
     uploads.delete(u.id);
-    (u.thumb.revoke ?? []).forEach((url) => url && URL.revokeObjectURL(url));
-    const msg = u.build(ids);
+    (u.thumb.revoke ?? [u.thumb.url]).forEach((url) => url && URL.revokeObjectURL(url));
     const keyOf = (i) => (u.sealed[i] ? { mk: u.sealed[i].mk, mime: u.sealed[i].mime } : {});
     if (msg.kind === 'album') msg.items = msg.items.map((it, i) => ({ ...it, ...keyOf(i) }));
     else Object.assign(msg, keyOf(0));
@@ -2605,9 +2676,39 @@ function paintUpload(u) {
 function uploadRow(u) {
   const t = u.thumb;
   const label = { voice: 'Voice message', round: 'Video message', audio: t.name ?? 'Music', photo: t.count > 1 ? `${t.count} files` : 'Photo', video: 'Video' }[t.kind] ?? 'File';
-  const media = t.url && (t.kind === 'photo' || t.kind === 'video')
-    ? (t.kind === 'video' ? `<video src="${t.url}" muted playsinline preload="metadata"></video>` : `<img src="${t.url}" alt="">`)
+  const media = t.url && (t.kind === 'photo' || t.kind === 'video' || t.kind === 'round')
+    ? (t.kind === 'photo' ? `<img src="${t.url}" alt="">` : `<video src="${t.url}" muted playsinline preload="metadata"${t.kind === 'round' ? ' autoplay loop' : ''}></video>`)
     : `<span class="up-ic">${t.kind === 'voice' ? ICON.mic ?? ICON.play : ICON.play}</span>`;
+  // кружок — сам кружок с кольцом загрузки по краю, без подписи
+  if (t.kind === 'round' && t.url) {
+    return `
+    <div class="bubble-row mine upload-row up-round${u.status === 'fail' ? ' is-failed' : ''}" data-upload="${u.id}" style="--p:${u.p.toFixed(3)}">
+      <div class="bubble kind-round kind-upload">
+        <div class="up-round-circle">${media}
+          <svg class="up-round-ring" viewBox="0 0 100 100" aria-hidden="true"><circle class="up-track" cx="50" cy="50" r="48"/><circle class="up-bar" cx="50" cy="50" r="48" pathLength="1"/></svg>
+          ${u.status === 'fail'
+            ? `<button class="up-btn" type="button" data-upload-retry="${u.id}" aria-label="Retry">${svg('<path d="M4 12a8 8 0 1 0 2.4-5.7M4 4.5v4h4"/>')}</button>`
+            : `<button class="up-btn" type="button" data-upload-cancel="${u.id}" aria-label="Cancel">${svg('<path d="M7 7l10 10M17 7L7 17"/>')}</button>`}
+        </div>
+      </div>
+    </div>`;
+  }
+  // голосовое — пузырь с волной и длиной, загрузка — кольцом вокруг кнопки
+  if (t.kind === 'voice') {
+    return `
+    <div class="bubble-row mine upload-row${u.status === 'fail' ? ' is-failed' : ''}" data-upload="${u.id}" style="--p:${u.p.toFixed(3)}">
+      <div class="bubble kind-voice kind-upload up-voice">
+        <span class="up-ring">
+          <svg viewBox="0 0 44 44" aria-hidden="true"><circle class="up-track" cx="22" cy="22" r="18"/><circle class="up-bar" cx="22" cy="22" r="18" pathLength="1"/></svg>
+          ${u.status === 'fail'
+            ? `<button class="up-btn" type="button" data-upload-retry="${u.id}" aria-label="Retry">${svg('<path d="M4 12a8 8 0 1 0 2.4-5.7M4 4.5v4h4"/>')}</button>`
+            : `<button class="up-btn" type="button" data-upload-cancel="${u.id}" aria-label="Cancel">${svg('<path d="M7 7l10 10M17 7L7 17"/>')}</button>`}
+        </span>
+        <span class="up-wave">${Array.from({ length: 28 }, (_, i) => `<i style="height:${20 + Math.round(60 * Math.abs(Math.sin(i * 1.7)))}%"></i>`).join('')}</span>
+        <span class="up-dur">${fmtDur(t.duration || 0)}</span>
+      </div>
+    </div>`;
+  }
   return `
     <div class="bubble-row mine upload-row${u.status === 'fail' ? ' is-failed' : ''}" data-upload="${u.id}" style="--p:${u.p.toFixed(3)}">
       <div class="bubble kind-upload${t.url ? ' has-thumb' : ''}${t.once ? ' is-once' : ''}">

@@ -308,6 +308,7 @@ const RU = {
   'Could not load statistics': 'Не удалось загрузить статистику', 'last 24 h': 'за 24 часа', '🔒 Encrypted': '🔒 Зашифровано',
   'Encryption': 'Шифрование',
   'Message unavailable': 'Сообщение недоступно',
+  'Wallpaper': 'Обои', 'Chat wallpaper': 'Обои чата', 'Choose photo': 'Выбрать фото', 'Reset to default': 'Вернуть обычные', 'Your own photo behind the messages of this chat. Only you see it.': 'Ваше фото за сообщениями этого чата. Видите только вы.',
   'Photo viewed': 'Фото просмотрено', 'You viewed the photo': 'Вы посмотрели фото',
   'The video is too large (max 40 MB)': 'Видео слишком большое (до 40 МБ)',
   'Banner': 'Баннер', 'Photo or video at the top of your profile': 'Фото или видео сверху профиля', 'Banner in profile': 'Баннер профиля', 'Choose photo or video': 'Выбрать фото или видео',

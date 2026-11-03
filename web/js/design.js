@@ -60,8 +60,8 @@ function injectShapes() {
 export const WALLPAPERS = { custom: 'Your photo', black: 'Black', color: 'Color', shapes: 'Cosmos', aurora: 'Aurora', dunes: 'Dunes', bubbles: 'Bubbles', nebula: 'Nebula', waves: 'Waves', glow: 'Glow' };
 // какие обои предлагать в каждом стиле
 const WP_FOR = {
-  material: ['custom', 'color', 'shapes', 'waves', 'glow', 'black'],
-  glass: ['custom', 'black', 'shapes', 'aurora', 'dunes', 'bubbles', 'nebula', 'waves', 'glow'],
+  material: ['color', 'shapes', 'waves', 'glow', 'black'],
+  glass: ['black', 'shapes', 'aurora', 'dunes', 'bubbles', 'nebula', 'waves', 'glow'],
 };
 const STAR = 'M0-10C1.4-1.4 1.4-1.4 10 0 1.4 1.4 1.4 1.4 0 10-1.4 1.4-1.4 1.4-10 0-1.4-1.4-1.4-1.4 0-10Z';
 const ORBIT = 'M-40 520C40 380 330 330 430 400';
@@ -210,7 +210,8 @@ export function applyDesign() {
   root.dataset.wallpaper = wpKind;
   root.style.setProperty('--shape-chat', `url(#shape-${settings.material.chatShape})`);
   root.style.setProperty('--shape-profile', `url(#shape-${settings.material.profileShape})`);
-  $$('.wallpaper').forEach((el) => renderWallpaper(el, el.dataset.wp ?? wpKind));
+  // у чата может быть своя картинка (меню чата → «Обои») — её не трогаем
+  $$('.wallpaper').forEach((el) => { if (!el.dataset.own) renderWallpaper(el, el.dataset.wp ?? wpKind); });
 }
 
 /* ---------------------------------------------------------------------------
@@ -321,7 +322,7 @@ document.addEventListener('click', (e) => {
     $$('[data-scheme-style]').forEach((b) => b.setAttribute('aria-checked', String(b === st)));
     setSchemeStyle(st.dataset.schemeStyle);
   }
-  const wp = e.target.closest('[data-wallpaper]');
+  const wp = e.target.closest('.wp-option[data-wallpaper]');
   // «Своё фото»: нет фото или нажали на уже выбранное — выбрать картинку
   if (wp?.dataset.wallpaper === 'custom' && (!settings[theme()].customWp || settings[theme()].wallpaper === 'custom')) {
     pickCustomWallpaper();

@@ -132,6 +132,9 @@ export async function openRoundRecorder(onSend, { hold = false } = {}) {
   const sctx = soft.getContext('2d');
   let filter = 'none';
   let raf = 0;
+  let mirror = facing === 'user';   // меняется, только когда пришёл кадр новой камеры
+  video.addEventListener('playing', () => { mirror = facing === 'user'; });
+  video.addEventListener('loadeddata', () => { mirror = facing === 'user'; });
   const draw = () => {
     raf = requestAnimationFrame(draw);
     const vw = video.videoWidth;
@@ -141,7 +144,9 @@ export async function openRoundRecorder(onSend, { hold = false } = {}) {
     const sx = (vw - side) / 2;
     const sy = (vh - side) / 2;
     const f = FILTERS.find(([id]) => id === filter)?.[2] ?? 'none';
-    canvas.classList.toggle('is-mirror', facing === 'user');
+    // фронтальная камера зеркалится прямо в кадре — так и запись, и превью
+    // совпадают, и при смене камеры картинка не «перескакивает»
+    ctx.setTransform(mirror ? -1 : 1, 0, 0, 1, mirror ? 480 : 0, 0);
     if (filter === 'portrait') {
       ctx.filter = 'blur(12px) saturate(1.1)';
       ctx.drawImage(video, sx, sy, side, side, -12, -12, 504, 504);
@@ -156,10 +161,12 @@ export async function openRoundRecorder(onSend, { hold = false } = {}) {
       sctx.fillRect(0, 0, 480, 480);
       ctx.filter = 'none';
       ctx.drawImage(soft, 0, 0);
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
     } else {
       ctx.filter = f;
       ctx.drawImage(video, sx, sy, side, side, 0, 0, 480, 480);
       ctx.filter = 'none';
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
     }
   };
   draw();

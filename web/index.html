@@ -426,52 +426,14 @@
           <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 6l-6 6 6 6"/></svg>
         </button>
         <div class="title-pill glass" data-refract="0.7"><span>Edit profile</span></div>
-        <span class="circle-spacer" aria-hidden="true"></span>
+        <button class="circle-btn edit-save" type="button" id="edit-save" aria-label="Save">
+          <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
+        </button>
       </header>
-      <div class="panel-body edit">
-        <div class="edit-avatar" id="edit-avatar"></div>
-        <div class="edit-avatar-actions">
-          <label class="chip-btn" for="avatar-input">
-            <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8.5A2.5 2.5 0 0 1 6.5 6h1.8l1.5-2h4.4l1.5 2h1.8A2.5 2.5 0 0 1 20 8.5v8a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 16.5z"/><circle cx="12" cy="12.5" r="3.5"/></svg>
-            Upload photo
-          </label>
-          <button class="chip-btn danger" type="button" id="avatar-remove" hidden>Remove photo</button>
-        </div>
-        <input type="file" id="avatar-input" accept="image/*,video/*" hidden>
-        <section class="group group-pad">
-          <span class="group-label">Color</span>
-          <div class="color-row" id="avatar-colors" role="radiogroup" aria-label="Avatar color"></div>
-          <span class="group-label">Letters</span>
-          <div class="field glass" data-refract="0.6"><input id="avatar-text" type="text" maxlength="4" aria-label="Avatar letters" autocomplete="off"></div>
-        </section>
-        <form class="setup-form edit-form" id="edit-form" novalidate>
-          <div class="field glass" data-refract="0.7" id="edit-name-field">
-            <input id="edit-name" type="text" maxlength="40" placeholder="Name" aria-label="Name">
-          </div>
-          <div class="field glass" data-refract="0.7" id="edit-username-field">
-            <span class="at" aria-hidden="true">@</span>
-            <input id="edit-username" type="text" autocapitalize="none" spellcheck="false" maxlength="32" placeholder="username (optional)" aria-label="Username">
-            <span class="field-status" aria-hidden="true">
-              <svg class="i ok" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
-              <svg class="i bad" viewBox="0 0 24 24"><path d="M7 7l10 10M17 7L7 17"/></svg>
-            </span>
-          </div>
-          <div class="field field-area glass" data-refract="0.5">
-            <textarea id="edit-bio" rows="3" maxlength="70" placeholder="Bio" aria-label="Bio"></textarea>
-            <span class="counter" id="edit-counter" aria-hidden="true">70</span>
-          </div>
-          <span class="group-label">In your profile</span>
-          <div class="pick-rows">
-            <button class="pick-row" type="button" id="edit-channel-btn"></button>
-            <button class="pick-row" type="button" id="edit-music-btn"></button>
-            <button class="pick-row" type="button" id="edit-banner-btn"></button>
-          </div>
-          <input type="file" id="banner-input" accept="image/*,video/*" hidden>
-          <input type="hidden" id="edit-channel">
-          <input type="file" id="music-input" accept="audio/*" multiple hidden>
-          <button class="btn btn-primary" type="submit">Save</button>
-        </form>
-      </div>
+      <div class="panel-body edit-view" id="edit-view"></div>
+      <input type="file" id="avatar-input" accept="image/*,video/*" hidden>
+      <input type="file" id="banner-input" accept="image/*,video/*" hidden>
+      <input type="file" id="music-input" accept="audio/*" multiple hidden>
     </section>
 
     <section class="panel" id="panel-design" aria-label="Designs" aria-hidden="true" inert>

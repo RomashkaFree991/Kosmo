@@ -1,7 +1,7 @@
 // Профиль собеседника: открывается из чата поверх него.
 // Номер и био показываются, только если человек их не скрыл.
 
-import { $, db, toast, escapeHtml, userAvatarHtml, cosmicBadge, userBadge } from './core.js';
+import { $, db, toast, escapeHtml, userAvatarHtml, cosmicBadge, userBadge, arrangeTiles } from './core.js';
 import { openOverlay, closeOverlay, state } from './panels.js';
 import { hydrateMedia } from './media.js';
 import { bannerHtml, profileExtras } from './info.js';
@@ -55,11 +55,13 @@ export function showUser(userId) {
     </section>
     ${profileExtras(u)}
     <section class="tiles" aria-label="Account">
-      ${u.username ? tile(ICON.at, 'Username', `@${escapeHtml(u.username)}`, 'data-copy-user="username"') : ''}
-      ${tile(ICON.hash, 'ID', escapeHtml(u.publicId), 'data-copy-user="id"')}
-      ${u.email ? tile(ICON.mail, 'Email', escapeHtml(u.email), '', true) : tile(ICON.lock, 'Email', 'Hidden')}
-      ${u.bio && !p.hideBio ? tile(ICON.quote, 'Bio', escapeHtml(u.bio), '', true) : ''}
-      ${tile(ICON.calendar, 'Joined', monthYear.format(u.createdAt))}
+      ${arrangeTiles([
+        u.username ? tile(ICON.at, 'Username', `@${escapeHtml(u.username)}`, 'data-copy-user="username"') : '',
+        tile(ICON.hash, 'ID', escapeHtml(u.publicId), 'data-copy-user="id"'),
+        u.email ? tile(ICON.mail, 'Email', escapeHtml(u.email), '', true) : tile(ICON.lock, 'Email', 'Hidden'),
+        u.bio && !p.hideBio ? tile(ICON.quote, 'Bio', escapeHtml(u.bio), '', true) : '',
+        tile(ICON.calendar, 'Joined', monthYear.format(u.createdAt)),
+      ])}
     </section>`;
   hydrateMedia($('#user-profile'));
   openOverlay('user');

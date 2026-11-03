@@ -497,3 +497,14 @@ export function initKeyboard() {
   // браузер не должен прокручивать страницу к полю — прокручиваем только ленту
   window.addEventListener('scroll', () => { if (window.scrollY) window.scrollTo(0, 0); }, { passive: true });
 }
+
+// Плашки профиля по две в ряд: маленькие идут парами, а если одна осталась
+// без пары — она растягивается на всю ширину, чтобы справа не было дырки.
+export function arrangeTiles(list) {
+  const items = list.filter(Boolean);
+  const isWide = (h) => /class="tile tile-wide/.test(h);
+  const small = items.filter((h) => !isWide(h));
+  const wide = items.filter(isWide);
+  if (small.length % 2) small[small.length - 1] = small[small.length - 1].replace('class="tile', 'class="tile tile-wide');
+  return [...small, ...wide].join('');
+}

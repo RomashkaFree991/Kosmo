@@ -89,10 +89,25 @@ export async function loadSnapshot() {
   snap.chats = Object.fromEntries(await Promise.all(Object.entries(snap.chats).map(async ([id, c]) => [id, await openChatDoc(c).catch(() => c)])));
   Object.values(snap.chats).forEach((c) => (c.messages ?? []).forEach(notePlainKeys));
   unsealOwn(snap);
+  // ещё не дошедшие до сервера сообщения остаются на экране (иначе при
+  // перезагрузке данных они бы «пропадали» до повторной отправки)
+  if (pending.size) {
+    const local = store.getJSON('chats', {});
+    for (const [cid, lc] of Object.entries(local)) {
+      const waiting = (lc.messages ?? []).filter((m) => pending.has(m.id));
+      if (!waiting.length) continue;
+      const sc = snap.chats[cid] ?? { ...lc, messages: [] };
+      const have = new Set((sc.messages ?? []).map((m) => m.id));
+      sc.messages = [...(sc.messages ?? []), ...waiting.filter((m) => !have.has(m.id))].sort((x, y) => x.at - y.at);
+      snap.chats[cid] = sc;
+    }
+  }
   for (const col of COLLECTIONS.filter((x) => x !== 'accounts')) {
     writeRaw(col, snap[col]);
     shadow[col] = clone(snap[col]);
   }
+  // shadow — то, что знает сервер: ожидающие сообщения из него убираем, чтобы они ушли патчем
+  if (pending.size) for (const c of Object.values(shadow.chats ?? {})) if (c.messages) c.messages = c.messages.filter((m) => !pending.has(m.id));
   return snap;
 }
 

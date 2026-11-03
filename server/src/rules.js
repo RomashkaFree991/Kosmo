@@ -322,14 +322,31 @@ export function checkPost(me, patch, old) {
     return { col: 'feed', id: patch.id, op: 'put', set: doc };
   }
   if (old.author === me) {
-    const { author, at, ...rest } = patch.set ?? {};
-    return { col: 'feed', id: patch.id, op: 'put', set: rest };
+    const { author, at, forwards, shareTo, shareKeys, reactions, views, comments, ...rest } = patch.set ?? {};
+    const set = { ...rest, ...postShare(me, old, patch.set ?? {}) };
+    // реакции, просмотры и комментарии автора — по тем же правилам, что у всех
+    const other = checkPostOthers(me, patch.set ?? {}, old);
+    return { col: 'feed', id: patch.id, op: 'put', set: { ...set, ...other } };
   }
-  const set = {};
   const s = patch.set ?? {};
+  const set = { ...checkPostOthers(me, s, old), ...postShare(me, old, s) };
+  return { col: 'feed', id: patch.id, op: 'put', set };
+}
+
+// Пересылка поста: один и тот же человек в один и тот же чат считается один раз.
+// В документе хранятся только хэши пар «кто → куда», не сами чаты.
+function postShare(me, old, s) {
+  if (!s.shareTo) return {};
+  const key = crypto.createHash('sha256').update(`${me}|${s.shareTo}`).digest('base64url').slice(0, 12);
+  const keys = Array.isArray(old.shareKeys) ? old.shareKeys : [];
+  if (keys.includes(key)) return {};
+  return { shareKeys: [...keys, key].slice(-5000), forwards: (old.forwards ?? 0) + 1 };
+}
+
+function checkPostOthers(me, s, old) {
+  const set = {};
   if (s.reactions) set.reactions = onlyMine(old.reactions, s.reactions, me);
   if (s.views) set.views = onlyMeAdded(old.views, s.views, me);
-  if (s.forwards != null && s.forwards === (old.forwards ?? 0) + 1) set.forwards = s.forwards;
   if (s.comments) {
     const before = new Map((old.comments ?? []).map((c) => [c.id, c]));
     const nextIds = new Set(s.comments.map((c) => c.id));
@@ -338,7 +355,7 @@ export function checkPost(me, patch, old) {
       .map((c) => ({ id: c.id, from: me, text: String(c.text ?? '').slice(0, 2000), at: Date.now() }));
     set.comments = [...kept, ...added];
   }
-  return { col: 'feed', id: patch.id, op: 'put', set };
+  return set;
 }
 
 export function checkStory(me, patch, old) {

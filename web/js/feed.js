@@ -261,7 +261,13 @@ function sharePost(id) {
     items: forwardTargets(),
     onPick: (chatId) => {
       sendToChat(chatId, { kind: 'post', post: id });
-      posts.update(id, (p) => { p.forwards = (p.forwards ?? 0) + 1; });
+      // счётчик растёт один раз на чат: повторная пересылка тому же человеку не считается
+      let seen = [];
+      try { seen = JSON.parse(localStorage.getItem('kosmo:shared') || '[]'); } catch { /* */ }
+      const key = `${id}|${chatId}`;
+      const fresh = !seen.includes(key);
+      if (fresh) { try { localStorage.setItem('kosmo:shared', JSON.stringify([...seen, key].slice(-500))); } catch { /* */ } }
+      posts.update(id, (p) => { if (fresh) p.forwards = (p.forwards ?? 0) + 1; p.shareTo = chatId; });
       refreshPostEverywhere(id);
       toast('Post shared');
     },

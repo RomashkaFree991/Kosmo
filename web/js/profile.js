@@ -3,7 +3,7 @@
 
 import {
   $, $$, db, wait, toast, shake, escapeHtml, userAvatarHtml, cosmicBadge, userBadge, AVATAR_COLORS,
-  timeAgo, refreshRefraction, initials,
+  timeAgo, refreshRefraction, initials, arrangeTiles,
 } from './core.js';
 import { createOtp } from './otp.js';
 import { state, openPanel, overlayOpen, closeOverlay } from './panels.js';
@@ -17,6 +17,7 @@ import {
 import { SICON } from './settings.js';
 import { accountsHtml, linkedAccounts } from './accounts.js';
 import { api, loadSnapshot } from './api.js';
+import { openCropper, openFieldScreen } from './editkit.js';
 
 const STATS_ICON = '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20V11M12 20V5M19 20v-6"/></svg>';
 import './qrlogin.js';
@@ -87,12 +88,14 @@ export function renderProfile(force = false) {
 
     ${profileExtras(u)}
     <section class="tiles" aria-label="Account">
-      ${u.username ? tile(ICON.at, 'Username', `@${escapeHtml(u.username)}`, 'data-copy="username" aria-label="Copy username"') : tile(ICON.at, 'Username', '<span class="tile-muted">Not set</span>', 'data-open-edit aria-label="Set username"')}
-      ${tile(ICON.hash, 'ID', escapeHtml(u.publicId), 'data-copy="id" aria-label="Copy ID"')}
-      ${tile(MAIL_ICON, `Email${u.privacy?.showEmail ? '' : hiddenMark}`, escapeHtml(u.email ?? ''), 'data-open-email aria-label="Change email"', true)}
-      ${u.bio ? tile(ICON.quote, `Bio${u.privacy?.hideBio ? hiddenMark : ''}`, escapeHtml(u.bio), '', true) : ''}
-      ${tile(ICON.calendar, 'Joined', monthYear.format(u.createdAt))}
-      ${tile(ICON.devices, 'Sessions', `${u.sessions.length} active`, 'data-open-sessions aria-label="Sessions"')}
+      ${arrangeTiles([
+        u.username ? tile(ICON.at, 'Username', `@${escapeHtml(u.username)}`, 'data-copy="username" aria-label="Copy username"') : tile(ICON.at, 'Username', '<span class="tile-muted">Not set</span>', 'data-open-edit aria-label="Set username"'),
+        tile(ICON.hash, 'ID', escapeHtml(u.publicId), 'data-copy="id" aria-label="Copy ID"'),
+        tile(MAIL_ICON, `Email${u.privacy?.showEmail ? '' : hiddenMark}`, escapeHtml(u.email ?? ''), 'data-open-email aria-label="Change email"', true),
+        u.bio ? tile(ICON.quote, `Bio${u.privacy?.hideBio ? hiddenMark : ''}`, escapeHtml(u.bio), '', true) : '',
+        tile(ICON.calendar, 'Joined', monthYear.format(u.createdAt)),
+        tile(ICON.devices, 'Sessions', `${u.sessions.length} active`, 'data-open-sessions aria-label="Sessions"'),
+      ])}
     </section>
 
     <section class="group settings-group" aria-label="Kosmo">
@@ -168,14 +171,14 @@ document.addEventListener('click', async (e) => {
 });
 
 /* ---------------------------------------------------------------------------
-   Редактирование профиля
+   Редактирование профиля — выглядит как сам профиль: баннер, аватар, имя,
+   плитки канала и музыки (пустые — с «+»), плашки полей. Нажатие на плашку
+   открывает отдельный экран поля; галочка справа от заголовка сохраняет всё.
    --------------------------------------------------------------------------- */
 let draft = null;
-const editName = $('#edit-name');
-const editUsername = $('#edit-username');
-const editUsernameField = $('#edit-username-field');
-const editBio = $('#edit-bio');
-const editCounter = $('#edit-counter');
+let saved = '';
+const editView = $('#edit-view');
+const dirty = () => draft && JSON.stringify(draft) !== saved;
 
 // пустой @username тоже можно
 function usernameOk(v) {
@@ -183,119 +186,352 @@ function usernameOk(v) {
   return USERNAME_RE.test(v) && (!RESERVED.includes(v) || state.acc.user.official) && !db.usernameTaken(v, state.acc.user.id);
 }
 
-function paintEditAvatar() {
-  const preview = { name: editName.value.trim() || state.acc.user.name, avatar: draft.avatar };
-  $('#edit-avatar').innerHTML = userAvatarHtml(preview, 'avatar-edit');
-  hydrateMedia($('#edit-avatar'));
-  $('#avatar-remove').hidden = !draft.avatar.photo;
-  $('#avatar-text').placeholder = initials(preview.name) || 'Auto';
-  $$('#avatar-colors .color-chip').forEach((c) => {
-    c.setAttribute('aria-checked', String(String(draft.avatar.color) === c.dataset.color));
-  });
+const PICK_ICON = {
+  channel: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10v4h3l5 4V6L7 10z"/><path d="M16 9a4 4 0 0 1 0 6"/></svg>',
+  music: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18V6l10-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="16.5" cy="16" r="2.5"/></svg>',
+  plus: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>',
+  pencil: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16z"/></svg>',
+  user: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8.5" r="3.8"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/></svg>',
+};
+const BANNER_IC = '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="3"/><circle cx="8.5" cy="10" r="1.6"/><path d="M4 17l5-4.5 3.5 3 3-3L20 16"/></svg>';
+const myPublicRooms = () => Object.values(chats.all()).filter((c) => isRoom(c) && c.username && c.owner === state.acc.user.id);
+const fmtDur = (s) => `${Math.floor((s || 0) / 60)}:${String(Math.floor((s || 0) % 60)).padStart(2, '0')}`;
+
+function editTile(key, icon, label, value, wide = false) {
+  return `<button class="tile${wide ? ' tile-wide' : ''} ripple-host edit-tile" type="button" data-edit="${key}">
+    <span class="tile-icon">${icon}</span>
+    <span class="tile-label">${label}</span>
+    <span class="tile-value">${value}</span>
+    <span class="edit-pen" aria-hidden="true">${PICK_ICON.pencil}</span>
+  </button>`;
 }
 
-function validateEditUsername() {
-  const v = editUsername.value;
-  editUsernameField.classList.toggle('is-valid', Boolean(v) && usernameOk(v));
-  editUsernameField.classList.toggle('is-invalid', v.length >= 3 && !usernameOk(v));
+function paintEdit() {
+  const u = state.acc.user;
+  const d = draft;
+  const preview = { ...u, name: d.name || u.name, avatar: d.avatar, banner: d.banner };
+  const ch = d.channel ? chats.get(d.channel) : null;
+  const music = d.music ?? [];
+  const busy = (k) => (d.busy === k ? ' is-busy' : '');
+  editView.innerHTML = `
+    <section class="profile-hero edit-hero${d.banner?.media ? ' has-banner' : ''}">
+      ${bannerHtml(preview)}
+      <button class="edit-banner-btn${busy('banner')}" type="button" data-edit="banner" aria-label="Banner">
+        <span class="edit-chip">${BANNER_IC}${d.banner?.media ? 'Change banner' : 'Add banner'}</span>
+      </button>
+      <button class="hero-avatar${busy('avatar')}" type="button" data-edit="avatar" aria-label="Profile photo">
+        <span class="hero-orbit" aria-hidden="true"></span>
+        ${userAvatarHtml(preview, 'avatar-hero')}
+        <span class="hero-edit" aria-hidden="true">${ICON.camera}</span>
+      </button>
+      <button class="profile-name edit-name" type="button" data-edit="name"><span>${escapeHtml(d.name || 'Your name')}</span>${PICK_ICON.pencil}</button>
+    </section>
+
+    <div class="profile-extras is-two edit-extras">
+      ${ch ? `<button class="tile profile-channel ripple-host" type="button" data-edit="channel">
+          ${chatAvatar(ch, 'avatar-sm')}
+          <span class="info-ch-text"><span class="info-value">${escapeHtml(chatTitle(ch))}</span><span class="info-label">${ch.type === 'channel' ? 'Channel' : 'Group'} · @${escapeHtml(ch.username)}</span></span>
+        </button>`
+        : `<button class="tile tile-add ripple-host" type="button" data-edit="channel"><span class="add-plus">${PICK_ICON.plus}</span><span class="tile-label">Add channel</span></button>`}
+      ${music.length ? `<button class="tile profile-music ripple-host${busy('music')}" type="button" data-edit="music">
+          <span class="pm-play" aria-hidden="true">${PICK_ICON.music}</span>
+          <span class="pm-text"><span class="info-value">${escapeHtml(music[0].title || 'Track')}</span><span class="info-label">${music.length > 1 ? `${music.length} tracks` : escapeHtml(music[0].artist || 'Music')}</span></span>
+        </button>`
+        : `<button class="tile tile-add ripple-host${busy('music')}" type="button" data-edit="music"><span class="add-plus">${PICK_ICON.plus}</span><span class="tile-label">${d.busy === 'music' ? 'Uploading…' : 'Add music'}</span></button>`}
+    </div>
+
+    <section class="tiles" aria-label="Profile">
+      ${arrangeTiles([
+        editTile('name', PICK_ICON.user, 'Name', escapeHtml(d.name)),
+        editTile('username', ICON.at, 'Username', d.username ? `@${escapeHtml(d.username)}` : '<span class="tile-muted">Not set</span>'),
+        editTile('bio', ICON.quote, 'Bio', d.bio ? escapeHtml(d.bio) : '<span class="tile-muted">A few words about you</span>', true),
+        editTile('look', ICON.palette, 'Avatar', d.avatar.photo ? 'Photo' : `Color${d.avatar.text ? ` · ${escapeHtml(d.avatar.text)}` : ''}`),
+        editTile('email', MAIL_ICON, 'Email', escapeHtml(u.email ?? '')),
+      ])}
+    </section>`;
+  hydrateMedia(editView);
+  $('#edit-save').classList.toggle('is-dirty', dirty());
 }
 
 function openEdit() {
   const u = state.acc.user;
-  draft = { avatar: { color: null, text: '', photo: null, ...u.avatar } };
-  editName.value = u.name;
-  editUsername.value = u.username;
-  editBio.value = u.bio ?? '';
-  $('#avatar-text').value = draft.avatar.text ?? '';
-  editCounter.textContent = 70 - editBio.value.length;
-  const mine = Object.values(chats.all()).filter((c) => isRoom(c) && c.username && c.owner === u.id);
-  draft.music = tracksOf(u).map((t) => ({ ...t }));
-  draft.banner = u.banner ?? null;
-  paintBannerEdit();
-  paintMusicEdit();
-  $('#edit-channel').value = mine.some((c) => c.id === u.profileChannel) ? u.profileChannel : '';
-  paintChannelPick();
-  $('#avatar-colors').innerHTML = `
-    <button class="color-chip color-auto" type="button" role="radio" data-color="null" aria-label="Automatic color">Auto</button>
-    ${AVATAR_COLORS.map(([a, b], i) => `<button class="color-chip" type="button" role="radio" data-color="${i}" style="--a1:${a};--a2:${b}" aria-label="Color ${i + 1}"></button>`).join('')}`;
-  editUsernameField.classList.remove('is-valid', 'is-invalid');
-  paintEditAvatar();
+  draft = {
+    name: u.name,
+    username: u.username ?? '',
+    bio: u.bio ?? '',
+    avatar: { color: null, text: '', photo: null, ...u.avatar },
+    channel: myPublicRooms().some((c) => c.id === u.profileChannel) ? u.profileChannel : '',
+    music: tracksOf(u).map((t) => ({ ...t })),
+    banner: u.banner ?? null,
+  };
+  saved = JSON.stringify(draft);
+  paintEdit();
   openPanel('edit');
 }
 
-$('#avatar-colors').addEventListener('click', (e) => {
-  const chip = e.target.closest('.color-chip');
-  if (!chip) return;
-  draft.avatar.color = chip.dataset.color === 'null' ? null : Number(chip.dataset.color);
-  paintEditAvatar();
+// плашки → экраны полей и листы
+editView.addEventListener('click', async (e) => {
+  const key = e.target.closest('[data-edit]')?.dataset.edit;
+  if (!key || !draft) return;
+  if (key === 'name') {
+    const v = await openFieldScreen({
+      title: 'Name', value: draft.name, max: 40, counter: true, placeholder: 'Your name',
+      rules: `<p>This is how people see you in chats, groups and search.</p>
+        <p><b>You can:</b> any letters, spaces, emoji — up to 40 characters.</p>
+        <p><b>You can’t:</b> leave it empty.</p>`,
+      check: (x) => (x.trim() ? { ok: true } : { ok: false, note: 'The name can’t be empty' }),
+    });
+    if (v != null) { draft.name = v; paintEdit(); }
+  }
+  if (key === 'username') {
+    const me = state.acc.user;
+    const v = await openFieldScreen({
+      title: 'Username', value: draft.username, prefix: '@', max: 32, placeholder: 'username',
+      clean: (x) => x.toLowerCase().replace(/[^a-z0-9]/g, ''),
+      rules: `<p>People can find you by this name and write to you without knowing your email.</p>
+        <p><b>You can:</b> English letters a–z and numbers 0–9, from 3 to 32 characters.</p>
+        <p><b>You can’t:</b> spaces, dots, dashes or other symbols; only numbers without a letter; a name someone else already has.</p>
+        <p>You can also leave it empty — then you can only be found by ID.</p>`,
+      check: (x) => {
+        if (!x) return { ok: true, note: me.username ? 'Your username will be removed' : '' , tone: '' };
+        if (x === me.username) return { ok: true, note: 'This is your username', tone: '' };
+        if (x.length < 3) return { ok: false, note: 'At least 3 characters', tone: 'bad' };
+        if (!/[a-z]/.test(x)) return { ok: false, note: 'Add at least one letter', tone: 'bad' };
+        if (!usernameOk(x)) return { ok: false, note: `@${x} is taken`, tone: 'bad' };
+        // этот браузер знает не всех: занятость проверяет сервер
+        const p = new Promise((r) => setTimeout(r, 350))
+          .then(() => api('GET', `/api/username/${x}`))
+          .then(({ free }) => (free ? { ok: true, note: `@${x} is available` } : { ok: false, note: `@${x} is taken`, tone: 'bad' }))
+          .catch(() => ({ ok: true, note: 'Could not check now — will check when saving' }));
+        p.pending = 'Checking…';
+        return p;
+      },
+    });
+    if (v != null) { draft.username = v; paintEdit(); }
+  }
+  if (key === 'bio') {
+    const v = await openFieldScreen({
+      title: 'Bio', value: draft.bio, max: 70, multiline: true, counter: true, placeholder: 'A few words about you',
+      rules: `<p>Shown in your profile under your name.</p>
+        <p><b>You can:</b> any text, emoji and links — up to 70 characters. Can be empty.</p>
+        <p>You can hide it from others in Privacy.</p>`,
+      check: () => ({ ok: true }),
+    });
+    if (v != null) { draft.bio = v; paintEdit(); }
+  }
+  if (key === 'email') { closePanelQuiet(); document.querySelector('[data-open-email]')?.click(); }
+  if (key === 'avatar') pickAvatar();
+  if (key === 'banner') pickBanner();
+  if (key === 'channel') pickChannel();
+  if (key === 'music') openMusicSheet();
+  if (key === 'look') openLookSheet();
 });
-$('#avatar-text').addEventListener('input', (e) => {
-  draft.avatar.text = [...e.target.value.trim()].slice(0, 2).join('').toUpperCase();
-  paintEditAvatar();
-});
+
+function closePanelQuiet() { saved = JSON.stringify(draft); $('#panel-edit [data-close-panel]').click(); }
+
+/* ---------- Аватар: фото с обрезкой по кругу, видео до 15 с ---------- */
+function pickAvatar() {
+  if (!draft.avatar.photo) { $('#avatar-input').click(); return; }
+  openModal('Profile photo', `
+    <div class="pick-list">
+      <button class="pick-opt" type="button" data-av="pick"><span class="pick-ic">${ICON.camera}</span><span class="pick-text"><b>Choose photo or video</b><small>From your gallery</small></span></button>
+      <button class="pick-opt danger" type="button" data-av="remove"><span class="pick-ic">${PI.close}</span><span class="pick-text"><b>Remove photo</b><small>Use color and letters instead</small></span></button>
+    </div>`, {
+    cls: 'pick-sheet',
+    onClick: (e) => {
+      const a = e.target.closest('[data-av]')?.dataset.av;
+      if (a === 'pick') { closeModal(); $('#avatar-input').click(); }
+      if (a === 'remove') { draft.avatar.photo = null; draft.avatar.video = null; closeModal(); paintEdit(); }
+    },
+  });
+}
 $('#avatar-input').addEventListener('change', async (e) => {
   const file = e.target.files?.[0];
   e.target.value = '';
-  if (!file) return;
+  if (!file || !draft) return;
   try {
     if (file.type.startsWith('video/')) {
       // видео-аватарка: до 15 секунд, кадр из неё — для маленьких аватарок
       if (file.size > 25 * 1024 * 1024) { toast('The video is too large (max 25 MB)'); return; }
       const { blob, duration } = await videoPoster(file);
       if (duration > 15.5) { toast('Video avatar can be up to 15 seconds'); return; }
-      toast('Uploading…');
+      draft.busy = 'avatar'; paintEdit();
       draft.avatar.photo = await putBlob(blob);
       draft.avatar.video = await putBlob(file, { type: file.type });
     } else {
-      draft.avatar.photo = await putBlob(await squareAvatar(file));
+      const cut = await openCropper({ file, shape: 'circle', out: 640, title: 'Profile photo' });
+      if (!cut) return;
+      draft.busy = 'avatar'; paintEdit();
+      draft.avatar.photo = await putBlob(await squareAvatar(cut));
       draft.avatar.video = null;
     }
-    paintEditAvatar();
   } catch {
     toast('Could not read this file');
   }
-});
-$('#avatar-remove').addEventListener('click', () => {
-  draft.avatar.photo = null;
-  draft.avatar.video = null;
-  paintEditAvatar();
-});
-editName.addEventListener('input', paintEditAvatar);
-editUsername.addEventListener('input', () => {
-  const clean = editUsername.value.toLowerCase().replace(/[^a-z0-9]/g, '');
-  if (clean !== editUsername.value) editUsername.value = clean;
-  validateEditUsername();
-});
-editBio.addEventListener('input', () => {
-  const left = 70 - editBio.value.length;
-  editCounter.textContent = left;
-  editCounter.classList.toggle('is-low', left <= 10);
+  draft.busy = null;
+  paintEdit();
 });
 
-$('#edit-form').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const name = editName.value.trim();
-  const username = editUsername.value;
-  if (!name) { shake($('#edit-name-field')); editName.focus(); return; }
-  // этот браузер знает не всех: занятость имени проверяет сервер
+/* ---------- Баннер: фото с обрезкой рамкой или видео до 30 с ---------- */
+function pickBanner() {
+  const b = draft.banner;
+  if (!b?.media) { $('#banner-input').click(); return; }
+  openModal('Banner', `
+    <div class="pick-list">
+      <button class="pick-opt" type="button" data-bn="pick"><span class="pick-ic">${BANNER_IC}</span><span class="pick-text"><b>Choose photo or video</b><small>A photo or a video up to 30 seconds</small></span></button>
+      <button class="pick-opt danger" type="button" data-bn="remove"><span class="pick-ic">${PI.close}</span><span class="pick-text"><b>Remove banner</b><small>Nothing at the top of your profile</small></span></button>
+    </div>`, {
+    cls: 'pick-sheet',
+    onClick: (e) => {
+      const a = e.target.closest('[data-bn]')?.dataset.bn;
+      if (a === 'pick') { closeModal(); $('#banner-input').click(); }
+      if (a === 'remove') { draft.banner = null; closeModal(); paintEdit(); }
+    },
+  });
+}
+$('#banner-input').addEventListener('change', async (e) => {
+  const file = e.target.files?.[0];
+  e.target.value = '';
+  if (!file || !draft) return;
+  try {
+    if (file.type.startsWith('video/')) {
+      if (file.size > 40 * 1024 * 1024) { toast('The video is too large (max 40 MB)'); return; }
+      const { blob, duration } = await videoPoster(file, 720);
+      if (duration > 30.5) { toast('Banner video can be up to 30 seconds'); return; }
+      draft.busy = 'banner'; paintEdit();
+      const poster = await putBlob(blob);
+      draft.banner = { media: await putBlob(file, { type: file.type }), type: 'video', poster };
+    } else {
+      const cut = await openCropper({ file, shape: 'banner', aspect: 16 / 9, out: 1600, title: 'Banner' });
+      if (!cut) return;
+      draft.busy = 'banner'; paintEdit();
+      draft.banner = { media: await putBlob(cut), type: 'photo' };
+    }
+  } catch { toast('Could not read this file'); }
+  draft.busy = null;
+  paintEdit();
+});
+
+/* ---------- Канал или группа в профиле ---------- */
+function pickChannel() {
+  const rooms = myPublicRooms();
+  const cur = draft.channel;
+  const wrap = openModal('Channel in profile', `
+    <div class="pick-list">
+      <button class="pick-opt${cur ? '' : ' is-on'}" type="button" data-pick-room=""><span class="pick-ic">${PICK_ICON.channel}</span><span class="pick-text"><b>Don’t show</b><small>Nothing in your profile</small></span><span class="pick-check"></span></button>
+      ${rooms.map((c) => `<button class="pick-opt${cur === c.id ? ' is-on' : ''}" type="button" data-pick-room="${c.id}">${chatAvatar(c, 'avatar-sm')}<span class="pick-text"><b>${escapeHtml(chatTitle(c))}</b><small>${c.type === 'channel' ? 'Channel' : 'Group'} · @${escapeHtml(c.username)} · ${c.members.length}</small></span><span class="pick-check"></span></button>`).join('')}
+    </div>
+    ${rooms.length ? '' : '<p class="pm-note">You have no public channels or groups yet. Create one and give it a @username — then you can show it here.</p>'}`, {
+    cls: 'pick-sheet',
+    onClick: (e) => {
+      const b = e.target.closest('[data-pick-room]');
+      if (!b) return;
+      draft.channel = b.dataset.pickRoom;
+      closeModal();
+      paintEdit();
+    },
+  });
+  hydrateMedia(wrap);
+}
+
+/* ---------- Музыка: список треков, убрать, добавить ещё (до 50) ---------- */
+let musicSheet = null;
+function musicSheetHtml() {
+  const list = draft?.music ?? [];
+  return `
+    <div class="ms-head"><span class="ms-cover">${PICK_ICON.music}</span><span class="pick-text"><b>${list.length ? `${list.length} of 50 tracks` : 'No tracks yet'}</b><small>Everyone who opens your profile can play them</small></span></div>
+    ${list.length ? `<div class="pick-list">${list.map((t, i) => `<div class="pick-opt ms-track"><span class="ms-n">${i + 1}</span><span class="pick-text"><b>${escapeHtml(t.title || 'Track')}</b><small>${escapeHtml(t.artist || '')}${t.dur ? ` · ${fmtDur(t.dur)}` : ''}</small></span><button class="ms-x" type="button" data-music-rm="${i}" aria-label="Remove">${PI.close}</button></div>`).join('')}</div>` : ''}
+    ${list.length < 50 ? `<button class="btn btn-primary" type="button" data-music-pick>${draft?.busy === 'music' ? 'Uploading…' : 'Add tracks'}</button>` : ''}`;
+}
+function openMusicSheet() {
+  if (!draft.music.length) { $('#music-input').click(); return; }
+  musicSheet = openModal('Music in profile', musicSheetHtml(), {
+    cls: 'pick-sheet',
+    onClick: (e) => {
+      if (e.target.closest('[data-music-pick]')) $('#music-input').click();
+      const rm = e.target.closest('[data-music-rm]');
+      if (rm) {
+        draft.music.splice(Number(rm.dataset.musicRm), 1);
+        paintEdit();
+        musicSheet.querySelector('.pm-body').innerHTML = musicSheetHtml();
+      }
+    },
+  });
+}
+$('#music-input').addEventListener('change', async (e) => {
+  const files = [...(e.target.files ?? [])];
+  e.target.value = '';
+  if (!draft) return;
+  const room = 50 - draft.music.length;
+  if (files.length > room) toast('Up to 50 tracks');
+  draft.busy = 'music';
+  paintEdit();
+  for (const file of files.slice(0, room)) {
+    if (file.size > 15 * 1024 * 1024) { toast('The track is too large (max 15 MB)'); continue; }
+    const name = file.name.replace(/\.[a-z0-9]+$/i, '');
+    const [artist, title] = name.includes(' - ') ? name.split(' - ', 2) : ['', name];
+    try {
+      const dur = await mediaDuration(file).catch(() => 0);
+      const media = await putBlob(file, { type: file.type || 'audio/mpeg' });
+      draft.music.push({ media, title: title.trim().slice(0, 80), artist: artist.trim().slice(0, 60), dur: Math.round(dur || 0) });
+    } catch (err) { toast(err.message || 'Upload failed'); }
+  }
+  draft.busy = null;
+  paintEdit();
+  if (musicSheet?.isConnected) musicSheet.querySelector('.pm-body').innerHTML = musicSheetHtml();
+});
+
+/* ---------- Цвет и буквы аватарки ---------- */
+function openLookSheet() {
+  const sheetHtml = () => {
+    const prev = { name: draft.name, avatar: { ...draft.avatar, photo: null, video: null } };
+    return `
+      <div class="look-preview">${userAvatarHtml(prev, 'avatar-lg')}</div>
+      ${draft.avatar.photo ? '<p class="pm-note">Color and letters are shown when there is no photo.</p>' : ''}
+      <span class="group-label">Color</span>
+      <div class="color-row" role="radiogroup" aria-label="Avatar color">
+        <button class="color-chip color-auto" type="button" role="radio" data-color="null" aria-checked="${draft.avatar.color == null}" aria-label="Automatic color">Auto</button>
+        ${AVATAR_COLORS.map(([a, b], i) => `<button class="color-chip" type="button" role="radio" data-color="${i}" style="--a1:${a};--a2:${b}" aria-checked="${String(draft.avatar.color) === String(i)}" aria-label="Color ${i + 1}"></button>`).join('')}
+      </div>
+      <span class="group-label">Letters</span>
+      <div class="field glass"><input class="look-letters" type="text" maxlength="4" placeholder="${escapeHtml(initials(draft.name) || 'Auto')}" value="${escapeHtml(draft.avatar.text ?? '')}" aria-label="Avatar letters" autocomplete="off"></div>`;
+  };
+  const wrap = openModal('Avatar color and letters', sheetHtml(), {
+    cls: 'pick-sheet look-sheet',
+    onClick: (e) => {
+      const chip = e.target.closest('.color-chip');
+      if (!chip) return;
+      draft.avatar.color = chip.dataset.color === 'null' ? null : Number(chip.dataset.color);
+      wrap.querySelectorAll('.color-chip').forEach((c) => c.setAttribute('aria-checked', String(c === chip)));
+      wrap.querySelector('.look-preview').innerHTML = userAvatarHtml({ name: draft.name, avatar: { ...draft.avatar, photo: null, video: null } }, 'avatar-lg');
+      paintEdit();
+    },
+  });
+  wrap.querySelector('.look-letters').addEventListener('input', (e) => {
+    draft.avatar.text = [...e.target.value.trim()].slice(0, 2).join('').toUpperCase();
+    wrap.querySelector('.look-preview').innerHTML = userAvatarHtml({ name: draft.name, avatar: { ...draft.avatar, photo: null, video: null } }, 'avatar-lg');
+    paintEdit();
+  });
+}
+
+/* ---------- Сохранить: галочка справа от заголовка ---------- */
+async function saveEdit() {
+  if (!draft) return;
+  if (draft.busy) { toast('Wait until the upload finishes'); return; }
+  const { name, username } = draft;
+  if (!name.trim()) { toast('The name can’t be empty'); return; }
   let free = true;
-  if (usernameOk(username) && username && username !== state.acc.user.username) {
-    try { ({ free } = await api('GET', `/api/username/${username}`)); } catch { /* нет связи — проверит сервер при сохранении */ }
+  if (username && username !== state.acc.user.username) {
+    if (!usernameOk(username)) free = false;
+    else { try { ({ free } = await api('GET', `/api/username/${username}`)); } catch { /* нет связи — проверит сервер */ } }
   }
-  if (!free || !usernameOk(username)) {
-    shake(editUsernameField);
-    editUsername.focus();
-    if (!free || USERNAME_RE.test(username)) toast('This username is taken');
-    else if (username.length < 3) toast('At least 3 characters');
-    else toast('Add at least one letter');
-    return;
-  }
+  if (!free) { shake($('#edit-save')); toast('This username is taken'); return; }
   db.update(state.acc.user.id, (u) => {
-    u.name = name;
+    u.name = name.trim();
     u.username = username;
-    u.bio = editBio.value.trim();
+    u.bio = draft.bio.trim();
     u.avatar = draft.avatar;
-    u.profileChannel = $('#edit-channel').value || null;
+    u.profileChannel = draft.channel || null;
     u.music = draft.music?.length ? draft.music : null;
     u.banner = draft.banner ?? null;
   });
@@ -303,8 +539,29 @@ $('#edit-form').addEventListener('submit', async (e) => {
   renderProfile(true);
   document.dispatchEvent(new CustomEvent('kosmo:profile'));
   toast('Profile updated');
-  $('#panel-edit [data-close-panel]').click();
-});
+  closePanelQuiet();
+}
+$('#edit-save').addEventListener('click', saveEdit);
+
+// «Назад» с несохранёнными правками — спросить
+$('#panel-edit [data-close-panel]').addEventListener('click', (e) => {
+  if (!dirty()) return;
+  e.stopImmediatePropagation();
+  e.preventDefault();
+  openModal('Save changes?', `
+    <p class="pm-note">You changed your profile. Save it before leaving?</p>
+    <button class="btn btn-primary" type="button" data-leave="save">Save</button>
+    <button class="btn btn-secondary glass" type="button" data-leave="drop">Discard</button>`, {
+    cls: 'pick-sheet',
+    onClick: (ev) => {
+      const a = ev.target.closest('[data-leave]')?.dataset.leave;
+      if (!a) return;
+      closeModal();
+      if (a === 'save') saveEdit();
+      else closePanelQuiet();
+    },
+  });
+}, true);
 
 /* ---------------------------------------------------------------------------
    Сессии: выгнать устройство, добавить в доверенные.
@@ -478,127 +735,3 @@ document.addEventListener('click', (e) => {
   openChat(b.dataset.openProfileChannel);
 });
 
-/* ---------- Канал и музыка в профиле: строки-кнопки и листы выбора ---------- */
-const PICK_ICON = {
-  channel: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10v4h3l5 4V6L7 10z"/><path d="M16 9a4 4 0 0 1 0 6"/></svg>',
-  music: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18V6l10-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="16.5" cy="16" r="2.5"/></svg>',
-  chev: '<svg class="i chev-right" viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 6l6 6-6 6"/></svg>',
-};
-const myPublicRooms = () => Object.values(chats.all()).filter((c) => isRoom(c) && c.username && c.owner === state.acc.user.id);
-function paintChannelPick() {
-  const c = chats.get($('#edit-channel').value);
-  $('#edit-channel-btn').innerHTML = `<span class="pick-ic">${c ? chatAvatar(c, 'avatar-xs') : PICK_ICON.channel}</span>
-    <span class="pick-text"><b>${c ? escapeHtml(chatTitle(c)) : 'Channel or group'}</b><small>${c ? `@${escapeHtml(c.username)}` : 'Show one of your public channels or groups'}</small></span>${PICK_ICON.chev}`;
-  hydrateMedia($('#edit-channel-btn'));
-}
-function paintMusicEdit() {
-  const list = draft?.music ?? [];
-  $('#edit-music-btn').innerHTML = `<span class="pick-ic pick-ic-music">${PICK_ICON.music}</span>
-    <span class="pick-text"><b>${list.length ? escapeHtml(list[0].title) : 'Music'}</b><small>${list.length ? (list.length > 1 ? `${list.length} tracks` : escapeHtml(list[0].artist || 'Your track')) : 'Add tracks people can play in your profile'}</small></span>${PICK_ICON.chev}`;
-}
-$('#edit-channel-btn').addEventListener('click', () => {
-  const rooms = myPublicRooms();
-  const cur = $('#edit-channel').value;
-  const wrap = openModal('Channel in profile', `
-    <div class="pick-list">
-      <button class="pick-opt${cur ? '' : ' is-on'}" type="button" data-pick-room=""><span class="pick-ic">${PICK_ICON.channel}</span><span class="pick-text"><b>Don’t show</b><small>Nothing in your profile</small></span><span class="pick-check"></span></button>
-      ${rooms.map((c) => `<button class="pick-opt${cur === c.id ? ' is-on' : ''}" type="button" data-pick-room="${c.id}">${chatAvatar(c, 'avatar-sm')}<span class="pick-text"><b>${escapeHtml(chatTitle(c))}</b><small>${c.type === 'channel' ? 'Channel' : 'Group'} · @${escapeHtml(c.username)} · ${c.members.length}</small></span><span class="pick-check"></span></button>`).join('')}
-    </div>
-    ${rooms.length ? '' : '<p class="pm-note">You have no public channels or groups yet. Create one and give it a @username — then you can show it here.</p>'}`, {
-    cls: 'pick-sheet',
-    onClick: (e) => {
-      const b = e.target.closest('[data-pick-room]');
-      if (!b) return;
-      $('#edit-channel').value = b.dataset.pickRoom;
-      paintChannelPick();
-      closeModal();
-    },
-  });
-  hydrateMedia(wrap);
-});
-/* ---------- Баннер профиля ---------- */
-const BANNER_IC = '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="3"/><circle cx="8.5" cy="10" r="1.6"/><path d="M4 17l5-4.5 3.5 3 3-3L20 16"/></svg>';
-function paintBannerEdit() {
-  const b = draft?.banner;
-  $('#edit-banner-btn').innerHTML = `<span class="pick-ic pick-ic-banner">${b?.media ? (b.type === 'video' ? `<video data-media="${b.media}" muted autoplay loop playsinline></video>` : `<img data-media="${b.media}" alt="">`) : BANNER_IC}</span>
-    <span class="pick-text"><b>${b?.media ? (b.type === 'video' ? 'Video banner' : 'Photo banner') : 'Banner'}</b><small>Photo or video at the top of your profile</small></span>${PICK_ICON.chev}`;
-  hydrateMedia($('#edit-banner-btn'));
-}
-let bannerSheet = null;
-$('#edit-banner-btn').addEventListener('click', () => {
-  const b = draft?.banner;
-  bannerSheet = openModal('Banner in profile', `
-    <div class="bn-preview">${b?.media ? (b.type === 'video' ? `<video data-media="${b.media}" muted autoplay loop playsinline></video>` : `<img data-media="${b.media}" alt="">`) : `<span class="bn-empty">${BANNER_IC}<small>${'A photo or a short video (up to 30 s) shown at the top of your profile.'}</small></span>`}</div>
-    <button class="btn btn-primary" type="button" data-banner-pick>Choose photo or video</button>
-    ${b?.media ? '<button class="btn btn-secondary glass" type="button" data-banner-clear>Remove from profile</button>' : ''}`, {
-    cls: 'pick-sheet',
-    onClick: (e) => {
-      if (e.target.closest('[data-banner-pick]')) $('#banner-input').click();
-      if (e.target.closest('[data-banner-clear]')) { draft.banner = null; paintBannerEdit(); closeModal(); }
-    },
-  });
-  hydrateMedia(bannerSheet);
-});
-$('#banner-input').addEventListener('change', async (e) => {
-  const file = e.target.files?.[0];
-  e.target.value = '';
-  if (!file) return;
-  try {
-    $('#edit-banner-btn').querySelector('small').textContent = 'Uploading…';
-    if (file.type.startsWith('video/')) {
-      if (file.size > 40 * 1024 * 1024) { toast('The video is too large (max 40 MB)'); paintBannerEdit(); return; }
-      const { blob, duration } = await videoPoster(file, 720);
-      if (duration > 30.5) { toast('Banner video can be up to 30 seconds'); paintBannerEdit(); return; }
-      const poster = await putBlob(blob);
-      draft.banner = { media: await putBlob(file, { type: file.type }), type: 'video', poster };
-    } else {
-      draft.banner = { media: await putBlob((await compressImage(file, 1600)).blob), type: 'photo' };
-    }
-  } catch { toast('Could not read this file'); }
-  paintBannerEdit();
-  if (bannerSheet?.isConnected) closeModal();
-});
-
-// Лист «Музыка в профиле»: список треков, убрать, добавить ещё (до 50)
-let musicSheet = null;
-function musicSheetHtml() {
-  const list = draft?.music ?? [];
-  return `
-    <div class="ms-head"><span class="ms-cover">${PICK_ICON.music}</span><span class="pick-text"><b>${list.length ? `${list.length} of 50 tracks` : 'No tracks yet'}</b><small>Everyone who opens your profile can play them</small></span></div>
-    ${list.length ? `<div class="pick-list">${list.map((t, i) => `<div class="pick-opt ms-track"><span class="ms-n">${i + 1}</span><span class="pick-text"><b>${escapeHtml(t.title || 'Track')}</b><small>${escapeHtml(t.artist || '')}${t.dur ? ` · ${Math.floor(t.dur / 60)}:${String(t.dur % 60).padStart(2, '0')}` : ''}</small></span><button class="ms-x" type="button" data-music-rm="${i}" aria-label="Remove">${PI.close}</button></div>`).join('')}</div>` : ''}
-    ${list.length < 50 ? '<button class="btn btn-primary" type="button" data-music-pick>Add tracks</button>' : ''}`;
-}
-$('#edit-music-btn').addEventListener('click', () => {
-  musicSheet = openModal('Music in profile', musicSheetHtml(), {
-    cls: 'pick-sheet',
-    onClick: (e) => {
-      if (e.target.closest('[data-music-pick]')) $('#music-input').click();
-      const rm = e.target.closest('[data-music-rm]');
-      if (rm) {
-        draft.music.splice(Number(rm.dataset.musicRm), 1);
-        paintMusicEdit();
-        musicSheet.querySelector('.pm-body').innerHTML = musicSheetHtml();
-      }
-    },
-  });
-});
-$('#music-input').addEventListener('change', async (e) => {
-  const files = [...(e.target.files ?? [])];
-  e.target.value = '';
-  draft.music ??= [];
-  const room = 50 - draft.music.length;
-  if (files.length > room) toast('Up to 50 tracks');
-  for (const file of files.slice(0, room)) {
-    if (file.size > 15 * 1024 * 1024) { toast('The track is too large (max 15 MB)'); continue; }
-    const name = file.name.replace(/\.[a-z0-9]+$/i, '');
-    const [artist, title] = name.includes(' - ') ? name.split(' - ', 2) : ['', name];
-    $('#edit-music-btn').querySelector('small').textContent = 'Uploading…';
-    try {
-      const dur = await mediaDuration(file).catch(() => 0);
-      const media = await putBlob(file, { type: file.type || 'audio/mpeg' });
-      draft.music.push({ media, title: title.trim().slice(0, 80), artist: artist.trim().slice(0, 60), dur: Math.round(dur || 0) });
-    } catch (err) { toast(err.message || 'Upload failed'); }
-  }
-  paintMusicEdit();
-  if (musicSheet?.isConnected) musicSheet.querySelector('.pm-body').innerHTML = musicSheetHtml();
-});
