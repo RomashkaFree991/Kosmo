@@ -594,9 +594,14 @@ function renderAbout() {
       <p>${SICON.sparkle}<span><b>Privacy and Security</b>: passcode lock, blocked users and more.</span></p>
       <p>${SICON.sparkle}<span><b>Media viewer</b> with zoom, swipes and video controls.</span></p>
     </section>
-    <p class="section-label">This demo</p>
+    ${/KosmoAndroid/.test(navigator.userAgent) ? '' : `<p class="section-label">Android app</p>
     <section class="group group-pad about-list">
-      <p>${SICON.info}<span>Accounts, chats and files are stored only in this browser. ${users} account${users === 1 ? '' : 's'} on this device. Use +000 numbers for test accounts.</span></p>
+      <p>${SICON.info}<span>Kosmo for Android: the same chats, calls and video messages — as an app on your home screen. Android 8 or newer.</span></p>
+      <a class="btn btn-primary about-apk" href="/kosmo.apk" download="Kosmo.apk">Download for Android</a>
+    </section>`}
+    <p class="section-label">Your data</p>
+    <section class="group group-pad about-list">
+      <p>${SICON.info}<span>Chats, photos and files are kept on the Kosmo server and are encrypted on its disk. ${users} account${users === 1 ? '' : 's'} known on this device.</span></p>
     </section>`;
 }
 

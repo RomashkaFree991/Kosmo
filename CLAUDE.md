@@ -39,4 +39,7 @@
 - `motion-design-promo` (Howseen) — пайплайн промо-роликов: бриф → бит-карта → рендер → музыка/SFX → QA. Пути и имена из примеров автора (`~/Desktop/Howseen AI/...`, Raphaël) — игнорировать.
 - Готовый ролик для TikTok — в `video/` (Remotion), см. `video/README.md`.
 
+## Android-приложение
+- `android/` — Kotlin + Compose оболочка над веб-клиентом (WebView), см. `android/README.md`. APK — `web/kosmo.apk`, ссылка в «О Kosmo».
+
 Широкие Compose-скиллы пересекаются: при конфликте приоритет у `compose-expert` (код/анимации) и `material-3` (дизайн-система).

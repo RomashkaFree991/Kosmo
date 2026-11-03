@@ -100,3 +100,20 @@ export function closeOverlay() {
 document.addEventListener('click', (e) => {
   if (e.target.closest('[data-close-overlay]')) closeOverlay();
 });
+
+// Кнопка «Назад» в Android-приложении: сначала закрывается верхнее
+// (меню, лист, обрезка, экран поля — всё, что слушает Escape), потом
+// оверлей, потом панель. false — закрывать нечего, приложение свернётся.
+window.kosmoBack = () => {
+  const sig = () => `${document.body.children.length}|${document.querySelectorAll('.is-open, .is-in, .is-visible, [open]').length}|${app.className}`;
+  const before = sig();
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+  if (sig() !== before) return true;
+  if (overlayId) { closeOverlay(); return true; }
+  if (openId) {
+    const back = $(`#panel-${openId} [data-close-panel]`);
+    if (back) back.click(); else closePanel();
+    return true;
+  }
+  return false;
+};

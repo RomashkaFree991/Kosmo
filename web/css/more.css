@@ -1322,3 +1322,4 @@ html[data-theme="material"] .kit-field { transition: transform 420ms var(--md-em
 .kf-rules p { margin: 0 0 10px; }
 .kf-rules b { color: var(--c-text); font-weight: 600; }
 @media (prefers-reduced-motion: reduce) { .kit-field, .crop { transition: opacity 150ms ease; transform: none; } .kit-field:not(.is-in) { opacity: 0; } }
+.about-apk { display: flex; justify-content: center; margin-top: 4px; text-decoration: none; }

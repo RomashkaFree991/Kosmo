@@ -257,7 +257,11 @@ document.addEventListener('keydown', (e) => {
   if (!menu.hidden) closeMenu();
   else if (chatOverlayOpen() && !overlayOpen()) return;   // меню сообщения/чата закрывает chats.js
   else if (overlayOpen()) closeOverlay();
-  else closePanel();
+  else {
+    // через кнопку «Назад» панели — так работают её проверки (например, «Сохранить изменения?»)
+    const back = document.querySelector('.panel.is-open > .panel-header [data-close-panel]');
+    if (back) back.click(); else closePanel();
+  }
 });
 
 /* ---------------------------------------------------------------------------
