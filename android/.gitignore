@@ -5,3 +5,5 @@ local.properties
 *.iml
 .idea/
 *.keystore
+.kotlin/
+app/snapshot.json

@@ -596,7 +596,7 @@ function renderAbout() {
     </section>
     ${/KosmoAndroid/.test(navigator.userAgent) ? '' : `<p class="section-label">Android app</p>
     <section class="group group-pad about-list">
-      <p>${SICON.info}<span>Kosmo for Android: the same chats, calls and video messages — as an app on your home screen. Android 8 or newer.</span></p>
+      <p>${SICON.info}<span>Kosmo for Android — a native app: chats, voice and video calls, voice messages and photos, in sync with the site. Android 8 or newer.</span></p>
       <a class="btn btn-primary about-apk" href="/kosmo.apk" download="Kosmo.apk">Download for Android</a>
     </section>`}
     <p class="section-label">Your data</p>

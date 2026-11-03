@@ -40,6 +40,6 @@
 - Готовый ролик для TikTok — в `video/` (Remotion), см. `video/README.md`.
 
 ## Android-приложение
-- `android/` — Kotlin + Compose оболочка над веб-клиентом (WebView), см. `android/README.md`. APK — `web/kosmo.apk`, ссылка в «О Kosmo».
+- `android/` — нативный клиент на Kotlin + Compose (без WebView): тот же протокол сервера (REST + WebSocket + патчи), звонки на WebRTC совместимы с сайтом. См. `android/README.md`. APK — `web/kosmo.apk`, ссылка в «О Kosmo».
 
 Широкие Compose-скиллы пересекаются: при конфликте приоритет у `compose-expert` (код/анимации) и `material-3` (дизайн-система).
