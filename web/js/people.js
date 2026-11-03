@@ -4,7 +4,7 @@
 import { $, db, toast, escapeHtml, userAvatarHtml, cosmicBadge, userBadge } from './core.js';
 import { openOverlay, closeOverlay, state } from './panels.js';
 import { hydrateMedia } from './media.js';
-import { profileExtras } from './info.js';
+import { bannerHtml, profileExtras } from './info.js';
 
 const svg = (d) => `<svg class="i" viewBox="0 0 24 24" aria-hidden="true">${d}</svg>`;
 const ICON = {
@@ -37,19 +37,20 @@ export function showUser(userId) {
   // скрытое фото профиля другие не видят
   const shownUser = p.avatar === 'nobody' ? { ...u, avatar: { ...u.avatar, photo: null } } : u;
   $('#user-profile').innerHTML = `
-    <section class="profile-hero">
+    <section class="profile-hero${u.banner?.media ? ' has-banner' : ''}">
+      ${bannerHtml(u)}
       <div class="hero-avatar">
         <span class="hero-orbit" aria-hidden="true"></span>
         ${userAvatarHtml(shownUser, 'avatar-hero')}
       </div>
       <h2 class="profile-name"><span>${escapeHtml(u.name)}</span>${userBadge(u)}</h2>
       ${u.official ? '<p class="official-note">Official account</p>' : ''}
-      <div class="hero-actions">
-        <button class="pill-btn" type="button" data-user-message>${ICON.chat}Message</button>
-        <button class="pill-btn" type="button" data-user-call="voice" aria-label="Voice call">${ICON.call}Call</button>
-        <button class="pill-btn" type="button" data-user-call="video" aria-label="Video call">${ICON.video}Video</button>
-        <button class="pill-btn" type="button" data-user-secret>${ICON.lock}Secret chat</button>
-        <button class="pill-btn${myBlocked ? ' is-danger' : ''}" type="button" data-user-block>${ICON.block}${myBlocked ? 'Unblock' : 'Block'}</button>
+      <div class="hero-actions act-row">
+        <button class="act-tile" type="button" data-user-message><span class="act-ic">${ICON.chat}</span><span class="act-label">Message</span></button>
+        <button class="act-tile" type="button" data-user-call="voice" aria-label="Voice call"><span class="act-ic">${ICON.call}</span><span class="act-label">Call</span></button>
+        <button class="act-tile" type="button" data-user-call="video" aria-label="Video call"><span class="act-ic">${ICON.video}</span><span class="act-label">Video</span></button>
+        <button class="act-tile" type="button" data-user-secret><span class="act-ic">${ICON.lock}</span><span class="act-label">Secret</span></button>
+        <button class="act-tile${myBlocked ? ' is-danger' : ''}" type="button" data-user-block><span class="act-ic">${ICON.block}</span><span class="act-label">${myBlocked ? 'Unblock' : 'Block'}</span></button>
       </div>
     </section>
     ${profileExtras(u)}

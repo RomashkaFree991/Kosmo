@@ -342,17 +342,8 @@ export function locationHtml(m) {
    Одноразовое фото
    --------------------------------------------------------------------------- */
 export function viewOnceHtml(m) {
-  const myId = me().id;
-  const mine = m.from === myId;
-  const opened = (m.viewedBy ?? []).length > 0 || m.viewed;
-  // посмотрели — фото больше нет, остаётся след
-  if (opened || !m.media) {
-    return `<div class="vo-trace">${PI.fire}<span><b>View-once photo</b><small>${mine ? 'Opened' : 'You opened it'}</small></span></div>`;
-  }
-  return `<button class="vo-photo" type="button" data-view-once="${m.id}" aria-label="View-once photo">
-    <img data-media="${m.media}" alt="" draggable="false">
-    <span class="vo-badge">${PI.fire}<span>${mine ? 'View once · not opened yet' : 'Tap to view · once'}</span></span>
-  </button>`;
+  // до просмотра — просто размытое фото, без надписей (после просмотра — пилюля, см. chats.js)
+  return `<button class="vo-photo" type="button" data-view-once="${m.id}" aria-label="View-once photo"><img data-media="${m.media}" alt="" draggable="false"></button>`;
 }
 
 /* ---------------------------------------------------------------------------

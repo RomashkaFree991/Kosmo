@@ -191,3 +191,12 @@ document.addEventListener('click', (e) => {
   }
   openPlayer(owner, list, u?.name);
 });
+
+/* ---------- Баннер профиля: фото или видео сверху ---------- */
+export function bannerHtml(u) {
+  const b = u?.banner;
+  if (!b?.media) return '';
+  return `<div class="hero-banner" aria-hidden="true">${b.type === 'video'
+    ? `<video data-media="${b.media}" muted autoplay loop playsinline disablepictureinpicture${b.poster ? '' : ''}></video>`
+    : `<img data-media="${b.media}" alt="">`}</div>`;
+}

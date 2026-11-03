@@ -437,7 +437,7 @@
           </label>
           <button class="chip-btn danger" type="button" id="avatar-remove" hidden>Remove photo</button>
         </div>
-        <input type="file" id="avatar-input" accept="image/*" hidden>
+        <input type="file" id="avatar-input" accept="image/*,video/*" hidden>
         <section class="group group-pad">
           <span class="group-label">Color</span>
           <div class="color-row" id="avatar-colors" role="radiogroup" aria-label="Avatar color"></div>
@@ -464,7 +464,9 @@
           <div class="pick-rows">
             <button class="pick-row" type="button" id="edit-channel-btn"></button>
             <button class="pick-row" type="button" id="edit-music-btn"></button>
+            <button class="pick-row" type="button" id="edit-banner-btn"></button>
           </div>
+          <input type="file" id="banner-input" accept="image/*,video/*" hidden>
           <input type="hidden" id="edit-channel">
           <input type="file" id="music-input" accept="audio/*" multiple hidden>
           <button class="btn btn-primary" type="submit">Save</button>

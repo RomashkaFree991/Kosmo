@@ -233,7 +233,10 @@ export function userAvatarHtml(user, cls = '') {
   const style = a.color != null ? colorStyle(AVATAR_COLORS[a.color]) : avatarStyle(user.name);
   const text = escapeHtml(a.text || initials(user.name));
   const photo = a.photo ? `<img data-media="${a.photo}" alt="">` : '';
-  return `<span class="avatar ${cls}${a.photo ? ' has-photo' : ''}" style="${style}" aria-hidden="true">${photo}<span>${text}</span></span>`;
+  // видео-аватарка играет только в больших аватарах (профиль), в списках — кадр из неё
+  const big = /avatar-(hero|lg|edit)/.test(cls);
+  const video = a.video && big ? `<video data-media="${a.video}" muted autoplay loop playsinline disablepictureinpicture></video>` : '';
+  return `<span class="avatar ${cls}${a.photo || video ? ' has-photo' : ''}${video ? ' has-video' : ''}" style="${style}" aria-hidden="true">${photo}${video}<span>${text}</span></span>`;
 }
 
 // Публичные ID идут по порядку: 1, 2, 3…

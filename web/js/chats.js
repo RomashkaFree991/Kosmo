@@ -263,7 +263,7 @@ export function previewText(m) {
   if (isSealed(m.text) || isSealed(m.caption)) return 'Message unavailable';
   const cap = m.caption ? ` · ${m.caption}` : '';
   switch (m.kind) {
-    case 'photo': return m.viewOnce ? 'View-once photo' : `Photo${cap}`;
+    case 'photo': return m.viewOnce ? (m.viewed || (m.viewedBy ?? []).length ? 'Photo viewed' : 'Photo') : `Photo${cap}`;
     case 'join': return m.by ? `${db.get(m.by)?.name ?? 'Someone'} added ${db.get(m.from)?.name ?? 'someone'}` : `${db.get(m.from)?.name ?? 'Someone'} joined the group`;
     case 'video': return `Video${cap}`;
     case 'voice': return `Voice message · ${fmtDur(m.duration ?? 0)}`;
@@ -1064,6 +1064,11 @@ function joinNote(m) {
 
 function bubble(m, all, c, anim = false) {
   if (m.kind === 'join') return joinNote(m);
+  // фото на один просмотр посмотрели — вместо него пилюля по центру
+  if (m.viewOnce && (m.viewed || (m.viewedBy ?? []).length || !m.media)) {
+    const text = m.from === state.acc.user.id ? 'Photo viewed' : 'You viewed the photo';
+    return `<div class="bubble-row service-row" data-id="${m.id}"><span class="service-note">${text}</span></div>`;
+  }
   const me = state.acc.user.id;
   const mine = m.from === me;
   const room = isRoom(c);
@@ -2507,7 +2512,7 @@ async function openViewOnce(msgId) {
   const mine = m.from === state.acc.user.id;   // своё фото можно смотреть, не «сжигая» его
   const ov = document.createElement('div');
   ov.className = 'vo-viewer';
-  ov.innerHTML = `<img alt="" draggable="false" data-media="${m.media}"><p class="vo-note">${PI.fire}${mine ? 'It disappears for the recipient after they view it' : 'This photo will disappear when you close it'}</p><button class="icon-btn vo-close" type="button" aria-label="Close">${PI.close}</button>`;
+  ov.innerHTML = `<img alt="" draggable="false" data-media="${m.media}"><p class="vo-note">${mine ? 'It disappears for the recipient after they view it' : 'This photo will disappear when you close it'}</p><button class="icon-btn vo-close" type="button" aria-label="Close">${PI.close}</button>`;
   document.body.append(ov);
   hydrateMedia(ov);
   ov.addEventListener('contextmenu', (ev) => ev.preventDefault());

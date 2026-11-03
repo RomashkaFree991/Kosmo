@@ -45,7 +45,7 @@ const strip = (m) => {
 /* ---------------------------------------------------------------------------
    Пользователь (только свой документ)
    --------------------------------------------------------------------------- */
-const SELF_FIELDS = ['name', 'username', 'bio', 'avatar', 'privacy', 'chatPrefs', 'settings', 'security', 'reminders', 'messages', 'bookmarks', 'status', 'e2ee', 'profileChannel', 'music'];
+const SELF_FIELDS = ['name', 'username', 'bio', 'avatar', 'privacy', 'chatPrefs', 'settings', 'security', 'reminders', 'messages', 'bookmarks', 'status', 'e2ee', 'profileChannel', 'music', 'banner'];
 
 export function checkAccount(me, patch, current) {
   if (patch.id !== me) deny('You can only change your own profile');
@@ -56,10 +56,17 @@ export function checkAccount(me, patch, current) {
     if (k === 'name') { const n = String(v ?? '').trim().slice(0, 64); if (!n) throw new ApiError(400, 'bad_name', 'Name is required'); set.name = n; continue; }
     if (k === 'bio') { set.bio = String(v ?? '').slice(0, 140); continue; }
     if (k === 'username') { const u = String(v ?? ''); checkUsername(u, me); set.username = u; continue; }
+    // баннер профиля: фото или видео
+    if (k === 'banner') {
+      if (!v) { set.banner = null; continue; }
+      if (!/^[a-f0-9]{32}$/.test(String(v.media ?? ''))) throw new ApiError(400, 'bad_banner', 'Bad banner file');
+      set.banner = { media: v.media, type: v.type === 'video' ? 'video' : 'photo', ...(/^[a-f0-9]{32}$/.test(String(v.poster ?? '')) ? { poster: v.poster } : {}) };
+      continue;
+    }
     // музыка в профиле: свой загруженный аудиофайл
     if (k === 'music') {
-      // плейлист до 10 треков (старый формат — один трек объектом)
-      const list = (Array.isArray(v) ? v : v ? [v] : []).slice(0, 10);
+      // плейлист до 50 треков (старый формат — один трек объектом)
+      const list = (Array.isArray(v) ? v : v ? [v] : []).slice(0, 50);
       set.music = list.map((t) => {
         if (!/^[a-f0-9]{32}$/.test(String(t?.media ?? ''))) throw new ApiError(400, 'bad_music', 'Bad music file');
         return { media: t.media, title: String(t.title ?? '').slice(0, 80), artist: String(t.artist ?? '').slice(0, 60), dur: Math.max(0, Math.min(3600, Number(t.dur) || 0)) };

@@ -96,6 +96,27 @@ export async function compressImage(file, max = 1600) {
   return { blob, w, h };
 }
 
+// Видео: длительность и квадратный кадр (обложка) 512×512
+export function videoPoster(file, size = 512) {
+  return new Promise((resolve, reject) => {
+    const v = document.createElement('video');
+    v.muted = true;
+    v.playsInline = true;
+    v.preload = 'auto';
+    const url = URL.createObjectURL(file);
+    v.src = url;
+    v.addEventListener('error', () => { URL.revokeObjectURL(url); reject(new Error('bad video')); }, { once: true });
+    v.addEventListener('loadeddata', () => { v.currentTime = Math.min(0.2, (v.duration || 1) / 2); }, { once: true });
+    v.addEventListener('seeked', () => {
+      const side = Math.min(v.videoWidth, v.videoHeight);
+      const c = document.createElement('canvas');
+      c.width = c.height = size;
+      c.getContext('2d').drawImage(v, (v.videoWidth - side) / 2, (v.videoHeight - side) / 2, side, side, 0, 0, size, size);
+      c.toBlob((blob) => { URL.revokeObjectURL(url); resolve({ blob, duration: v.duration || 0, w: v.videoWidth, h: v.videoHeight }); }, 'image/jpeg', 0.85);
+    }, { once: true });
+  });
+}
+
 // Квадратная аватарка 512×512 из центра фото
 export async function squareAvatar(file) {
   const bitmap = await createImageBitmap(file);

@@ -7,8 +7,8 @@ import {
 } from './core.js';
 import { createOtp } from './otp.js';
 import { state, openPanel, overlayOpen, closeOverlay } from './panels.js';
-import { putBlob, hydrateMedia, squareAvatar, mediaDuration } from './media.js';
-import { profileExtras, tracksOf } from './info.js';
+import { putBlob, hydrateMedia, squareAvatar, mediaDuration, videoPoster, compressImage } from './media.js';
+import { bannerHtml, profileExtras, tracksOf } from './info.js';
 import { openModal, closeModal } from './plus.js';
 import { ICON as CHAT_ICON, deviceIcon, openSaved, openChatAt, chatTitle, chats, chatAvatar, openChat, isRoom } from './chats.js';
 import {
@@ -69,11 +69,12 @@ const MAIL_ICON = '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x
 let sig = '';
 export function renderProfile(force = false) {
   const u = state.acc.user;
-  const next = JSON.stringify([u.music, u.profileChannel, u.profileChannel && chats.get(u.profileChannel)?.members?.length, u.premium, u.settings?.dnd, (u.bookmarks ?? []).length, u.name, u.username, u.email, u.bio, u.role, u.avatar, u.publicId, u.sessions.length, u.privacy, u.security?.lock, linkedAccounts().map((a) => a.uid)]);
+  const next = JSON.stringify([u.banner, u.music, u.profileChannel, u.profileChannel && chats.get(u.profileChannel)?.members?.length, u.premium, u.settings?.dnd, (u.bookmarks ?? []).length, u.name, u.username, u.email, u.bio, u.role, u.avatar, u.publicId, u.sessions.length, u.privacy, u.security?.lock, linkedAccounts().map((a) => a.uid)]);
   if (next === sig && !force) return;
   sig = next;
   $('#profile').innerHTML = `
-    <section class="profile-hero">
+    <section class="profile-hero${u.banner?.media ? ' has-banner' : ''}">
+      ${bannerHtml(u)}
       <button class="hero-avatar" type="button" data-open-edit aria-label="Edit profile">
         <span class="hero-orbit" aria-hidden="true"></span>
         ${userAvatarHtml(u, 'avatar-hero')}
@@ -209,6 +210,8 @@ function openEdit() {
   editCounter.textContent = 70 - editBio.value.length;
   const mine = Object.values(chats.all()).filter((c) => isRoom(c) && c.username && c.owner === u.id);
   draft.music = tracksOf(u).map((t) => ({ ...t }));
+  draft.banner = u.banner ?? null;
+  paintBannerEdit();
   paintMusicEdit();
   $('#edit-channel').value = mine.some((c) => c.id === u.profileChannel) ? u.profileChannel : '';
   paintChannelPick();
@@ -235,14 +238,26 @@ $('#avatar-input').addEventListener('change', async (e) => {
   e.target.value = '';
   if (!file) return;
   try {
-    draft.avatar.photo = await putBlob(await squareAvatar(file));
+    if (file.type.startsWith('video/')) {
+      // видео-аватарка: до 15 секунд, кадр из неё — для маленьких аватарок
+      if (file.size > 25 * 1024 * 1024) { toast('The video is too large (max 25 MB)'); return; }
+      const { blob, duration } = await videoPoster(file);
+      if (duration > 15.5) { toast('Video avatar can be up to 15 seconds'); return; }
+      toast('Uploading…');
+      draft.avatar.photo = await putBlob(blob);
+      draft.avatar.video = await putBlob(file, { type: file.type });
+    } else {
+      draft.avatar.photo = await putBlob(await squareAvatar(file));
+      draft.avatar.video = null;
+    }
     paintEditAvatar();
   } catch {
-    toast('Could not read this photo');
+    toast('Could not read this file');
   }
 });
 $('#avatar-remove').addEventListener('click', () => {
   draft.avatar.photo = null;
+  draft.avatar.video = null;
   paintEditAvatar();
 });
 editName.addEventListener('input', paintEditAvatar);
@@ -282,6 +297,7 @@ $('#edit-form').addEventListener('submit', async (e) => {
     u.avatar = draft.avatar;
     u.profileChannel = $('#edit-channel').value || null;
     u.music = draft.music?.length ? draft.music : null;
+    u.banner = draft.banner ?? null;
   });
   state.reload();
   renderProfile(true);
@@ -500,14 +516,57 @@ $('#edit-channel-btn').addEventListener('click', () => {
   });
   hydrateMedia(wrap);
 });
-// Лист «Музыка в профиле»: список треков, убрать, добавить ещё (до 10)
+/* ---------- Баннер профиля ---------- */
+const BANNER_IC = '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="3"/><circle cx="8.5" cy="10" r="1.6"/><path d="M4 17l5-4.5 3.5 3 3-3L20 16"/></svg>';
+function paintBannerEdit() {
+  const b = draft?.banner;
+  $('#edit-banner-btn').innerHTML = `<span class="pick-ic pick-ic-banner">${b?.media ? (b.type === 'video' ? `<video data-media="${b.media}" muted autoplay loop playsinline></video>` : `<img data-media="${b.media}" alt="">`) : BANNER_IC}</span>
+    <span class="pick-text"><b>${b?.media ? (b.type === 'video' ? 'Video banner' : 'Photo banner') : 'Banner'}</b><small>Photo or video at the top of your profile</small></span>${PICK_ICON.chev}`;
+  hydrateMedia($('#edit-banner-btn'));
+}
+let bannerSheet = null;
+$('#edit-banner-btn').addEventListener('click', () => {
+  const b = draft?.banner;
+  bannerSheet = openModal('Banner in profile', `
+    <div class="bn-preview">${b?.media ? (b.type === 'video' ? `<video data-media="${b.media}" muted autoplay loop playsinline></video>` : `<img data-media="${b.media}" alt="">`) : `<span class="bn-empty">${BANNER_IC}<small>${'A photo or a short video (up to 30 s) shown at the top of your profile.'}</small></span>`}</div>
+    <button class="btn btn-primary" type="button" data-banner-pick>Choose photo or video</button>
+    ${b?.media ? '<button class="btn btn-secondary glass" type="button" data-banner-clear>Remove from profile</button>' : ''}`, {
+    cls: 'pick-sheet',
+    onClick: (e) => {
+      if (e.target.closest('[data-banner-pick]')) $('#banner-input').click();
+      if (e.target.closest('[data-banner-clear]')) { draft.banner = null; paintBannerEdit(); closeModal(); }
+    },
+  });
+  hydrateMedia(bannerSheet);
+});
+$('#banner-input').addEventListener('change', async (e) => {
+  const file = e.target.files?.[0];
+  e.target.value = '';
+  if (!file) return;
+  try {
+    $('#edit-banner-btn').querySelector('small').textContent = 'Uploading…';
+    if (file.type.startsWith('video/')) {
+      if (file.size > 40 * 1024 * 1024) { toast('The video is too large (max 40 MB)'); paintBannerEdit(); return; }
+      const { blob, duration } = await videoPoster(file, 720);
+      if (duration > 30.5) { toast('Banner video can be up to 30 seconds'); paintBannerEdit(); return; }
+      const poster = await putBlob(blob);
+      draft.banner = { media: await putBlob(file, { type: file.type }), type: 'video', poster };
+    } else {
+      draft.banner = { media: await putBlob((await compressImage(file, 1600)).blob), type: 'photo' };
+    }
+  } catch { toast('Could not read this file'); }
+  paintBannerEdit();
+  if (bannerSheet?.isConnected) closeModal();
+});
+
+// Лист «Музыка в профиле»: список треков, убрать, добавить ещё (до 50)
 let musicSheet = null;
 function musicSheetHtml() {
   const list = draft?.music ?? [];
   return `
-    <div class="ms-head"><span class="ms-cover">${PICK_ICON.music}</span><span class="pick-text"><b>${list.length ? `${list.length} of 10 tracks` : 'No tracks yet'}</b><small>Everyone who opens your profile can play them</small></span></div>
+    <div class="ms-head"><span class="ms-cover">${PICK_ICON.music}</span><span class="pick-text"><b>${list.length ? `${list.length} of 50 tracks` : 'No tracks yet'}</b><small>Everyone who opens your profile can play them</small></span></div>
     ${list.length ? `<div class="pick-list">${list.map((t, i) => `<div class="pick-opt ms-track"><span class="ms-n">${i + 1}</span><span class="pick-text"><b>${escapeHtml(t.title || 'Track')}</b><small>${escapeHtml(t.artist || '')}${t.dur ? ` · ${Math.floor(t.dur / 60)}:${String(t.dur % 60).padStart(2, '0')}` : ''}</small></span><button class="ms-x" type="button" data-music-rm="${i}" aria-label="Remove">${PI.close}</button></div>`).join('')}</div>` : ''}
-    ${list.length < 10 ? '<button class="btn btn-primary" type="button" data-music-pick>Add tracks</button>' : ''}`;
+    ${list.length < 50 ? '<button class="btn btn-primary" type="button" data-music-pick>Add tracks</button>' : ''}`;
 }
 $('#edit-music-btn').addEventListener('click', () => {
   musicSheet = openModal('Music in profile', musicSheetHtml(), {
@@ -527,8 +586,8 @@ $('#music-input').addEventListener('change', async (e) => {
   const files = [...(e.target.files ?? [])];
   e.target.value = '';
   draft.music ??= [];
-  const room = 10 - draft.music.length;
-  if (files.length > room) toast('Up to 10 tracks');
+  const room = 50 - draft.music.length;
+  if (files.length > room) toast('Up to 50 tracks');
   for (const file of files.slice(0, room)) {
     if (file.size > 15 * 1024 * 1024) { toast('The track is too large (max 15 MB)'); continue; }
     const name = file.name.replace(/\.[a-z0-9]+$/i, '');
