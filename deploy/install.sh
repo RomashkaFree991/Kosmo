@@ -329,9 +329,9 @@ NGX
 
 # ---------- Брандмауэр ----------
 if command -v ufw >/dev/null && ufw status | grep -q "Status: active"; then
-  say "ufw: открываю 22, 80, 443, 3478, 49160-49200/udp"
+  say "ufw: открываю 22, 80, 443, 3478, 5349, 49160-49200"
   ufw allow 22/tcp >/dev/null; ufw allow 80/tcp >/dev/null; ufw allow 443/tcp >/dev/null
-  ufw allow 3478 >/dev/null; ufw allow 49160:49200/udp >/dev/null
+  ufw allow 3478 >/dev/null; ufw allow 5349/tcp >/dev/null; ufw allow 49160:49200/udp >/dev/null
 fi
 
 write_site
@@ -362,6 +362,26 @@ say "coturn (TURN для звонков)"
 PUBIP="$(curl -fsS4 --max-time 8 https://api.ipify.org || hostname -I | awk '{print $1}')"
 PRIVIP="$(hostname -I | awk '{print $1}')"
 EXT="$PUBIP"; [ -n "$PRIVIP" ] && [ "$PRIVIP" != "$PUBIP" ] && EXT="$PUBIP/$PRIVIP"
+# TURN по TLS на 5349: мобильные сети часто режут UDP и «чужие» порты,
+# а TLS-соединение выглядит как обычный HTTPS. Сертификат — тот же, что у сайта.
+TURN_TLS_CONF="no-tls"
+if [ -f "$CERT" ]; then
+  mkdir -p /etc/coturn-certs
+  cat > /etc/letsencrypt/renewal-hooks/deploy/kosmo-coturn.sh <<HOOK
+#!/bin/sh
+cp -L /etc/letsencrypt/live/$DOMAIN/fullchain.pem /etc/coturn-certs/cert.pem
+cp -L /etc/letsencrypt/live/$DOMAIN/privkey.pem /etc/coturn-certs/key.pem
+# coturn работает от пользователя turnserver — ему нужно право чтения
+if chown root:turnserver /etc/coturn-certs/cert.pem /etc/coturn-certs/key.pem 2>/dev/null; then chmod 640 /etc/coturn-certs/*.pem; else chmod 644 /etc/coturn-certs/*.pem; fi
+systemctl restart coturn 2>/dev/null || true
+HOOK
+  chmod +x /etc/letsencrypt/renewal-hooks/deploy/kosmo-coturn.sh
+  sh /etc/letsencrypt/renewal-hooks/deploy/kosmo-coturn.sh >/dev/null 2>&1 || true
+  TURN_TLS_CONF="tls-listening-port=5349
+cert=/etc/coturn-certs/cert.pem
+pkey=/etc/coturn-certs/key.pem"
+  grep -q '^TURN_TLS=' "$ENV_FILE" && sed -i 's/^TURN_TLS=.*/TURN_TLS=1/' "$ENV_FILE" || echo "TURN_TLS=1" >> "$ENV_FILE"
+fi
 cat > /etc/turnserver.conf <<TURN
 listening-port=3478
 fingerprint
@@ -372,7 +392,7 @@ external-ip=$EXT
 min-port=49160
 max-port=49200
 no-cli
-no-tls
+$TURN_TLS_CONF
 no-dtls
 no-multicast-peers
 denied-peer-ip=10.0.0.0-10.255.255.255

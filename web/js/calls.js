@@ -137,15 +137,47 @@ async function setupPeer() {
     v.play().catch(() => {});
     if (e.track.kind === 'video') c.el.classList.add('has-remote-video');
   };
-  c.pc.onconnectionstatechange = () => {
+  // соединение установлено — по любому из двух признаков (не все браузеры
+  // обновляют connectionState); короткий обрыв — переподключение, а не конец звонка
+  const onState = () => {
     if (c !== call) return;
-    if (c.pc.connectionState === 'connected') connected();
-    if (['failed', 'disconnected'].includes(c.pc.connectionState)) finish('ended', c.outgoing);
+    const st = c.pc.connectionState;
+    const ice = c.pc.iceConnectionState;
+    if (st === 'connected' || ice === 'connected' || ice === 'completed') { clearTimeout(c.lost); connected(); return; }
+    if (st === 'failed' || ice === 'failed') { recover(c); return; }
+    if (st === 'disconnected' || ice === 'disconnected') {
+      clearTimeout(c.lost);
+      c.lost = setTimeout(() => { if (c === call && c.pc.iceConnectionState !== 'connected' && c.pc.iceConnectionState !== 'completed') recover(c); }, 5000);
+    }
   };
+  c.pc.onconnectionstatechange = onState;
+  c.pc.oniceconnectionstatechange = onState;
+  // не соединились за 30 секунд — честно сказать об этом, а не висеть на «Соединение…»
+  c.watchdog = setTimeout(() => { if (c === call && c.state !== 'active') failCall(c); }, 30_000);
+}
+
+// Перезапуск ICE: звонивший делает новое предложение, принявший — просит его об этом
+async function recover(c) {
+  if (c !== call) return;
+  if (c.restarts >= 2) { failCall(c); return; }
+  c.restarts = (c.restarts ?? 0) + 1;
+  setStatus(c.state === 'active' ? 'Reconnecting…' : 'Connecting…');
+  if (!c.outgoing) { post({ type: 'restart', callId: c.id }); return; }
+  try {
+    await c.pc.setLocalDescription(await c.pc.createOffer({ iceRestart: true }));
+    post({ type: 'offer', callId: c.id, sdp: c.pc.localDescription.toJSON() });
+  } catch { failCall(c); }
+}
+function failCall(c) {
+  if (c !== call) return;
+  setStatus('Couldn’t connect');
+  toast('Couldn’t connect the call. Check the internet on both phones.');
+  setTimeout(() => finish(c.state === 'active' ? 'ended' : 'missed', c.outgoing, false, true), 1200);
 }
 
 function connected() {
-  if (call.state === 'active') return;
+  clearTimeout(call.watchdog);
+  if (call.state === 'active') { setStatus(fmt((Date.now() - call.started) / 1000)); return; }
   call.state = 'active';
   call.started = Date.now();
   ringback(false);
@@ -161,7 +193,11 @@ async function flushIce() {
 /* ---------------------------------------------------------------------------
    Сигналинг
    --------------------------------------------------------------------------- */
-onSignal(async (from, msg) => {
+// сигналы обрабатываются строго по очереди: иначе ответ (answer) и ICE-кандидаты
+// могли обгонять друг друга, кандидаты терялись и звонок зависал на «Соединение…»
+let signalChain = Promise.resolve();
+onSignal((from, msg) => { signalChain = signalChain.then(() => onSignalNow(from, msg)).catch((e) => console.error('call signal', e)); });
+async function onSignalNow(from, msg) {
   if (!msg || typeof msg !== 'object') return;
   if (msg.type === 'ring') { if (msg.from === from) incoming(msg); return; }
   if (call && from !== call.peer) return;
@@ -183,6 +219,9 @@ onSignal(async (from, msg) => {
     case 'taken':
       // ответили на другой вкладке
       if (!call.outgoing && msg.tabOk !== TAB) finish(null, false, true);
+      break;
+    case 'restart':
+      if (call.outgoing && call.pc) recover(call);
       break;
     case 'offer':
       if (call.outgoing || !call.pc) return;
@@ -213,16 +252,18 @@ onSignal(async (from, msg) => {
       break;
     default:
   }
-});
+}
 
 /* ---------------------------------------------------------------------------
    Завершение и запись в чат
    --------------------------------------------------------------------------- */
-function finish(status, log, silent = false) {
+function finish(status, log, silent = false, keepText = false) {
   if (!call) return;
   const c = call;
   call = null;
   clearTimeout(c.timeout);
+  clearTimeout(c.watchdog);
+  clearTimeout(c.lost);
   clearInterval(c.tick);
   ringtone(false);
   ringback(false);
@@ -230,7 +271,7 @@ function finish(status, log, silent = false) {
   c.pc?.close();
   c.local?.getTracks().forEach((t) => t.stop());
   const duration = c.started ? Math.round((Date.now() - c.started) / 1000) : 0;
-  if (!silent) {
+  if (!silent && !keepText) {
     c.el.querySelector('.call-status').textContent = { missed: 'No answer', declined: 'Declined', busy: 'Line busy' }[status] ?? 'Call ended';
   }
   c.el.classList.add('is-ending');

@@ -42,6 +42,7 @@ export const config = {
   // звонки: STUN Google + свой TURN (coturn) с общим секретом
   turnHost: env.TURN_HOST ?? '',
   turnSecret: env.TURN_SECRET ?? '',
+  turnTls: env.TURN_TLS === '1',
   maxUpload: Number(env.MAX_UPLOAD_MB ?? 50) * 1024 * 1024,
   // через nginx: настоящий IP клиента в X-Forwarded-For
   trustProxy: (env.TRUST_PROXY ?? '1') === '1',

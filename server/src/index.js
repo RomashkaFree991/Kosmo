@@ -476,11 +476,15 @@ route('POST', '/api/qr/approve', async (req) => {
 // Звонки: STUN + временные логин/пароль для своего TURN (coturn)
 route('GET', '/api/ice', (req) => {
   const s = auth(req);
-  const servers = [{ urls: 'stun:stun.l.google.com:19302' }];
+  const servers = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun.cloudflare.com:3478'] }];
   if (config.turnHost && config.turnSecret) {
     const username = `${Math.floor(Date.now() / 1000) + 12 * 3600}:${s.userId}`;
     const credential = crypto.createHmac('sha1', config.turnSecret).update(username).digest('base64');
-    servers.push({ urls: [`turn:${config.turnHost}:3478?transport=udp`, `turn:${config.turnHost}:3478?transport=tcp`], username, credential });
+    servers[0].urls.push(`stun:${config.turnHost}:3478`);
+    // UDP, TCP и TLS: что-то из этого проходит почти в любой сети
+    const urls = [`turn:${config.turnHost}:3478?transport=udp`, `turn:${config.turnHost}:3478?transport=tcp`];
+    if (config.turnTls) urls.push(`turns:${config.turnHost}:5349?transport=tcp`);
+    servers.push({ urls, username, credential });
   }
   return { iceServers: servers };
 });
