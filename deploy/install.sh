@@ -389,7 +389,8 @@ systemctl restart coturn || warn "coturn не запустился — звон�
 
 # ---------- pm2 ----------
 say "Сервер Kosmo через pm2"
-pm2 start "$APP_DIR/deploy/ecosystem.config.cjs" >/dev/null
+# startOrRestart: при обновлении уже запущенный сервер перезапускается с новым кодом
+pm2 startOrRestart "$APP_DIR/deploy/ecosystem.config.cjs" --update-env >/dev/null
 pm2 save >/dev/null
 pm2 startup systemd -u root --hp /root >/dev/null 2>&1 || true
 systemctl enable -q pm2-root 2>/dev/null || true
@@ -399,8 +400,14 @@ cat > /usr/local/bin/kosmo <<KOS
 #!/usr/bin/env bash
 # kosmo update | sms | logs | restart | status
 case "\${1:-}" in
-  update)  git -C $APP_DIR fetch -q --depth 1 origin $BRANCH && git -C $APP_DIR reset -q --hard FETCH_HEAD
+  update)  # новый код → зависимости → перезапуск сервера сразу (даже если дальше что-то не выйдет)
+           git -C $APP_DIR fetch -q --depth 1 origin $BRANCH && git -C $APP_DIR reset -q --hard FETCH_HEAD || { echo "Не удалось скачать код с GitHub"; exit 1; }
+           (cd $APP_DIR/server && npm install --omit=dev --no-audit --no-fund --silent) || echo "npm install: ошибка (см. выше)"
+           pm2 startOrRestart $APP_DIR/deploy/ecosystem.config.cjs --update-env >/dev/null && pm2 save >/dev/null
+           echo "Код: \$(git -C $APP_DIR log -1 --format='%h %s' | cut -c1-70)"
+           sleep 2; curl -fsS http://127.0.0.1:$PORT/api/config >/dev/null && echo "Сервер перезапущен и отвечает" || echo "Сервер не отвечает — смотрите: kosmo logs"
            cp $APP_DIR/deploy/install.sh /tmp/kosmo-install.sh && exec bash /tmp/kosmo-install.sh "$DOMAIN" "$EMAIL" ;;
+  version) git -C $APP_DIR log -1 --format='%h %ad %s' --date=short; curl -fsS http://127.0.0.1:$PORT/api/config; echo ;;
   mail-test)
            [ -n "\${2:-}" ] || { echo "Использование: kosmo mail-test адрес@почта"; exit 1; }
            set -a; . $ENV_FILE; set +a; cd $APP_DIR/server
@@ -428,7 +435,8 @@ console.log(d.premium ? 'Kosmo Premium выдан' : 'Kosmo Premium снят');"
      echo "kosmo premium адрес [off] — значок Kosmo Premium"
      echo "kosmo logs     — логи сервера (здесь коды, если SMS не настроены)"
      echo "kosmo restart  — перезапустить сервер"
-     echo "kosmo status   — состояние" ;;
+     echo "kosmo status   — состояние"
+     echo "kosmo version  — какая версия кода работает" ;;
 esac
 KOS
 chmod +x /usr/local/bin/kosmo

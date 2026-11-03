@@ -5,6 +5,7 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { execSync } from 'node:child_process';
 import { config } from './config.js';
 import { sql, users, chats, posts, stories, tx, rateLimit } from './db.js';
 import {
@@ -100,7 +101,9 @@ function activity(uid) {
 const routes = [];
 const route = (method, pattern, fn) => routes.push({ method, re: new RegExp(`^${pattern.replace(/:(\w+)/g, '(?<$1>[^/]+)')}$`), fn });
 
-route('GET', '/api/config', () => ({ channel: 'email', mail: config.mailMode, sms: smsChannel(), testNumbers: config.testNumbers }));
+// версия кода (коммит), чтобы было видно, что обновление применилось
+const VERSION = (() => { try { return execSync('git log -1 --format=%h·%cs', { cwd: path.join(config.webDir, '..'), stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim(); } catch { return 'dev'; } })();
+route('GET', '/api/config', () => ({ version: VERSION, channel: 'email', mail: config.mailMode, sms: smsChannel(), testNumbers: config.testNumbers }));
 route('GET', '/api/gateway', () => ({ online: gatewayStatus().phones.length }));
 
 route('POST', '/api/auth/code', async (req) => {

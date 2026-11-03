@@ -42,6 +42,7 @@ kosmo sms-key   ключ и ссылка на приложение Kosmo SMS
 kosmo logs      логи сервера
 kosmo restart   перезапуск
 kosmo status    состояние
+kosmo version   какая версия кода сейчас работает
 ```
 
 ## Шифрование на сервере

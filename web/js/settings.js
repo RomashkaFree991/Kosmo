@@ -579,11 +579,13 @@ $('#storage-body').addEventListener('click', async (e) => {
    --------------------------------------------------------------------------- */
 function renderAbout() {
   const users = Object.keys(db.all()).length;
+  fetch('/api/config').then((r) => r.json()).then((c) => { const el = $('#about-build'); if (el) el.textContent = `Server build: ${c.version ?? '—'}`; }).catch(() => {});
   $('#about-body').innerHTML = `
     <section class="about-hero">
       ${kosmoAvatar('avatar-hero')}
       <h2>Kosmo</h2>
-      <p>Version 0.6 · web</p>
+      <p>Version 0.7 · web</p>
+      <p class="about-build" id="about-build">Server build: …</p>
     </section>
     <p class="section-label">What’s new</p>
     <section class="group group-pad about-list">
