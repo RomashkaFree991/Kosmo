@@ -39,19 +39,14 @@ const mcuReady = import(MCU_URL).then((m) => { mcu = m; }).catch(() => { mcu = n
 let applied = [];
 const isDark = () => root.dataset.scheme !== 'light';
 
-// Тема Хэллоуин: свой исходный цвет (тыквенный) и яркая схема
-const HALLOWEEN = '#E8590C';
-const halloweenOn = () => store.get('holiday') === 'halloween';
-export function reapplyColor() { withTransition(() => applySeed(store.get('seed') ?? SEEDS[0])); }
 
 function applySeed(hex) {
   const vars = {};
   const userSeed = hex;
-  if (halloweenOn()) hex = HALLOWEEN;
   const dark = isDark();
   if (mcu) {
     const { Hct, MaterialDynamicColors, argbFromHex, hexFromArgb } = mcu;
-    const Scheme = mcu[SCHEME_STYLES[halloweenOn() ? 'vibrant' : schemeStyle()][0]] ?? mcu.SchemeTonalSpot;
+    const Scheme = mcu[SCHEME_STYLES[schemeStyle()][0]] ?? mcu.SchemeTonalSpot;
     const scheme = new Scheme(Hct.fromInt(argbFromHex(hex)), dark, 0);
     for (const role of ROLES) if (MaterialDynamicColors[role]) vars[`--md-sys-color-${kebab(role)}`] = hexFromArgb(MaterialDynamicColors[role].getArgb(scheme));
     // Кнопка остаётся белой, лишь с лёгким оттенком исходного цвета (тон 98)

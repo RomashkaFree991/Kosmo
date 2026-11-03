@@ -12,3 +12,4 @@
       if (signedIn) root.classList.add('has-session');
       else if (!matchMedia('(prefers-reduced-motion: reduce)').matches) root.classList.add('is-intro');
     })();
+try { localStorage.removeItem('kosmo:holiday'); } catch (e) {}

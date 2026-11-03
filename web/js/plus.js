@@ -343,14 +343,16 @@ export function locationHtml(m) {
    --------------------------------------------------------------------------- */
 export function viewOnceHtml(m) {
   const myId = me().id;
-  const opened = (m.viewedBy ?? []).length > 0;
-  if (m.from === myId) {
-    return `<div class="vo-card is-mine">${PI.fire}<span><b>View-once photo</b><small>${opened ? 'Opened' : 'Not opened yet'}</small></span></div>`;
+  const mine = m.from === myId;
+  const opened = (m.viewedBy ?? []).length > 0 || m.viewed;
+  // посмотрели — фото больше нет, остаётся след
+  if (opened || !m.media) {
+    return `<div class="vo-trace">${PI.fire}<span><b>View-once photo</b><small>${mine ? 'Opened' : 'You opened it'}</small></span></div>`;
   }
-  const seen = (m.viewedBy ?? []).includes(myId);
-  return seen
-    ? `<div class="vo-card is-seen">${PI.fire}<span><b>Photo</b><small>Opened</small></span></div>`
-    : `<button class="vo-card" type="button" data-view-once="${m.id}">${PI.fire}<span><b>View-once photo</b><small>Tap to view · disappears after</small></span></button>`;
+  return `<button class="vo-photo" type="button" data-view-once="${m.id}" aria-label="View-once photo">
+    <img data-media="${m.media}" alt="" draggable="false">
+    <span class="vo-badge">${PI.fire}<span>${mine ? 'View once · not opened yet' : 'Tap to view · once'}</span></span>
+  </button>`;
 }
 
 /* ---------------------------------------------------------------------------

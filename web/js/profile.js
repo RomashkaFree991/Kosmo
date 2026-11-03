@@ -8,7 +8,7 @@ import {
 import { createOtp } from './otp.js';
 import { state, openPanel, overlayOpen, closeOverlay } from './panels.js';
 import { putBlob, hydrateMedia, squareAvatar, mediaDuration } from './media.js';
-import { profileExtras } from './info.js';
+import { profileExtras, tracksOf } from './info.js';
 import { openModal, closeModal } from './plus.js';
 import { ICON as CHAT_ICON, deviceIcon, openSaved, openChatAt, chatTitle, chats, chatAvatar, openChat, isRoom } from './chats.js';
 import {
@@ -208,7 +208,7 @@ function openEdit() {
   $('#avatar-text').value = draft.avatar.text ?? '';
   editCounter.textContent = 70 - editBio.value.length;
   const mine = Object.values(chats.all()).filter((c) => isRoom(c) && c.username && c.owner === u.id);
-  draft.music = u.music ?? null;
+  draft.music = tracksOf(u).map((t) => ({ ...t }));
   paintMusicEdit();
   $('#edit-channel').value = mine.some((c) => c.id === u.profileChannel) ? u.profileChannel : '';
   paintChannelPick();
@@ -281,7 +281,7 @@ $('#edit-form').addEventListener('submit', async (e) => {
     u.bio = editBio.value.trim();
     u.avatar = draft.avatar;
     u.profileChannel = $('#edit-channel').value || null;
-    u.music = draft.music ?? null;
+    u.music = draft.music?.length ? draft.music : null;
   });
   state.reload();
   renderProfile(true);
@@ -476,9 +476,9 @@ function paintChannelPick() {
   hydrateMedia($('#edit-channel-btn'));
 }
 function paintMusicEdit() {
-  const m = draft?.music;
+  const list = draft?.music ?? [];
   $('#edit-music-btn').innerHTML = `<span class="pick-ic pick-ic-music">${PICK_ICON.music}</span>
-    <span class="pick-text"><b>${m ? escapeHtml(m.title) : 'Music'}</b><small>${m ? escapeHtml(m.artist || 'Your track') : 'Add a track people can play in your profile'}</small></span>${PICK_ICON.chev}`;
+    <span class="pick-text"><b>${list.length ? escapeHtml(list[0].title) : 'Music'}</b><small>${list.length ? (list.length > 1 ? `${list.length} tracks` : escapeHtml(list[0].artist || 'Your track')) : 'Add tracks people can play in your profile'}</small></span>${PICK_ICON.chev}`;
 }
 $('#edit-channel-btn').addEventListener('click', () => {
   const rooms = myPublicRooms();
@@ -500,35 +500,46 @@ $('#edit-channel-btn').addEventListener('click', () => {
   });
   hydrateMedia(wrap);
 });
+// Лист «Музыка в профиле»: список треков, убрать, добавить ещё (до 10)
+let musicSheet = null;
+function musicSheetHtml() {
+  const list = draft?.music ?? [];
+  return `
+    <div class="ms-head"><span class="ms-cover">${PICK_ICON.music}</span><span class="pick-text"><b>${list.length ? `${list.length} of 10 tracks` : 'No tracks yet'}</b><small>Everyone who opens your profile can play them</small></span></div>
+    ${list.length ? `<div class="pick-list">${list.map((t, i) => `<div class="pick-opt ms-track"><span class="ms-n">${i + 1}</span><span class="pick-text"><b>${escapeHtml(t.title || 'Track')}</b><small>${escapeHtml(t.artist || '')}${t.dur ? ` · ${Math.floor(t.dur / 60)}:${String(t.dur % 60).padStart(2, '0')}` : ''}</small></span><button class="ms-x" type="button" data-music-rm="${i}" aria-label="Remove">${PI.close}</button></div>`).join('')}</div>` : ''}
+    ${list.length < 10 ? '<button class="btn btn-primary" type="button" data-music-pick>Add tracks</button>' : ''}`;
+}
 $('#edit-music-btn').addEventListener('click', () => {
-  const m = draft?.music;
-  openModal('Music in profile', `
-    <div class="music-hero">
-      <span class="music-disc${m ? ' is-on' : ''}">${PICK_ICON.music}</span>
-      <b>${m ? escapeHtml(m.title) : 'No track yet'}</b>
-      <small>${m ? escapeHtml(m.artist || 'Your track') : 'Pick an audio file from your device (up to 15 MB). Everyone who opens your profile can play it.'}</small>
-    </div>
-    <button class="btn btn-primary" type="button" data-music-pick>${m ? 'Choose another track' : 'Choose a track'}</button>
-    ${m ? '<button class="btn btn-secondary glass" type="button" data-music-clear>Remove from profile</button>' : ''}`, {
+  musicSheet = openModal('Music in profile', musicSheetHtml(), {
     cls: 'pick-sheet',
     onClick: (e) => {
-      if (e.target.closest('[data-music-pick]')) { closeModal(); $('#music-input').click(); }
-      if (e.target.closest('[data-music-clear]')) { draft.music = null; paintMusicEdit(); closeModal(); }
+      if (e.target.closest('[data-music-pick]')) $('#music-input').click();
+      const rm = e.target.closest('[data-music-rm]');
+      if (rm) {
+        draft.music.splice(Number(rm.dataset.musicRm), 1);
+        paintMusicEdit();
+        musicSheet.querySelector('.pm-body').innerHTML = musicSheetHtml();
+      }
     },
   });
 });
 $('#music-input').addEventListener('change', async (e) => {
-  const file = e.target.files?.[0];
+  const files = [...(e.target.files ?? [])];
   e.target.value = '';
-  if (!file) return;
-  if (file.size > 15 * 1024 * 1024) { toast('The track is too large (max 15 MB)'); return; }
-  const name = file.name.replace(/\.[a-z0-9]+$/i, '');
-  const [artist, title] = name.includes(' - ') ? name.split(' - ', 2) : ['', name];
-  $('#edit-music-btn').querySelector('small').textContent = 'Uploading…';
-  try {
-    const dur = await mediaDuration(file).catch(() => 0);
-    const media = await putBlob(file, { type: file.type || 'audio/mpeg' });
-    draft.music = { media, title: title.trim().slice(0, 80), artist: artist.trim().slice(0, 60), dur: Math.round(dur || 0) };
-  } catch (err) { toast(err.message || 'Upload failed'); }
+  draft.music ??= [];
+  const room = 10 - draft.music.length;
+  if (files.length > room) toast('Up to 10 tracks');
+  for (const file of files.slice(0, room)) {
+    if (file.size > 15 * 1024 * 1024) { toast('The track is too large (max 15 MB)'); continue; }
+    const name = file.name.replace(/\.[a-z0-9]+$/i, '');
+    const [artist, title] = name.includes(' - ') ? name.split(' - ', 2) : ['', name];
+    $('#edit-music-btn').querySelector('small').textContent = 'Uploading…';
+    try {
+      const dur = await mediaDuration(file).catch(() => 0);
+      const media = await putBlob(file, { type: file.type || 'audio/mpeg' });
+      draft.music.push({ media, title: title.trim().slice(0, 80), artist: artist.trim().slice(0, 60), dur: Math.round(dur || 0) });
+    } catch (err) { toast(err.message || 'Upload failed'); }
+  }
   paintMusicEdit();
+  if (musicSheet?.isConnected) musicSheet.querySelector('.pm-body').innerHTML = musicSheetHtml();
 });

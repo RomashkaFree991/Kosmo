@@ -273,21 +273,28 @@ html[data-theme="material"] .menu-sub .seg-btn { flex: 0 1 auto; }
   html[data-theme="material"] :is(.pass-cell.is-filled, .call-btn.is-accept svg, .call-btn.is-accept svg *) { animation: none; }
 }
 
-/* ---------- Тема Хэллоуин (обе темы оформления) ---------- */
-:root { --hw-star: #fff3c4; }
-.wp-bat { animation: hw-fly 14s ease-in-out infinite; }
-.wp-bat-2 { animation-duration: 18s; animation-delay: -6s; }
-.wp-bat-3 { animation-duration: 11s; animation-delay: -3s; }
-.wp-bat svg { animation: hw-flap 380ms ease-in-out infinite alternate; transform-origin: 50% 50%; }
-@keyframes hw-fly { 0%, 100% { transform: translate(0, 0); } 25% { transform: translate(90px, -40px); } 50% { transform: translate(160px, 20px); } 75% { transform: translate(60px, 50px); } }
-@keyframes hw-flap { to { transform: scaleY(0.55); } }
-@media (prefers-reduced-motion: reduce) { .wp-bat, .wp-bat svg { animation: none; } }
-html[data-holiday="halloween"][data-theme="glass"] { --c-accent: #ff7a1a; }
-html[data-holiday="halloween"] .tab.is-active::after { content: "🎃"; position: absolute; top: -6px; right: 4px; font-size: 13px; }
 .profile-extras .tile-wide { grid-column: auto; }
 html[data-theme="material"] .pm-play:has(> .ms) > svg { display: none; }
-html[data-theme="material"] .choice-row { flex-wrap: wrap; row-gap: 8px; padding: 8px 4px; }
-html[data-theme="material"] .choice-row .segs { flex: 1 1 auto; justify-content: flex-end; }
+/* строки с выбором: подпись сверху, чипы ровным рядом под ней */
+html[data-theme="material"] .choice-row,
+html[data-theme="material"] .choice-col {
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 10px;
+  min-height: 0;
+  padding: 14px 4px;
+}
+html[data-theme="material"] .choice-row + .choice-row { border-top: 1px solid var(--md-sys-color-outline-variant); }
+html[data-theme="material"] .choice-row > :first-child { font: 500 16px/24px "Roboto Flex", Roboto, system-ui, sans-serif; color: var(--md-sys-color-on-surface); }
+html[data-theme="material"] .choice-row .segs,
+html[data-theme="material"] .choice-col .segs {
+  flex: none;
+  align-self: stretch;
+  justify-content: flex-start;
+  width: 100%;
+}
+html[data-theme="material"] .choice-row .seg-btn { flex: 0 0 auto; }
 
 /* ---------- Liquid Glass: значки Phosphor ---------- */
 .gi { display: none; }
@@ -335,3 +342,20 @@ html[data-theme="material"] .otp-cell.is-filled:nth-child(3n) { clip-path: url(#
 html[data-theme="material"] .otp.is-error .otp-cell { background: var(--md-sys-color-error-container); color: var(--md-sys-color-on-error-container); }
 html[data-theme="material"] .otp.is-done .otp-cell { background: #6dd58c; color: #00391a; }
 html[data-theme="material"] .otp-cell .digit { font-family: "Roboto Flex", Roboto, system-ui, sans-serif; font-weight: 600; }
+
+/* ---------- Текст на цвете акцента — парный цвет схемы (в Монохроме акцент белый) ---------- */
+html[data-theme="material"] :is(
+  .theirs .b-play, .send-btn, .lang-chip[aria-checked="true"], .theirs .reaction.is-mine, .folder.is-active,
+  .bubble-row.is-armed .swipe-ic, .round-rec-send, .poll-submit, .story-plus, .search-tabs [aria-selected="true"],
+  .todo-check.is-mine, .topic-chip[aria-pressed="true"], .pm-play, .ped-done, .ped-apply, .pick-check.is-on,
+  .pick-row[aria-checked="true"] .pick-check
+) { color: var(--md-sys-color-on-primary) !important; }
+html[data-theme="material"] .send-btn svg, html[data-theme="material"] .pm-play svg { color: var(--md-sys-color-on-primary); stroke: currentColor; }
+html[data-theme="material"] .pick-opt.is-on .pick-check { box-shadow: inset 0 0 0 6px var(--md-sys-color-primary), inset 0 0 0 9px var(--md-sys-color-on-primary); }
+/* свои пузыри в Material: детали в цвете on-primary (а не всегда белые) */
+html[data-theme="material"] .mine .bubble { --ink-fg: var(--md-sys-color-on-primary); }
+html[data-theme="material"] .mine .reaction { background: color-mix(in srgb, var(--md-sys-color-on-primary) 16%, transparent); color: var(--md-sys-color-on-primary); box-shadow: none; }
+html[data-theme="material"] .mine .reaction.is-mine { background: var(--md-sys-color-on-primary); color: var(--md-sys-color-primary); }
+html[data-theme="material"] .mine .poll-opt { background: color-mix(in srgb, var(--md-sys-color-on-primary) 14%, transparent); }
+html[data-theme="material"] .mine :is(.b-meta, .b-meta em, .ticks, .b-caption, .b-text, .b-reply, .b-fwd) { color: var(--md-sys-color-on-primary); }
+html[data-theme="material"] .mine .b-meta { opacity: 0.75; }

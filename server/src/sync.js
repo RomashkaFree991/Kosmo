@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 // Снимок данных для клиента и применение изменений с рассылкой
 // всем, кого они касаются, через WebSocket.
 
@@ -97,6 +98,7 @@ function applyOne(uid, raw, conn) {
           broadcastChat({ col: 'chats', id, op: 'del' }, before, null, conn);
           return p;
         }
+        withJoinNotes(uid, before, p);
         const after = applyToDoc('chats', before, p);
         chats.save(after);
         broadcastChat(p, before, after, conn);
@@ -179,6 +181,16 @@ export function findInvite(code) {
   return { c, inv };
 }
 
+// В группе новый участник — служебное сообщение «вступил» / «добавил»
+function withJoinNotes(actor, before, p) {
+  if (!before || before.type !== 'group' || !Array.isArray(p.set?.members)) return;
+  const added = p.set.members.filter((u) => !before.members.includes(u));
+  if (!added.length) return;
+  const now = Date.now();
+  const notes = added.slice(0, 20).map((u, i) => ({ id: crypto.randomUUID(), at: now + i, from: u, kind: 'join', ...(u !== actor ? { by: actor } : {}) }));
+  p.msgs = { up: [...(p.msgs?.up ?? []), ...notes], del: p.msgs?.del ?? [] };
+}
+
 export function joinByInvite(uid, code) {
   const { c, inv } = findInvite(code);
   if (c.members.includes(uid)) return c.id;
@@ -186,6 +198,7 @@ export function joinByInvite(uid, code) {
     col: 'chats', id: c.id, op: 'put',
     set: { members: [...c.members, uid], invites: c.invites.map((i) => (i === inv ? { ...i, used: (i.used ?? 0) + 1 } : i)) },
   };
+  withJoinNotes(uid, c, p);
   const after = applyToDoc('chats', c, p);
   chats.save(after);
   broadcastChat(p, c, after);

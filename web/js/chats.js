@@ -29,6 +29,7 @@ import { roundHtml, openRoundRecorder } from './round.js';
 import { startCall } from './calls.js';
 import { isPending, onServerMessage, sendTyping } from './api.js';
 import { isSealed } from './e2ee.js';
+import { openPhotoEditor } from './editor.js';
 import { openModal as openPlusModal } from './plus.js';
 import { pickTime, schedule, myScheduled, openScheduledList, addReminder, TTL_OPTIONS, ttlLabel } from './schedule.js';
 
@@ -263,6 +264,7 @@ export function previewText(m) {
   const cap = m.caption ? ` · ${m.caption}` : '';
   switch (m.kind) {
     case 'photo': return m.viewOnce ? 'View-once photo' : `Photo${cap}`;
+    case 'join': return m.by ? `${db.get(m.by)?.name ?? 'Someone'} added ${db.get(m.from)?.name ?? 'someone'}` : `${db.get(m.from)?.name ?? 'Someone'} joined the group`;
     case 'video': return `Video${cap}`;
     case 'voice': return `Voice message · ${fmtDur(m.duration ?? 0)}`;
     case 'audio': return m.name ?? 'Music';
@@ -1052,7 +1054,16 @@ export function linkify(text) {
     .replace(/\n/g, '<br>');
 }
 
+// служебная строка по центру: «Анна вступила в группу» / «Анна добавила Бориса»
+function joinNote(m) {
+  const who = db.get(m.from)?.name ?? 'Someone';
+  const by = m.by ? db.get(m.by)?.name ?? 'Someone' : '';
+  const text = by ? `${escapeHtml(by)} added ${escapeHtml(who)}` : `${escapeHtml(who)} joined the group`;
+  return `<div class="bubble-row service-row" data-id="${m.id}"><span class="service-note">${text}</span></div>`;
+}
+
 function bubble(m, all, c, anim = false) {
+  if (m.kind === 'join') return joinNote(m);
   const me = state.acc.user.id;
   const mine = m.from === me;
   const room = isRoom(c);
@@ -1456,6 +1467,7 @@ function burst(el) {
 const mm = { el: null, scrim: null, clone: null, id: null };
 
 function openMsgMenu(row) {
+  if (row.classList.contains('service-row')) return;
   closeMsgMenu();
   const id = row.dataset.id;
   const m = chatMessages().find((x) => x.id === id);
@@ -2000,18 +2012,30 @@ function paintTray() {
   if (!tray.length) return;
   trayEl.innerHTML = `${tray.map((t) => `
     <div class="tray-item${t.type === 'code' ? ' is-code' : ''}" data-tray="${t.id}">
-      ${t.type === 'photo' ? `<img src="${t.url}" alt="">` : t.type === 'video' ? `<video src="${t.url}" muted playsinline preload="metadata"></video><span class="tray-badge">${ICON.video}</span>`
+      ${t.type === 'photo' ? `<button class="tray-edit" type="button" data-tray-edit="${t.id}" aria-label="Edit photo"><img src="${t.url}" alt="">${t.once ? `<span class="tray-once-badge">${PI.fire}</span>` : ''}<span class="tray-edit-hint">${svg('<path d="M4 20l4-1 10-10-3-3L5 16z"/>')}</span></button>` : t.type === 'video' ? `<video src="${t.url}" muted playsinline preload="metadata"></video><span class="tray-badge">${ICON.video}</span>`
         : `<span class="tray-code">${ICON.code}<b>${escapeHtml(t.lang)}</b><small>${escapeHtml(t.text.split('\n')[0].slice(0, 24))}</small></span>`}
       <button class="tray-remove" type="button" data-tray-remove="${t.id}" aria-label="Remove">${svg('<path d="M7 7l10 10M17 7L7 17"/>')}</button>
     </div>`).join('')}
     ${tray.length < MAX_TRAY ? `<button class="tray-add" type="button" data-tray-add aria-label="Add more">${svg('<path d="M12 5v14M5 12h14"/>')}</button>` : ''}
-    ${tray.length === 1 && tray[0].type === 'photo' ? `<button class="tray-once${tray[0].once ? ' is-on' : ''}" type="button" data-tray-once aria-pressed="${Boolean(tray[0].once)}">${PI.fire}<span>View once</span></button>` : ''}
     <span class="tray-count">${tray.length === 1 ? (input.value.trim() ? 'with caption' : 'Add a caption…') : `${tray.length} attachments`}</span>`;
   if (!had) toBottom(true);
 }
 
 trayEl.addEventListener('click', (e) => {
-  if (e.target.closest('[data-tray-once]')) { tray[0].once = !tray[0].once; paintTray(); return; }
+  const ed = e.target.closest('[data-tray-edit]');
+  if (ed) {
+    const t = tray.find((x) => x.id === ed.dataset.trayEdit);
+    if (!t) return;
+    openPhotoEditor({ url: t.url, once: t.once }).then((r) => {
+      if (!r) return;
+      if (r.file) { URL.revokeObjectURL(t.url); t.file = r.file; t.url = r.url; }
+      // на один просмотр — только одиночное фото
+      t.once = r.once && tray.length === 1;
+      if (r.once && tray.length > 1) toast('View once works for a single photo');
+      paintTray();
+    });
+    return;
+  }
   const rm = e.target.closest('[data-tray-remove]');
   if (rm) {
     const i = tray.findIndex((t) => t.id === rm.dataset.trayRemove);
@@ -2478,11 +2502,12 @@ document.addEventListener('submit', (e) => {
 // Одноразовое фото: полный экран, без сохранения; после закрытия — «открыто»
 async function openViewOnce(msgId) {
   const m = chatMessages().find((x) => x.id === msgId);
-  if (!m) return;
+  if (!m || !m.media) return;
   const chatId = open.id;
+  const mine = m.from === state.acc.user.id;   // своё фото можно смотреть, не «сжигая» его
   const ov = document.createElement('div');
   ov.className = 'vo-viewer';
-  ov.innerHTML = `<img alt="" draggable="false" data-media="${m.media}"><p class="vo-note">${PI.fire}This photo will disappear when you close it</p><button class="icon-btn vo-close" type="button" aria-label="Close">${PI.close}</button>`;
+  ov.innerHTML = `<img alt="" draggable="false" data-media="${m.media}"><p class="vo-note">${PI.fire}${mine ? 'It disappears for the recipient after they view it' : 'This photo will disappear when you close it'}</p><button class="icon-btn vo-close" type="button" aria-label="Close">${PI.close}</button>`;
   document.body.append(ov);
   hydrateMedia(ov);
   ov.addEventListener('contextmenu', (ev) => ev.preventDefault());
@@ -2496,7 +2521,7 @@ async function openViewOnce(msgId) {
     window.removeEventListener('blur', hide);
     window.removeEventListener('focus', hide);
     ov.remove();
-    updateMsg(chatId, msgId, (x) => { x.viewedBy = [...new Set([...(x.viewedBy ?? []), state.acc.user.id])]; });
+    if (!mine) updateMsg(chatId, msgId, (x) => { x.viewedBy = [...new Set([...(x.viewedBy ?? []), state.acc.user.id])]; });
   });
 }
 

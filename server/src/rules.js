@@ -58,9 +58,13 @@ export function checkAccount(me, patch, current) {
     if (k === 'username') { const u = String(v ?? ''); checkUsername(u, me); set.username = u; continue; }
     // музыка в профиле: свой загруженный аудиофайл
     if (k === 'music') {
-      if (!v) { set.music = null; continue; }
-      if (!/^[a-f0-9]{32}$/.test(String(v.media ?? ''))) throw new ApiError(400, 'bad_music', 'Bad music file');
-      set.music = { media: v.media, title: String(v.title ?? '').slice(0, 80), artist: String(v.artist ?? '').slice(0, 60), dur: Math.max(0, Math.min(3600, Number(v.dur) || 0)) };
+      // плейлист до 10 треков (старый формат — один трек объектом)
+      const list = (Array.isArray(v) ? v : v ? [v] : []).slice(0, 10);
+      set.music = list.map((t) => {
+        if (!/^[a-f0-9]{32}$/.test(String(t?.media ?? ''))) throw new ApiError(400, 'bad_music', 'Bad music file');
+        return { media: t.media, title: String(t.title ?? '').slice(0, 80), artist: String(t.artist ?? '').slice(0, 60), dur: Math.max(0, Math.min(3600, Number(t.dur) || 0)) };
+      });
+      if (!set.music.length) set.music = null;
       continue;
     }
     // канал/группа в профиле: только публичная, где человек владелец
@@ -257,7 +261,11 @@ export function checkChat(me, patch, old) {
     }
     if (m.hiddenFor) next.hiddenFor = onlyMeAdded(prev.hiddenFor, m.hiddenFor, me);
     // одноразовое фото: отметка «я открыл»
-    if (prev.viewOnce && m.viewedBy) next.viewedBy = onlyMeAdded(prev.viewedBy, m.viewedBy, me);
+    if (prev.viewOnce && m.viewedBy) {
+      next.viewedBy = onlyMeAdded(prev.viewedBy, m.viewedBy, me);
+      // посмотрели — фото удаляется, остаётся только след
+      if (next.viewedBy.length) { delete next.media; delete next.mk; next.viewed = true; }
+    }
     // общий список дел: свои галочки и новые пункты от участников
     if (prev.todo && m.todo) {
       const oldItems = prev.todo.items ?? [];
