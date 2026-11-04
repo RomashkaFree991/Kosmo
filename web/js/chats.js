@@ -9,7 +9,7 @@
 
 import {
   $, $$, db, store, uid, toast, escapeHtml, userAvatarHtml, kosmoAvatar, cosmicBadge, userBadge,
-  formatDate, formatTime, refreshRefraction, timeAgo, patchList,
+  formatDate, formatTime, refreshRefraction, timeAgo, patchList, reducedMotion,
 } from './core.js';
 import { formatPhone, openSheet } from './phone.js';
 import { state, openPanel, panelOpen, onPanelClose, overlayOpen } from './panels.js';
@@ -80,6 +80,12 @@ export const chats = {
 export const isRoom = (c) => c?.type === 'group' || c?.type === 'channel';
 export const isSecret = (c) => Boolean(c?.secret);
 export const secretIdFor = (a, b) => `secret_${[a, b].sort().join('_')}`;
+// фото целиком, без обрезки: рамка не выше 360 — для высоких фото уже, чем 260
+const photoWidth = (m) => {
+  const r = (Number(m.w) || 4) / (Number(m.h) || 3);
+  return r >= 260 / 360 ? '' : `width:max(120px, min(${Math.round(360 * r)}px, 62vw))`;
+};
+
 export function roleOf(c, userId) {
   if (!c) return null;
   if (c.owner === userId) return 'owner';
@@ -783,7 +789,9 @@ function markOpenRead() {
     // отметка о прочтении — только когда есть что прочитать (иначе лишние запросы)
     const c = curChat();
     const me = state.acc.user.id;
-    if (c.messages.some((m) => m.from !== me && m.at > (c.read?.[me] ?? 0))) chats.markRead(open.id, me);
+    // в чужом публичном канале (я не участник) отмечать нечего — сервер такой патч отклонит
+    const member = !isRoom(c) || c.members.includes(me);
+    if (member && c.messages.some((m) => m.from !== me && m.at > (c.read?.[me] ?? 0))) chats.markRead(open.id, me);
   }
   state.reload();
 }
@@ -884,8 +892,11 @@ function showChat() {
   paintComposer();
   const msgs = chatMessages();
   const me = state.acc.user.id;
-  // непрочитанные появятся с анимацией
-  const unread = isKosmo ? kosmoUnread() : msgs.filter((m) => m.from !== me && m.at > (c?.read[me] ?? 0)).length;
+  // непрочитанные появятся с анимацией — только последние несколько; в чужом канале (я не участник)
+  // всё уже «прочитано», иначе вся лента разом подпрыгивает при открытии
+  const member = !c || !isRoom(c) || c.members.includes(me);
+  const unreadAll = isKosmo ? kosmoUnread() : member ? msgs.filter((m) => m.from !== me && m.at > (c?.read?.[me] ?? 0)).length : 0;
+  const unread = Math.min(unreadAll, 3);
   known = new Set(msgs.slice(0, msgs.length - unread).map((m) => m.id));
   tickMemo.clear();
   reactMemo.clear();
@@ -1001,7 +1012,7 @@ export function mediaBody(m, chatId = null) {
     case 'call': return callHtml(m);
     case 'photo':
       if (m.viewOnce) return viewOnceHtml(m);
-      return `<button class="b-photo-btn" type="button" data-view-media="${m.id}" aria-label="Open photo"><img class="b-photo" data-media="${m.media}" alt="Photo" style="aspect-ratio:${m.w || 4}/${m.h || 3}"></button>`;
+      return `<button class="b-photo-btn" type="button" data-view-media="${m.id}" aria-label="Open photo"><img class="b-photo" data-media="${m.media}" alt="Photo" style="aspect-ratio:${m.w || 4}/${m.h || 3};${photoWidth(m)}"></button>`;
     case 'video':
       return `<button class="b-video-btn" type="button" data-view-media="${m.id}" aria-label="Play video">
         <video class="b-video" data-media="${m.media}" muted playsinline preload="metadata"></video>
@@ -1550,6 +1561,56 @@ function openMsgMenu(row) {
   refreshRefraction();
 }
 
+/* ---------------------------------------------------------------------------
+   Цитирование: выделить кусочек прямо в самом сообщении (как в мессенджерах),
+   снизу — панель «Отмена / Цитировать»
+   --------------------------------------------------------------------------- */
+let quoting = null;   // { id, el, bar }
+function startQuote(id) {
+  endQuote();
+  const row = $(`.bubble-row[data-id="${CSS.escape(id)}"]`, messagesBox);
+  const el = row?.querySelector('.b-text:not(.b-sealed)');
+  const m = chatMessages().find((x) => x.id === id);
+  if (!row || !el || !m) { openQuote(m?.caption || m?.text || '', (quote) => setCompose({ mode: 'reply', id, quote })); return; }
+  panel.classList.add('is-quoting');
+  row.classList.add('is-quoted');
+  const bar = document.createElement('div');
+  bar.className = 'quote-bar';
+  bar.innerHTML = `<button class="qb-btn" type="button" data-quote-cancel>Cancel</button>
+    <span class="qb-hint">Select the part to quote</span>
+    <button class="qb-btn qb-go" type="button" data-quote-go>${PI.quote}Quote</button>`;
+  panel.append(bar);
+  quoting = { id, el, row, bar, text: m.caption || m.text || '' };
+  row.scrollIntoView({ block: 'nearest', behavior: reducedMotion.matches ? 'auto' : 'smooth' });
+  // сразу выделяем весь текст — пальцем можно сузить
+  const range = document.createRange();
+  range.selectNodeContents(el);
+  const sel = getSelection();
+  sel.removeAllRanges();
+  sel.addRange(range);
+  bar.addEventListener('click', (e) => {
+    if (e.target.closest('[data-quote-cancel]')) { endQuote(); return; }
+    if (!e.target.closest('[data-quote-go]')) return;
+    const q = quoting;
+    const s2 = getSelection();
+    const inside = s2.rangeCount && q.el.contains(s2.anchorNode) && q.el.contains(s2.focusNode);
+    const part = (inside ? String(s2).trim() : '') || q.text;
+    endQuote();
+    setCompose({ mode: 'reply', id: q.id, quote: part.slice(0, 500) });
+  });
+}
+function endQuote() {
+  if (!quoting) return;
+  const { row, bar } = quoting;
+  quoting = null;
+  panel.classList.remove('is-quoting');
+  row.classList.remove('is-quoted');
+  getSelection().removeAllRanges();
+  bar.classList.add('is-closing');
+  setTimeout(() => bar.remove(), 160);
+}
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && quoting) endQuote(); });
+
 function closeMsgMenu() {
   if (!mm.el) return;
   const { el, scrim, clone } = mm;
@@ -1587,7 +1648,7 @@ document.addEventListener('click', (e) => {
     case 'reply': setCompose({ mode: 'reply', id }); break;
     case 'quote':
       closeMsgMenu();
-      openQuote(m.caption || m.text || '', (quote) => setCompose({ mode: 'reply', id, quote }));
+      startQuote(id);
       return;
     case 'translate':
       closeMsgMenu();
@@ -1673,7 +1734,7 @@ function deleteAnimated(id) {
   const SWIPE = 64;
   messagesBox.addEventListener('pointerdown', (e) => {
     const row = e.target.closest('.bubble-row');
-    if (!row || open.id === KOSMO || e.button > 0) return;
+    if (!row || open.id === KOSMO || e.button > 0 || quoting) return;
     start = { x: e.clientX, y: e.clientY, row };
     swipe = null;
     if (e.target.closest('button, video, a, .poll')) return;
@@ -1728,7 +1789,7 @@ function deleteAnimated(id) {
   messagesBox.addEventListener('pointerleave', (e) => { if (!swipe) cancel(); });
   messagesBox.addEventListener('contextmenu', (e) => {
     const row = e.target.closest('.bubble-row');
-    if (!row || open.id === KOSMO) return;
+    if (!row || open.id === KOSMO || quoting) return;
     e.preventDefault();
     cancel();
     openMsgMenu(row);
@@ -2483,7 +2544,7 @@ $('#chat-search-input').addEventListener('keydown', (e) => {
 $('#cs-up').addEventListener('click', () => { if (searchHits.length) { searchAt = (searchAt - 1 + searchHits.length) % searchHits.length; showHit(); } });
 $('#cs-down').addEventListener('click', () => { if (searchHits.length) { searchAt = (searchAt + 1) % searchHits.length; showHit(); } });
 $('#cs-close').addEventListener('click', closeChatSearch);
-onPanelClose('chat', () => { closeChatSearch(); closeMore(); closeQuick(); clearTray(); });
+onPanelClose('chat', () => { closeChatSearch(); closeMore(); closeQuick(); clearTray(); endQuote(); });
 
 // Открыть чат и показать сообщение (из глобального поиска)
 export function openChatAt(chatId, msgId) {

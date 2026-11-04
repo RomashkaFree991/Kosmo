@@ -101,7 +101,8 @@ function applyOne(uid, raw, conn) {
         withJoinNotes(uid, before, p);
         const after = applyToDoc('chats', before, p);
         chats.save(after);
-        broadcastChat(p, before, after, conn);
+        // сведённые сервером правки (галочки, реакции, голоса) — и отправителю, чтобы у всех было одно
+        broadcastChat(p, before, after, p.echo ? null : conn);
         return p;
       });
     }

@@ -450,11 +450,18 @@ fun SearchScreen(app: AppState, data: Data) {
                 val people = remember(s, data.accounts) {
                     if (s.isEmpty()) emptyList() else data.accounts.values.filter { u ->
                         u.str("id") != me && ((u.str("username") ?: "").startsWith(s) || (u.str("name") ?: "").lowercase().split(Regex("\\s+")).any { it.startsWith(s) } || u.num("publicId")?.toString() == s)
-                    }.sortedByDescending { it.bool("official") }.take(40)
+                    }.sortedWith(compareByDescending<JsonObject> { it.str("username") == s }.thenByDescending { it.bool("official") }.thenBy { (it.str("username") ?: "").length }).take(30)
                 }
-                val rooms = remember(s, data.chats) { data.chats.values.filter { isRoom(it) && (s.isEmpty() || (it.str("name") ?: "").lowercase().contains(s) || (it.str("username") ?: "").startsWith(s)) } }
+                // как searchRooms() на сайте: свои группы и каналы — всегда, чужие публичные — только по запросу
+                // (начало @username или слова в названии)
+                val rooms = remember(s, data.chats) {
+                    data.chats.values.filter { c ->
+                        isRoom(c) && (me in c.strings("members") || (s.isNotEmpty() && !c.str("username").isNullOrEmpty())) &&
+                            (s.isEmpty() || (c.str("name") ?: "").lowercase().split(Regex("\\s+")).any { it.startsWith(s) } || (c.str("username") ?: "").startsWith(s))
+                    }
+                }
                 LazyColumn(contentPadding = PaddingValues(top = 8.dp, bottom = 110.dp)) {
-                    item { SectionLabel("Chats") }
+                    if (s.isEmpty() || "kosmo official".contains(s)) item { SectionLabel("Chats") }
                     if (s.isEmpty() || "kosmo official".contains(s)) item {
                         ResultRow({ KosmoAvatar(48.dp) }, "Kosmo", tr("official account"), verified = true) { app.push(Screen.KosmoChat) }
                     }
@@ -464,9 +471,14 @@ fun SearchScreen(app: AppState, data: Data) {
                     }
                     if (people.isNotEmpty()) item { SectionLabel("People") }
                     items(people, key = { "p" + it.str("id") }) { u ->
-                        ResultRow({ UserAvatar(u, 48.dp) }, u.str("name") ?: "", listOfNotNull(u.str("username")?.takeIf { it.isNotEmpty() }?.let { "@$it" }, "ID ${u.num("publicId") ?: ""}").joinToString(" · "), verified = u.bool("official")) { app.openDm(u.str("id")!!) }
+                        ResultRow({ UserAvatar(u, 48.dp) }, u.str("name") ?: "", (u.str("username")?.takeIf { it.isNotEmpty() }?.let { "@$it" } ?: "ID ${u.num("publicId") ?: u.str("publicId") ?: ""}") + if (u.bool("official")) " · " + tr("official account") else "", verified = u.bool("official")) { app.openDm(u.str("id")!!) }
                     }
-                    if (s.isNotEmpty() && people.isEmpty() && rooms.isEmpty()) item { Text(tr("Nobody found"), color = look.text2, modifier = Modifier.padding(20.dp)) }
+                    if (s.isNotEmpty() && people.isEmpty() && rooms.isEmpty() && !"kosmo official".contains(s)) item {
+                        Column(Modifier.fillMaxWidth().padding(vertical = 64.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Icon(WI.search, null, tint = look.text3, modifier = Modifier.size(44.dp))
+                            Text(tr("No results"), color = look.text3)
+                        }
+                    }
                 }
             }
             "messages" -> {

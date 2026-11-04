@@ -48,38 +48,58 @@ import java.io.FileOutputStream
 object Voice {
     data class State(val id: String? = null, val playing: Boolean = false, val pos: Float = 0f, val dur: Float = 0f)
     val state = MutableStateFlow(State())
-    private var player: MediaPlayer? = null
+    private var app: Context? = null
+    private var player: androidx.media3.exoplayer.ExoPlayer? = null
     private val ticker = android.os.Handler(android.os.Looper.getMainLooper())
     private val tick = object : Runnable {
         override fun run() {
             val p = player ?: return
-            runCatching { state.value = state.value.copy(pos = p.currentPosition / 1000f, dur = p.duration.coerceAtLeast(1) / 1000f) }
+            val d = p.duration.takeIf { it > 0 } ?: 0L
+            state.value = state.value.copy(pos = p.currentPosition / 1000f, dur = d / 1000f)
             if (state.value.playing) ticker.postDelayed(this, 100)
         }
     }
 
+    fun init(ctx: Context) { app = ctx.applicationContext }
+
+    /** Голосовые и музыка — один плеер на всё приложение (ExoPlayer: webm/opus, mp3, m4a, перемотка по сети). */
     fun toggle(id: String, url: String) {
+        val ctx = app ?: return
         val s = state.value
-        if (s.id == id && player != null) {
-            val p = player!!
-            if (p.isPlaying) { p.pause(); state.value = s.copy(playing = false) } else { p.start(); state.value = s.copy(playing = true); ticker.post(tick) }
+        val p0 = player
+        if (s.id == id && p0 != null) {
+            if (p0.isPlaying) { p0.pause(); state.value = s.copy(playing = false) }
+            else {
+                if (p0.playbackState == androidx.media3.common.Player.STATE_ENDED) p0.seekTo(0)
+                p0.play(); state.value = s.copy(playing = true); ticker.post(tick)
+            }
             return
         }
         stop()
         state.value = State(id = id, playing = true)
-        player = MediaPlayer().apply {
-            setDataSource(url)
-            setOnPreparedListener { it.start(); ticker.post(tick) }
-            setOnCompletionListener { state.value = state.value.copy(playing = false, pos = 0f) }
-            setOnErrorListener { _, _, _ -> state.value = State(); true }
-            prepareAsync()
+        player = androidx.media3.exoplayer.ExoPlayer.Builder(ctx).build().apply {
+            setAudioAttributes(androidx.media3.common.AudioAttributes.Builder().setUsage(androidx.media3.common.C.USAGE_MEDIA).setContentType(androidx.media3.common.C.AUDIO_CONTENT_TYPE_SPEECH).build(), true)
+            addListener(object : androidx.media3.common.Player.Listener {
+                override fun onPlaybackStateChanged(st: Int) {
+                    if (st == androidx.media3.common.Player.STATE_ENDED) state.value = state.value.copy(playing = false, pos = 0f)
+                }
+                override fun onIsPlayingChanged(isPlaying: Boolean) {
+                    if (isPlaying) { state.value = state.value.copy(playing = true); ticker.post(tick) }
+                }
+                override fun onPlayerError(error: androidx.media3.common.PlaybackException) { state.value = State() }
+            })
+            setMediaItem(androidx.media3.common.MediaItem.fromUri(url))
+            prepare()
+            play()
         }
     }
 
     fun seek(id: String, frac: Float) {
         val p = player ?: return
         if (state.value.id != id) return
-        runCatching { p.seekTo((p.duration * frac).toInt()); state.value = state.value.copy(pos = p.duration * frac / 1000f) }
+        val d = p.duration.takeIf { it > 0 } ?: return
+        p.seekTo((d * frac).toLong())
+        state.value = state.value.copy(pos = d * frac / 1000f)
     }
 
     fun stop() {
@@ -87,6 +107,37 @@ object Voice {
         player = null
         state.value = State()
     }
+}
+
+/** Видео в приложении: ExoPlayer + PlayerView (полноэкранный просмотр, кружки). */
+@Composable
+fun KosmoVideo(url: String, modifier: Modifier = Modifier, controls: Boolean = true, zoom: Boolean = false, loop: Boolean = false, onEnd: () -> Unit = {}) {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val player = remember(url) {
+        Voice.stop()
+        androidx.media3.exoplayer.ExoPlayer.Builder(ctx).build().apply {
+            setMediaItem(androidx.media3.common.MediaItem.fromUri(url))
+            repeatMode = if (loop) androidx.media3.common.Player.REPEAT_MODE_ONE else androidx.media3.common.Player.REPEAT_MODE_OFF
+            addListener(object : androidx.media3.common.Player.Listener {
+                override fun onPlaybackStateChanged(st: Int) { if (st == androidx.media3.common.Player.STATE_ENDED) onEnd() }
+            })
+            prepare()
+            playWhenReady = true
+        }
+    }
+    androidx.compose.runtime.DisposableEffect(player) { onDispose { player.release() } }
+    AndroidView(
+        factory = { c ->
+            androidx.media3.ui.PlayerView(c).apply {
+                this.player = player
+                useController = controls
+                setShowBuffering(androidx.media3.ui.PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
+                resizeMode = if (zoom) androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM else androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
+                setBackgroundColor(android.graphics.Color.BLACK)
+            }
+        },
+        modifier = modifier,
+    )
 }
 
 /** Запись голосового: AAC в MP4 (.m4a) — играет и в браузере, и на телефоне. */
@@ -137,7 +188,12 @@ fun compressPhoto(ctx: Context, uri: Uri, max: Int = 1600): Triple<File, Int, In
     } else {
         val b = ctx.contentResolver.openInputStream(uri)!!.use { BitmapFactory.decodeStream(it) }
         val k = minOf(1f, max.toFloat() / maxOf(b.width, b.height))
-        Bitmap.createScaledBitmap(b, (b.width * k).toInt(), (b.height * k).toInt(), true)
+        val scaled = Bitmap.createScaledBitmap(b, (b.width * k).toInt(), (b.height * k).toInt(), true)
+        // старые Android не поворачивают фото по EXIF сами — иначе w/h перепутаны и фото обрезается
+        val deg = runCatching {
+            ctx.contentResolver.openInputStream(uri)!!.use { android.media.ExifInterface(it) }.getAttributeInt(android.media.ExifInterface.TAG_ORIENTATION, 1)
+        }.getOrDefault(1).let { when (it) { 6 -> 90f; 3 -> 180f; 8 -> 270f; else -> 0f } }
+        if (deg == 0f) scaled else Bitmap.createBitmap(scaled, 0, 0, scaled.width, scaled.height, android.graphics.Matrix().apply { postRotate(deg) }, true)
     }
     val f = File(ctx.cacheDir, "photo-${System.currentTimeMillis()}.jpg")
     FileOutputStream(f).use { src.compress(Bitmap.CompressFormat.JPEG, 86, it) }
@@ -176,17 +232,7 @@ fun PhotoViewer(app: AppState, media: String) {
 fun VideoViewer(app: AppState, media: String) {
     val url = LocalMedia.current(media)
     Box(Modifier.fillMaxSize().background(Color.Black)) {
-        AndroidView(
-            factory = { ctx ->
-                VideoView(ctx).apply {
-                    setMediaController(MediaController(ctx).also { it.setAnchorView(this) })
-                    setVideoURI(Uri.parse(url))
-                    setOnPreparedListener { start() }
-                }
-            },
-            modifier = Modifier.align(Alignment.Center),
-            onRelease = { it.stopPlayback() },
-        )
+        KosmoVideo(url, Modifier.fillMaxSize())
         BackCircle(app, Modifier.safeDrawingPadding().padding(12.dp).align(Alignment.TopStart))
     }
 }

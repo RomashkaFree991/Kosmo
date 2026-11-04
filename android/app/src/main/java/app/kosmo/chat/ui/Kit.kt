@@ -453,13 +453,17 @@ fun KosmoMenu(expanded: Boolean, onDismiss: () -> Unit, items: List<MenuItem>, o
     val look = LocalLook.current
     DropdownMenu(
         expanded, onDismiss, offset = offset,
-        shape = RoundedCornerShape(if (look.glass) 22.dp else 16.dp),
-        containerColor = if (look.glass) (if (look.dark) Color(0xFF232325).copy(alpha = 0.96f) else Color.White.copy(alpha = 0.96f)) else MaterialTheme.colorScheme.surfaceContainer,
-        modifier = Modifier.widthIn(min = 200.dp),
+        // как в мессенджере: сплошной фон, тонкие разделители между строками, без стекла
+        shape = RoundedCornerShape(16.dp),
+        containerColor = if (look.glass) (if (look.dark) Color(0xFF2C2C2E) else Color.White) else MaterialTheme.colorScheme.surfaceContainer,
+        shadowElevation = 12.dp,
+        modifier = Modifier.widthIn(min = 220.dp),
     ) {
         header?.invoke()
-        items.forEach { m ->
+        items.forEachIndexed { i, m ->
+            if (i > 0 && look.glass) Box(Modifier.fillMaxWidth().height(0.5.dp).background(if (look.dark) Color(0x8C545458) else Color(0x2E3C3C43)))
             DropdownMenuItem(
+                modifier = Modifier.heightIn(min = 46.dp),
                 text = { Text(tr(m.text), color = if (m.danger) MaterialTheme.colorScheme.error else look.text, fontSize = 16.sp) },
                 onClick = { onDismiss(); m.onClick() },
                 leadingIcon = {

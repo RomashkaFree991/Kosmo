@@ -71,4 +71,33 @@ class Compare {
     @Test fun designs() = shot("designs") { it.push(Screen.Settings("designs")) }
     @Test fun edit() = shot("edit") { it.push(Screen.EditProfile) }
     @Test fun user() = shot("user") { s -> s.push(Screen.User(s.kosmo.data.value.accounts.values.first { it.str("name") == "Boris" }.str("id")!!)) }
+
+    /** Вход и регистрация: шаги как на сайте (без заставки). */
+    private fun auth(step: String) {
+        for (glass in listOf(true, false)) {
+            val a = AppState(paparazzi.context, CoroutineScope(Dispatchers.Unconfined))
+            Design.glass = glass
+            paparazzi.snapshot(name = (if (glass) "glass_" else "material_") + "auth_" + step) {
+                CompositionLocalProvider(androidx.activity.compose.LocalActivityResultRegistryOwner provides registry) { KosmoTheme(dark = true) { app.kosmo.chat.ui.AuthScreen(a, preview = step) } }
+            }
+        }
+    }
+    @Test fun mono() { try { shot("mono") { Design.colorStyle = "mono" } } finally { Design.colorStyle = "tonal" } }
+    @Test fun chatPlus() = pop("plus")
+    @Test fun chatEmoji() = pop("emoji")
+    private fun pop(what: String) {
+        for (glass in listOf(true, false)) {
+            val a = app(); Design.glass = glass
+            val id = dm(a)
+            paparazzi.snapshot(name = (if (glass) "glass_" else "material_") + "chat_" + what) {
+                CompositionLocalProvider(LocalMedia provides { photo }, androidx.activity.compose.LocalActivityResultRegistryOwner provides registry) {
+                    KosmoTheme(dark = true) { app.kosmo.chat.ui.ChatScreen(a, id, null, null, initialPop = what) }
+                }
+            }
+        }
+    }
+    @Test fun authEmail() = auth("email")
+    @Test fun authCode() = auth("code")
+    @Test fun authPass() = auth("newpass")
+    @Test fun authName() = auth("name")
 }

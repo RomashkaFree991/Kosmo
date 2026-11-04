@@ -83,6 +83,7 @@ class AppState(private val ctx: Context, val scope: CoroutineScope) {
     init {
         Design.init(ctx)
         I18n.init(ctx)
+        Voice.init(ctx)
         // быстрый старт без сети: последний снимок с диска
         if (token != null) runCatching {
             val j = JSON.parseToJsonElement(cache.readText()) as JsonObject

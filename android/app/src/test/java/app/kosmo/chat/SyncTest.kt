@@ -5,7 +5,10 @@ import app.kosmo.chat.core.Auth
 import app.kosmo.chat.core.Kosmo
 import app.kosmo.chat.core.arr
 import app.kosmo.chat.core.jobj
+import app.kosmo.chat.core.obj
 import app.kosmo.chat.core.objects
+import app.kosmo.chat.core.strings
+import app.kosmo.chat.core.with
 import app.kosmo.chat.core.str
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -61,6 +64,43 @@ class SyncTest {
         val f = File.createTempFile("kosmo", ".jpg").apply { writeBytes(ByteArray(2048) { it.toByte() }) }
         val id = a.api.upload(f, "image/jpeg")
         assertEquals(32, id.length)
+        a.disconnect(); b.disconnect()
+    }
+
+    /** Автор и собеседник отмечают пункты одновременно — ничьи галочки не пропадают. */
+    @Test
+    fun todoMarksFromBothSurvive() = runBlocking {
+        assumeTrue(url != null)
+        val (a, aid) = account("ta${System.nanoTime()}@kosmo.test", "Anna")
+        val (b, bid) = account("tb${System.nanoTime()}@kosmo.test", "Boris")
+        withTimeout(5000) { while (!a.online.value || !b.online.value) delay(50) }
+        b.load()
+        val chat = a.dmId(aid, bid)
+        val items = listOf("1", "2", "3").map { jobj("id" to it, "text" to "item $it", "by" to aid, "done" to emptyList<String>()) }
+        val m = a.sendMessage(chat, listOf(aid, bid), jobj("kind" to "todo", "todo" to jobj("title" to "Trip", "open" to true, "items" to items)))
+        val mid = m.str("id")!!
+        fun todo(k: Kosmo) = k.data.value.chats[chat]?.arr("messages")?.objects()?.firstOrNull { it.str("id") == mid }?.obj("todo")
+        fun mark(k: Kosmo, me: String, item: String) {
+            val cur = k.data.value.chats[chat]!!.arr("messages").objects().first { it.str("id") == mid }
+            val t = cur.obj("todo")!!
+            val next = t.arr("items").objects().map { if (it.str("id") == item) it.with("done" to (it.strings("done") + me)) else it }
+            k.editMessage(chat, cur.with("todo" to t.with("items" to kotlinx.serialization.json.JsonArray(next))))
+        }
+        withTimeout(5000) { while (todo(b) == null) delay(50) }
+        // у Анны устаревшая копия: галочка Бориса до неё ещё не дошла
+        a.disconnect()
+        mark(b, bid, "2")
+        delay(1500)
+        mark(a, aid, "1")
+        delay(1500)
+        a.load(); a.connect()
+        fun ok(k: Kosmo): Boolean {
+            val its = todo(k)?.arr("items")?.objects() ?: return false
+            return its.first { it.str("id") == "1" }.strings("done") == listOf(aid) && its.first { it.str("id") == "2" }.strings("done") == listOf(bid)
+        }
+        withTimeout(5000) { while (!ok(a) || !ok(b)) delay(50) }
+        a.load(); b.load()
+        assertTrue(ok(a) && ok(b))
         a.disconnect(); b.disconnect()
     }
 }

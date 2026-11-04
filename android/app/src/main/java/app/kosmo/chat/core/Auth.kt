@@ -19,8 +19,15 @@ class Auth(private val api: Api, private val device: String) {
     suspend fun login(ticket: String, passcode: String) =
         session(api.call("POST", "/api/auth/login", jobj("ticket" to ticket, "passcode" to passcode, "device" to dev), auth = false))
 
-    suspend fun register(ticket: String, passcode: String, name: String, username: String) =
-        session(api.call("POST", "/api/auth/register", jobj("ticket" to ticket, "passcode" to passcode, "name" to name, "username" to username, "device" to dev), auth = false))
+    suspend fun register(ticket: String, passcode: String, name: String, username: String, bio: String = "") =
+        session(api.call("POST", "/api/auth/register", jobj("ticket" to ticket, "passcode" to passcode, "name" to name, "username" to username, "bio" to bio, "device" to dev), auth = false))
+
+    /* Сброс код-пароля: код на почту → новый код-пароль (как «Forgot passcode?» на сайте) */
+    suspend fun resetCode(email: String) { api.call("POST", "/api/auth/reset/code", jobj("email" to email), auth = false) }
+    suspend fun resetVerify(email: String, code: String): String =
+        api.call("POST", "/api/auth/reset/verify", jobj("email" to email, "code" to code), auth = false).str("ticket") ?: throw ApiException(400, "bad_code", "Wrong code")
+    suspend fun reset(ticket: String, passcode: String) =
+        session(api.call("POST", "/api/auth/reset", jobj("ticket" to ticket, "passcode" to passcode, "device" to dev), auth = false))
 
     suspend fun usernameFree(name: String): Boolean = api.call("GET", "/api/username/$name").bool("free")
 

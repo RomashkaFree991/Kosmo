@@ -234,6 +234,7 @@ export function checkChat(me, patch, old) {
   const unset = (patch.unset ?? []).filter((k) => k === 'pinned' ? (isRoom(old) ? admin : member) : ['linked', 'linkedChannel'].includes(k) ? admin : false);
   const after = { ...old, ...set };
   const msgs = { up: [], del: [] };
+  let echo = false;   // сервер свёл правки — итог нужен и самому отправителю
   const byId = new Map(old.messages.map((m) => [m.id, m]));
   for (const m of patch.msgs?.up ?? []) {
     const prev = byId.get(m.id);
@@ -257,7 +258,36 @@ export function checkChat(me, patch, old) {
       msgs.up.push(strip({ ...m, at: Math.min(Number(m.at) || Date.now(), Date.now() + 5000) }));
       continue;
     }
-    if (prev.from === me) { msgs.up.push(strip({ ...m, from: me, at: prev.at })); continue; }
+    if (prev.from === me) {
+      // своё сообщение: правлю его, но чужие реакции, голоса и галочки остаются как на сервере
+      // (иначе устаревшая копия у автора стирает то, что успели отметить другие)
+      const next = strip({ ...m, from: me, at: prev.at });
+      let merged = false;
+      if (prev.reactions || m.reactions) {
+        next.reactions = onlyMine(prev.reactions, m.reactions, me);
+        if (!Object.keys(next.reactions).length) delete next.reactions;
+        merged = true;
+      }
+      if (prev.poll && next.poll) { next.poll = { ...next.poll, votes: onlyMine(prev.poll.votes, next.poll.votes, me) }; merged = true; }
+      if (prev.todo && next.todo) {
+        const newItems = Array.isArray(next.todo.items) ? next.todo.items : [];
+        const items = newItems.slice(0, 50).map((n) => {
+          const old = (prev.todo.items ?? []).find((x) => x.id === n.id);
+          const done = new Set((old?.done ?? []).filter((u) => u !== me));
+          if ((n.done ?? []).includes(me)) done.add(me);
+          return { ...n, by: old?.by ?? me, done: [...done] };
+        });
+        // пункты, которые добавили другие, а у автора их ещё нет, — не теряются
+        for (const old of prev.todo.items ?? []) if (!items.some((x) => x.id === old.id) && old.by !== me) items.push(old);
+        next.todo = { ...next.todo, items };
+        merged = true;
+      }
+      if (prev.hiddenFor) next.hiddenFor = onlyMeAdded(prev.hiddenFor.filter((u) => u !== me), next.hiddenFor, me);
+      if (prev.viewedBy) next.viewedBy = prev.viewedBy;
+      msgs.up.push(next);
+      if (merged) echo = true;
+      continue;
+    }
     // чужое сообщение: только мои реакции, голос, «скрыть у себя»
     const next = { ...prev };
     next.reactions = onlyMine(prev.reactions, m.reactions, me);
@@ -284,6 +314,8 @@ export function checkChat(me, patch, old) {
         if ((n.done ?? []).includes(me)) done.add(me);
         return { ...it, done: [...done] };
       });
+      // «отмечает только автор» — чужие галочки не принимаются
+      if (prev.todo.solo) items.splice(0, items.length, ...oldItems);
       if (prev.todo.open !== false) {
         for (const n of newItems) {
           if (oldItems.some((x) => x.id === n.id) || items.length >= 50) continue;
@@ -291,7 +323,9 @@ export function checkChat(me, patch, old) {
         }
       }
       next.todo = { ...prev.todo, items };
+      echo = true;
     }
+    if (m.reactions || prev.reactions || (prev.poll && m.poll)) echo = true;
     msgs.up.push(next);
   }
   for (const id of patch.msgs?.del ?? []) {
@@ -305,6 +339,7 @@ export function checkChat(me, patch, old) {
   if (Object.keys(set).length) out.set = set;
   if (unset.length) out.unset = unset;
   if (msgs.up.length || msgs.del.length) out.msgs = msgs;
+  if (echo) Object.defineProperty(out, 'echo', { value: true, enumerable: false });
   return out;
 }
 

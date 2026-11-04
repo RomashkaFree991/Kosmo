@@ -46,8 +46,21 @@ val WP_FOR = mapOf("material" to listOf("color", "shapes", "waves", "glow", "bla
 
 private class WpColors(val bg: Color, val a: Color, val b: Color, val line: Color, val dot: Color, val dot2: Color, val container: Color)
 
-private fun wpColors(seed: Color, dark: Boolean, glass: Boolean): WpColors {
-    val s = SchemeTonalSpot(Hct.fromInt(seed.toArgb()), dark, 0.0)
+/** Схема по выбранному стилю цвета (Designs → Color style), как applySeed() на сайте. */
+fun styleScheme(seed: Color, dark: Boolean, style: String = Design.colorStyle): com.materialkolor.scheme.DynamicScheme {
+    val h = Hct.fromInt(seed.toArgb())
+    return when (style) {
+        "vibrant" -> com.materialkolor.scheme.SchemeVibrant(h, dark, 0.0)
+        "content" -> com.materialkolor.scheme.SchemeContent(h, dark, 0.0)
+        "fidelity" -> com.materialkolor.scheme.SchemeFidelity(h, dark, 0.0)
+        "neutral" -> com.materialkolor.scheme.SchemeNeutral(h, dark, 0.0)
+        "mono" -> com.materialkolor.scheme.SchemeMonochrome(h, dark, 0.0)
+        else -> SchemeTonalSpot(h, dark, 0.0)
+    }
+}
+
+private fun wpColors(seed: Color, dark: Boolean, glass: Boolean, style: String): WpColors {
+    val s = styleScheme(seed, dark, style)
     val p = s.primaryPalette; val t = s.tertiaryPalette; val n = s.neutralPalette
     val c = { i: Int -> Color(i) }
     val tones = if (dark) {
@@ -81,7 +94,8 @@ fun Wallpaper(modifier: Modifier = Modifier, kind: String? = null) {
     val look = LocalLook.current
     val k = kind ?: Design.wallpaper(look.glass)
     if (k == "black" || k == "custom") return
-    val cols = remember(Design.seed, look.dark, look.glass) { wpColors(Design.seed, look.dark, look.glass) }
+    val style = Design.colorStyle
+    val cols = remember(Design.seed, look.dark, look.glass, style) { wpColors(Design.seed, look.dark, look.glass, style) }
     val anim = rememberInfiniteTransition(label = "wp")
     val spin by anim.animateFloat(0f, 360f, infiniteRepeatable(tween(90_000, easing = LinearEasing)), label = "spin")
     val tw by anim.animateFloat(0f, 1f, infiniteRepeatable(tween(4000, easing = LinearEasing)), label = "tw")

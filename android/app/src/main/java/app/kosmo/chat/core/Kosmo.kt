@@ -237,6 +237,8 @@ class Kosmo(val api: Api, private val scope: CoroutineScope, private val token: 
 
     fun markRead(chatId: String) {
         val c = data.value.chats[chatId] ?: return
+        // в чужом публичном канале я не участник — сервер отклонит отметку и всё перезагрузится
+        if (me !in c.arr("members").mapNotNull { (it as? JsonPrimitive)?.content }) return
         val last = c.arr("messages").objects().lastOrNull { it.str("from") != me }?.num("at") ?: return
         val mine = c.obj("read")?.num(me) ?: 0
         if (mine >= last) return

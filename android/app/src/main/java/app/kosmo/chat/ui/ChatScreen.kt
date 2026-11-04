@@ -1,5 +1,10 @@
 package app.kosmo.chat.ui
 
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.foundation.layout.wrapContentHeight
 import android.Manifest
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -126,7 +131,7 @@ import java.io.File
 data class Upload(val id: String, val kind: String, val file: File, val w: Int = 0, val h: Int = 0, val duration: Double = 0.0, val progress: Float = 0f, val failed: Boolean = false)
 
 @Composable
-fun ChatScreen(app: AppState, chatId: String, otherId: String?, focus: String? = null) {
+fun ChatScreen(app: AppState, chatId: String, otherId: String?, focus: String? = null, initialPop: String? = null) {
     val data by app.kosmo.data.collectAsState()
     val look = LocalLook.current
     val me = data.me ?: return
@@ -139,12 +144,25 @@ fun ChatScreen(app: AppState, chatId: String, otherId: String?, focus: String? =
     val scope = rememberCoroutineScope()
     val ctx = LocalContext.current
     var typing by remember { mutableStateOf<String?>(null) }
+    // сообщения, которые уже были на экране при открытии чата, — без анимации появления
+    // (последние 3 непрочитанных появятся с анимацией, как на сайте)
+    val seenIds = remember(chatId) {
+        val c0 = app.kosmo.data.value.chats[chatId]
+        val all = c0?.arr("messages")?.objects().orEmpty()
+        val readAt = c0?.obj("read")?.num(app.kosmo.data.value.me ?: "") ?: 0L
+        val unread = all.filter { it.str("from") != app.kosmo.data.value.me && (it.num("at") ?: 0) > readAt }.takeLast(3).mapNotNull { it.str("id") }.toSet()
+        HashSet(all.mapNotNull { it.str("id") }.filter { it !in unread })
+    }
     var replyTo by remember { mutableStateOf<JsonObject?>(null) }
+    var quote by remember { mutableStateOf<String?>(null) }          // кусочек текста для ответа с цитатой
+    var quoting by remember { mutableStateOf<JsonObject?>(null) }    // сообщение, в котором сейчас выделяют
+    androidx.activity.compose.BackHandler(quoting != null) { quoting = null }
+    val quoteSel = remember { mutableStateOf(androidx.compose.ui.text.input.TextFieldValue("")) }
     var editing by remember { mutableStateOf<JsonObject?>(null) }
     var text by remember { mutableStateOf("") }
     var menu by remember { mutableStateOf(false) }
-    var plus by remember { mutableStateOf(false) }
-    var emoji by remember { mutableStateOf(false) }
+    var plus by remember { mutableStateOf(initialPop == "plus") }
+    var emoji by remember { mutableStateOf(initialPop == "emoji") }
     var sheet by remember { mutableStateOf<String?>(null) }   // code / todo / poll / location
     var searching by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
@@ -176,11 +194,12 @@ fun ChatScreen(app: AppState, chatId: String, otherId: String?, focus: String? =
     LaunchedEffect(focus, rows.size) { focus?.let { f -> rows.indexOfFirst { it.str("id") == f }.takeIf { it >= 0 }?.let { list.scrollToItem(it + uploads.size) } } }
 
     fun send(fields: JsonObject) {
-        val extra = replyTo?.let { jobj("replyTo" to it.str("id")) } ?: jobj()
+        val extra = replyTo?.let { jobj("replyTo" to it.str("id"), "quote" to quote) } ?: jobj()
         val ttl = chat?.num("ttl")
         val exp = if (ttl != null && ttl > 0) jobj("expiresAt" to System.currentTimeMillis() + ttl * 1000) else jobj()
         app.kosmo.sendMessage(chatId, members, JsonObject(extra + exp + fields), saved = saved)
         replyTo = null
+        quote = null
         typing = null
     }
 
@@ -264,6 +283,13 @@ fun ChatScreen(app: AppState, chatId: String, otherId: String?, focus: String? =
     var recStart by remember { mutableStateOf(0L) }
     val micPerm = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok -> if (!ok) app.toast = "Allow microphone access to record" }
     val camPerm = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { r -> if (r.values.all { it }) app.push(Screen.Round) else app.toast = "Allow camera and microphone access to record" }
+    fun onAttach(what: String) = when (what) {
+        "photo" -> pickMedia.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo))
+        "video" -> pickMedia.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly))
+        "round" -> camPerm.launch(arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO))
+        "music" -> pickMusic.launch("audio/*")
+        else -> sheet = what
+    }
     fun toggleRecord() {
         if (!recording) {
             if (ContextCompat.checkSelfPermission(ctx, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) { micPerm.launch(Manifest.permission.RECORD_AUDIO); return }
@@ -298,7 +324,17 @@ fun ChatScreen(app: AppState, chatId: String, otherId: String?, focus: String? =
                     items(rows.size, key = { rows[it].str("id") ?: "$it" }) { i ->
                         val m = rows[i]
                         val older = rows.getOrNull(i + 1)
-                        Column {
+                        // новое сообщение «вылетает» пружиной из своего угла (bubble-in на сайте)
+                        val mid = m.str("id") ?: ""
+                        val fresh = remember(mid) { mid !in seenIds }
+                        val pop = remember(mid) { androidx.compose.animation.core.Animatable(if (fresh) 0f else 1f) }
+                        LaunchedEffect(mid) { if (fresh) { pop.animateTo(1f, androidx.compose.animation.core.spring(dampingRatio = 0.58f, stiffness = 380f)) }; seenIds.add(mid) }
+                        val mineRow = m.str("from") == me
+                        Column(Modifier.animateItem(fadeInSpec = null, fadeOutSpec = null).graphicsLayer {
+                            val k = pop.value
+                            alpha = k.coerceIn(0f, 1f); scaleX = 0.6f + 0.4f * k; scaleY = scaleX
+                            transformOrigin = androidx.compose.ui.graphics.TransformOrigin(if (mineRow) 1f else 0f, 1f)
+                        }) {
                             val at = m.num("at") ?: 0
                             if (older == null || !sameDay(older.num("at") ?: 0, at)) DayPill(dayLabel(at))
                             MessageRow(
@@ -306,8 +342,15 @@ fun ChatScreen(app: AppState, chatId: String, otherId: String?, focus: String? =
                                 showName = older?.str("from") != m.str("from") || older?.str("kind") == "join",
                                 highlight = (searching && hits.getOrNull(hit) == i) || focus == m.str("id"),
                                 byId = { id -> messages.firstOrNull { it.str("id") == id } },
-                                onReply = { replyTo = m; editing = null },
+                                onReply = { replyTo = m; quote = null; editing = null },
                                 onEdit = { editing = m; replyTo = null; text = m.str("text") ?: m.str("caption") ?: "" },
+                                onQuote = if (canPost) ({
+                                    val t = m.str("text") ?: m.str("caption") ?: ""
+                                    quoteSel.value = androidx.compose.ui.text.input.TextFieldValue(t, androidx.compose.ui.text.TextRange(0, t.length))
+                                    quoting = m
+                                }) else null,
+                                quoteSel = if (quoting?.str("id") == m.str("id")) quoteSel else null,
+                                dim = quoting != null && quoting?.str("id") != m.str("id"),
                             )
                         }
                     }
@@ -388,12 +431,33 @@ fun ChatScreen(app: AppState, chatId: String, otherId: String?, focus: String? =
                         Icon(if (editing != null) Icons.Rounded.Edit else Icons.AutoMirrored.Rounded.Reply, null, tint = look.accent)
                         Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
                             Text(if (editing != null) tr("Editing") else tr("Reply to ${data.accounts[m?.str("from")]?.str("name") ?: ""}"), color = look.accent, fontSize = 13.sp)
-                            Text(m?.let { tr(data.previewText(it)) } ?: "", maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 14.sp)
+                            Text(quote?.takeIf { editing == null }?.let { "“$it”" } ?: m?.let { tr(data.previewText(it)) } ?: "", maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 14.sp)
                         }
-                        IconButton({ replyTo = null; if (editing != null) { editing = null; text = "" } }) { Icon(Icons.Rounded.Close, tr("Cancel")) }
+                        IconButton({ replyTo = null; quote = null; if (editing != null) { editing = null; text = "" } }) { Icon(Icons.Rounded.Close, tr("Cancel")) }
                     }
                 }
-                if (!joined) Box(Modifier.fillMaxWidth().navigationBarsPadding().padding(12.dp)) {
+                if (quoting != null) Row(
+                    // панель цитирования (.quote-bar): «Отмена», подсказка, «Цитировать»
+                    Modifier.fillMaxWidth().navigationBarsPadding().padding(12.dp).heightIn(min = 52.dp)
+                        .shadow(18.dp, RoundedCornerShape(if (look.glass) 18.dp else 28.dp))
+                        .clip(RoundedCornerShape(if (look.glass) 18.dp else 28.dp))
+                        .background(if (look.glass) (if (look.dark) Color(0xFF1C1C1E) else Color.White) else MaterialTheme.colorScheme.surfaceContainerHigh).padding(6.dp),
+                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    val r = RoundedCornerShape(if (look.glass) 12.dp else 20.dp)
+                    Text(tr("Cancel"), fontSize = 15.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.height(40.dp).clip(r).background(look.ink.copy(alpha = 0.08f)).clickable { quoting = null }.padding(horizontal = 14.dp).wrapContentHeight())
+                    Text(tr("Select the part to quote"), fontSize = 14.sp, color = look.text2, textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.weight(1f))
+                    Row(
+                        Modifier.height(40.dp).clip(r).background(look.accent).clickable {
+                            val v = quoteSel.value
+                            val part = if (v.selection.collapsed) v.text else v.text.substring(v.selection.min, v.selection.max)
+                            replyTo = quoting; editing = null
+                            quote = part.trim().ifEmpty { v.text.trim() }.take(500)
+                            quoting = null
+                        }.padding(horizontal = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) { Icon(WI.quotePlus, null, tint = look.onAccent, modifier = Modifier.size(18.dp)); Text(" " + tr("Quote"), color = look.onAccent, fontSize = 15.sp, fontWeight = FontWeight.SemiBold) }
+                } else if (!joined) Box(Modifier.fillMaxWidth().navigationBarsPadding().padding(12.dp)) {
                     BigButton(if (isChannel(chat)) "Join channel" else "Join group") {
                         app.kosmo.commit(jobj("col" to "chats", "id" to chatId, "op" to "put", "set" to jobj("members" to (members + me))))
                     }
@@ -415,15 +479,6 @@ fun ChatScreen(app: AppState, chatId: String, otherId: String?, focus: String? =
                     } else {
                         Box {
                             CircleBtn(WI.plus, "Attach", modifier = Modifier.graphicsLayer { rotationZ = if (plus) 45f else 0f }, fill = look.composer) { plus = !plus; emoji = false }
-                            AttachMenu(plus, { plus = false }) { what ->
-                                when (what) {
-                                    "photo" -> pickMedia.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo))
-                                    "video" -> pickMedia.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly))
-                                    "round" -> camPerm.launch(arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO))
-                                    "music" -> pickMusic.launch("audio/*")
-                                    else -> sheet = what
-                                }
-                            }
                         }
                         Row(
                             Modifier.weight(1f).heightIn(min = 48.dp).chrome(look, RoundedCornerShape(24.dp), fill = look.composer).padding(start = 18.dp, end = 6.dp),
@@ -450,10 +505,16 @@ fun ChatScreen(app: AppState, chatId: String, otherId: String?, focus: String? =
                         }
                     }
                 }
-                AnimatedVisibility(emoji && canPost, enter = expandVertically(), exit = shrinkVertically()) {
-                    EmojiPanel(onEmoji = { text += it }, onSticker = { st -> send(jobj("kind" to "sticker", "sticker" to st)); emoji = false })
-                }
             }
+        }
+        // меню «+» и выбор эмодзи — карточки над полем ввода, как на сайте; тап мимо закрывает
+        if ((plus || emoji) && canPost) Box(Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures { plus = false; emoji = false } })
+        val above = with(density) { botH.toDp() } + 4.dp
+        PopIn(plus && canPost, androidx.compose.ui.graphics.TransformOrigin(0f, 1f), Modifier.align(Alignment.BottomStart).padding(start = 10.dp, bottom = above)) {
+            AttachPopup(isRoom(chat)) { what -> plus = false; onAttach(what) }
+        }
+        PopIn(emoji && canPost, androidx.compose.ui.graphics.TransformOrigin(1f, 1f), Modifier.align(Alignment.BottomEnd).padding(end = 10.dp, bottom = above)) {
+            EmojiPicker(onEmoji = { text += it }, onSticker = { st -> send(jobj("kind" to "sticker", "sticker" to st)); emoji = false })
         }
         }
     }
@@ -462,20 +523,6 @@ fun ChatScreen(app: AppState, chatId: String, otherId: String?, focus: String? =
     }
 }
 
-/** Меню «+» в поле ввода: как на сайте — цветные значки. */
-@Composable
-private fun AttachMenu(open: Boolean, onClose: () -> Unit, onPick: (String) -> Unit) {
-    KosmoMenu(open, onClose, listOf(
-        MenuItem(Icons.Rounded.Image, "Photo", Color(0xFF0A84FF)) { onPick("photo") },
-        MenuItem(Icons.Rounded.Videocam, "Video", Color(0xFFFF375F)) { onPick("video") },
-        MenuItem(Icons.Rounded.Code, "Code", Color(0xFF5E5CE6)) { onPick("code") },
-        MenuItem(Icons.Rounded.RadioButtonChecked, "Video message", Color(0xFF30D158)) { onPick("round") },
-        MenuItem(Icons.Rounded.Checklist, "Checklist", Color(0xFF32D74B)) { onPick("todo") },
-        MenuItem(Icons.Rounded.Poll, "Poll", Color(0xFFBF5AF2)) { onPick("poll") },
-        MenuItem(Icons.Rounded.Place, "Location", Color(0xFFFF9F0A)) { onPick("location") },
-        MenuItem(Icons.Rounded.MusicNote, "Music", Color(0xFFFF9F0A)) { onPick("music") },
-    ), offset = androidx.compose.ui.unit.DpOffset(0.dp, (-8).dp))
-}
 
 /** Поле поиска-пилюля. */
 @Composable

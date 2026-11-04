@@ -16,8 +16,8 @@ android {
         applicationId = "app.kosmo.chat"
         minSdk = 26
         targetSdk = 35
-        versionCode = 3
-        versionName = "2.1"
+        versionCode = 4
+        versionName = "2.2"
         buildConfigField("String", "KOSMO_URL", "\"$kosmoUrl\"")
         // звонки (WebRTC): только ARM-телефоны — так APK меньше
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
@@ -52,6 +52,7 @@ android {
 
 dependencies {
     val bom = platform("androidx.compose:compose-bom:2024.12.01")
+    implementation("com.google.zxing:core:3.5.3")   // QR-код для входа с другого устройства
     implementation(bom)
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.activity:activity-compose:1.9.3")
@@ -65,6 +66,9 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("io.coil-kt:coil-compose:2.7.0")
     implementation("io.coil-kt:coil-video:2.7.0")
+    // плеер голосовых, музыки и видео: ExoPlayer понимает и webm/opus с сайта, и перемотку по сети
+    implementation("androidx.media3:media3-exoplayer:1.4.1")
+    implementation("androidx.media3:media3-ui:1.4.1")
     implementation("io.getstream:stream-webrtc-android:1.3.8")
     implementation("com.materialkolor:material-kolor:2.0.2")
     implementation("dev.chrisbanes.haze:haze:1.1.1")

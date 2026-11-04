@@ -1,5 +1,8 @@
 package app.kosmo.chat.ui
 
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.material3.LocalTextStyle
+import androidx.compose.ui.focus.focusRequester
 import android.content.Intent
 import android.net.Uri
 import android.widget.VideoView
@@ -138,6 +141,9 @@ private fun bubbleColors(mine: Boolean): Pair<Color, Color> {
 fun MessageRow(
     app: AppState, data: Data, chat: JsonObject?, m: JsonObject, mine: Boolean, showName: Boolean, highlight: Boolean,
     byId: (String) -> JsonObject?, onReply: () -> Unit, onEdit: () -> Unit,
+    onQuote: (() -> Unit)? = null,
+    quoteSel: androidx.compose.runtime.MutableState<androidx.compose.ui.text.input.TextFieldValue>? = null,
+    dim: Boolean = false,
 ) {
     val look = LocalLook.current
     val kind = m.str("kind") ?: "text"
@@ -160,7 +166,7 @@ fun MessageRow(
     val pad = when (kind) { "photo", "video", "album" -> PaddingValues(4.dp); "code" -> PaddingValues(6.dp); "sticker", "emoji", "round" -> PaddingValues(0.dp); else -> PaddingValues(horizontal = 12.dp, vertical = 8.dp) }
     val views = if (channel) chat!!.obj("read")?.values?.count { (it as? JsonPrimitive)?.content?.toLongOrNull() ?: 0 >= (m.num("at") ?: 0) } ?: 0 else -1
     val reactions = m.obj("reactions")?.entries?.filter { (it.value as? JsonArray)?.isNotEmpty() == true }.orEmpty()
-    androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxWidth().background(if (highlight) look.accent.copy(alpha = 0.16f) else Color.Transparent)) {
+    androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxWidth().alpha(if (dim) 0.35f else 1f).background(if (highlight) look.accent.copy(alpha = 0.16f) else Color.Transparent)) {
         val maxW = minOf(maxWidth * 0.78f, 460.dp)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = if (side) Arrangement.End else Arrangement.Start, verticalAlignment = Alignment.Bottom) {
             if (groupChat && !mine) {
@@ -172,6 +178,7 @@ fun MessageRow(
                 Column(
                     Modifier.widthIn(max = maxW)
                         .then(if (bare) Modifier else Modifier.clip(shape).background(bg))
+                        .then(if (quoteSel != null) Modifier.border(2.dp, look.accent, shape) else Modifier)
                         .combinedClickable(onClick = {
                             when (kind) {
                                 "photo" -> m.str("media")?.let {
@@ -196,8 +203,9 @@ fun MessageRow(
                                 Text(data.accounts[f.str("from")]?.str("name") ?: f.str("name") ?: tr("Hidden user"), fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = fg)
                             }
                         }
-                        m.str("replyTo")?.let { rid -> ReplyQuote(data, byId(rid), fg) }
-                        MessageBody(app, data, chatId, m, kind, side, fg, tick, views, reactions.isEmpty())
+                        m.str("replyTo")?.let { rid -> ReplyQuote(data, byId(rid), fg, m.str("quote")) }
+                        if (quoteSel != null) QuoteSelect(quoteSel, fg)
+                        else MessageBody(app, data, chatId, m, kind, side, fg, tick, views, reactions.isEmpty())
                         if (reactions.isNotEmpty()) Row(Modifier.padding(top = 4.dp), verticalAlignment = Alignment.Bottom) {
                             androidx.compose.foundation.layout.FlowRow(Modifier.weight(1f, fill = false), horizontalArrangement = Arrangement.spacedBy(5.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                                 reactions.forEach { (key, who) ->
@@ -219,6 +227,7 @@ fun MessageRow(
                     menu, { menu = false },
                     listOfNotNull(
                         MenuItem(WI.reply, "Reply") { onReply() },
+                        if (onQuote != null && !(m.str("text") ?: m.str("caption")).isNullOrBlank() && kind in setOf("text", "photo", "video", "code", "album")) MenuItem(WI.quotePlus, "Quote") { onQuote() } else null,
                         (m.str("text") ?: m.str("caption"))?.takeIf { it.isNotEmpty() }?.let { t -> MenuItem(WI.copy, "Copy") { clip.setText(AnnotatedString(t)); app.toast = "Copied" } },
                         if (kind !in setOf("poll", "invite", "call") && chat?.bool("secret") != true) MenuItem(WI.forward, "Forward") { app.push(Screen.Forward(chatId = chatId, msgId = m.str("id"))) } else null,
                         if (canPin(chat, me)) MenuItem(WI.pin, if (chat?.str("pinned") == m.str("id")) "Unpin" else "Pin") {
@@ -245,15 +254,31 @@ fun MessageRow(
 
 /** Цитата ответа (.b-reply): полоса слева, фон белила .12, имя жирным. */
 @Composable
-private fun ReplyQuote(data: Data, r: JsonObject?, fg: Color) {
+private fun ReplyQuote(data: Data, r: JsonObject?, fg: Color, quote: String? = null) {
     val look = LocalLook.current
     Row(Modifier.padding(bottom = 6.dp).widthIn(min = 140.dp).clip(RoundedCornerShape(8.dp)).background(look.ink.copy(alpha = 0.12f)).height(androidx.compose.foundation.layout.IntrinsicSize.Min)) {
         Box(Modifier.width(3.dp).fillMaxHeight().background(fg))
         Column(Modifier.padding(horizontal = 10.dp, vertical = 4.dp)) {
             Text(data.accounts[r?.str("from")]?.str("name") ?: tr("Message"), fontSize = 13.sp, lineHeight = 17.sp, fontWeight = FontWeight.SemiBold, color = fg)
-            Text(r?.let { tr(data.previewText(it)) } ?: tr("Deleted message"), fontSize = 13.sp, lineHeight = 17.sp, color = fg.copy(alpha = 0.85f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(quote?.let { "“$it”" } ?: r?.let { tr(data.previewText(it)) } ?: tr("Deleted message"), fontSize = 13.sp, lineHeight = 17.sp, color = fg.copy(alpha = 0.85f), maxLines = if (quote != null) 3 else 1, overflow = TextOverflow.Ellipsis)
         }
     }
+}
+
+/** Цитирование: текст сообщения можно выделить прямо в пузыре (сначала выделено всё). */
+@Composable
+private fun QuoteSelect(sel: androidx.compose.runtime.MutableState<androidx.compose.ui.text.input.TextFieldValue>, fg: Color) {
+    val focus = remember { androidx.compose.ui.focus.FocusRequester() }
+    LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+    val text = sel.value.text
+    androidx.compose.foundation.text.BasicTextField(
+        value = sel.value,
+        onValueChange = { v -> sel.value = v.copy(text = text) },
+        readOnly = true,
+        textStyle = androidx.compose.ui.text.TextStyle(color = fg, fontSize = 16.sp, lineHeight = 22.sp, fontFamily = LocalTextStyle.current.fontFamily),
+        cursorBrush = androidx.compose.ui.graphics.SolidColor(Color.Transparent),
+        modifier = Modifier.focusRequester(focus),
+    )
 }
 
 private fun canPin(c: JsonObject?, me: String?) = c != null && (!isRoom(c) || c.str("owner") == me || me in c.strings("admins"))
@@ -324,7 +349,8 @@ private fun MessageBody(app: AppState, data: Data, chatId: String, m: JsonObject
             Box {
                 AsyncImage(
                     model = m.str("media")?.let(media), contentDescription = null, contentScale = ContentScale.Crop,
-                    modifier = Modifier.width(260.dp).aspectRatio((w / h).coerceIn(260f / 360f, 2.5f)).clip(RoundedCornerShape(16.dp)).background(look.ink.copy(alpha = 0.06f))
+                    // фото целиком, без обрезки: не выше 360 — высокие фото становятся уже (как на сайте)
+                    modifier = Modifier.width((360f * w / h).coerceIn(120f, 260f).dp).aspectRatio((w / h).coerceIn(120f / 360f, 3f)).clip(RoundedCornerShape(16.dp)).background(look.ink.copy(alpha = 0.06f))
                         .then(if (m.bool("viewOnce")) Modifier.blur(28.dp) else Modifier),
                 )
                 if (m.bool("viewOnce")) Box(Modifier.align(Alignment.Center).size(56.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.45f)), contentAlignment = Alignment.Center) { Icon(WI.fire, null, tint = Color.White) }
@@ -524,23 +550,27 @@ private fun TodoBody(app: AppState, data: Data, chatId: String, m: JsonObject, f
         Row(Modifier.padding(top = 2.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(WI.todo, null, tint = fg, modifier = Modifier.size(18.dp))
             Text(t.str("title")?.takeIf { it.isNotEmpty() } ?: tr("Checklist"), color = fg, fontWeight = FontWeight.Bold, fontSize = 16.sp, modifier = Modifier.weight(1f).padding(start = 8.dp))
+            if (t.bool("solo")) Icon(WI.lock, tr("Only the author checks off tasks"), tint = fg.copy(alpha = 0.6f), modifier = Modifier.padding(end = 6.dp).size(14.dp))
             Text("${items.count { it.strings("done").isNotEmpty() }}/${items.size}", color = fg.copy(alpha = 0.7f), fontSize = 13.sp)
         }
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             items.forEach { it2 ->
                 val done = it2.strings("done")
                 val minePick = me in done
+                // «отмечает только автор»: остальным галочки недоступны, видят только прогресс
+                val locked = t.bool("solo") && m.str("from") != me
+                val other = locked && done.isNotEmpty()
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(
                         Modifier.size(24.dp).clip(CircleShape)
-                            .background(if (minePick) (if (mine) Color.White else look.accent) else Color.Transparent)
-                            .border(2.dp, if (minePick) Color.Transparent else look.ink.copy(alpha = 0.4f), CircleShape)
-                            .clickable {
+                            .background(if (minePick) (if (mine) Color.White else look.accent) else if (other) look.ink.copy(alpha = 0.35f) else Color.Transparent)
+                            .border(2.dp, if (minePick || other) Color.Transparent else look.ink.copy(alpha = 0.4f), CircleShape)
+                            .clickable(enabled = !locked) {
                                 val nextItems = items.map { x -> if (x.str("id") == it2.str("id")) x.with("done" to (if (minePick) done - me else done + me)) else x }
                                 app.kosmo.editMessage(chatId, m.with("todo" to t.with("items" to JsonArray(nextItems))))
                             },
                         contentAlignment = Alignment.Center,
-                    ) { if (minePick) Icon(WI.check, null, tint = if (mine) look.accent else Color.White, modifier = Modifier.size(15.dp)) }
+                    ) { if (minePick || other) Icon(WI.check, null, tint = if (minePick && mine) look.accent else Color.White, modifier = Modifier.size(15.dp)) }
                     Text(
                         it2.str("text") ?: "", color = fg.copy(alpha = if (done.isNotEmpty()) 0.6f else 1f), fontSize = 16.sp,
                         textDecoration = if (done.isNotEmpty()) androidx.compose.ui.text.style.TextDecoration.LineThrough else null,
@@ -616,10 +646,8 @@ fun RoundBody(m: JsonObject, tick: TickState?, media: (String) -> String) {
     val url = m.str("media")?.let(media)
     Column(horizontalAlignment = Alignment.End) {
         Box(Modifier.size(220.dp).clip(CircleShape).background(Color(0xFF111111)).clickable { playing = !playing }, contentAlignment = Alignment.Center) {
-            if (playing && url != null) AndroidView(
-                factory = { c -> VideoView(c).apply { setVideoPath(url); setOnPreparedListener { start() }; setOnCompletionListener { playing = false } } },
-                modifier = Modifier.fillMaxSize(), onRelease = { it.stopPlayback() },
-            ) else {
+            if (playing && url != null) KosmoVideo(url, Modifier.fillMaxSize(), controls = false, zoom = true) { playing = false }
+            else {
                 AsyncImage(ImageRequest.Builder(ctx).data(url).decoderFactory(VideoFrameDecoder.Factory()).videoFrameMillis(300).build(), null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
                 Box(Modifier.size(48.dp).background(Color.Black.copy(alpha = 0.45f), CircleShape), contentAlignment = Alignment.Center) { Icon(Icons.Rounded.PlayArrow, null, tint = Color.White) }
             }

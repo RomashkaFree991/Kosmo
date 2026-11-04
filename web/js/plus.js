@@ -215,6 +215,7 @@ export function openTodoCreator(onSend) {
     <div class="todo-edit" id="todo-edit">${row()}${row()}</div>
     <button class="link-btn todo-add-row" type="button" data-todo-more>${PI.plus}Add task</button>
     <label class="sw-row"><span>Members can add tasks</span><input type="checkbox" id="todo-open" checked></label>
+    <label class="sw-row"><span class="sw-text">Only I can check off tasks<small>Others see the progress but can’t mark tasks.</small></span><input type="checkbox" id="todo-solo"></label>
     <button class="btn btn-primary" type="button" data-todo-send>Send checklist</button>`, {
     onClick: (e) => {
       if (e.target.closest('[data-todo-more]')) { $('#todo-edit', wrap).insertAdjacentHTML('beforeend', row()); $('#todo-edit input:last-of-type', wrap); $$('#todo-edit input', wrap).at(-1).focus(); }
@@ -225,7 +226,7 @@ export function openTodoCreator(onSend) {
         if (!items.length) { toast('Add at least one task'); return; }
         const by = me().id;
         closeModal();
-        onSend({ kind: 'todo', todo: { title: $('#todo-title', wrap).value.trim(), open: $('#todo-open', wrap).checked, items: items.map((text) => ({ id: uid(), text, by, done: [] })) } });
+        onSend({ kind: 'todo', todo: { title: $('#todo-title', wrap).value.trim(), open: $('#todo-open', wrap).checked, ...($('#todo-solo', wrap).checked ? { solo: true } : {}), items: items.map((text) => ({ id: uid(), text, by, done: [] })) } });
       }
     },
   });
@@ -236,13 +237,15 @@ export function todoHtml(m, chatId) {
   const t = m.todo;
   const done = t.items.filter((i) => i.done?.length).length;
   const myId = me().id;
-  return `<div class="todo" data-todo="${m.id}" data-chat="${chatId}">
-    <p class="todo-title">${PI.todo}<b>${escapeHtml(t.title || 'Checklist')}</b><span>${done}/${t.items.length}</span></p>
+  // «отмечает только автор»: остальные видят прогресс, но не могут ставить галочки
+  const locked = t.solo && m.from !== myId;
+  return `<div class="todo${locked ? ' is-locked' : ''}" data-todo="${m.id}" data-chat="${chatId}">
+    <p class="todo-title">${PI.todo}<b>${escapeHtml(t.title || 'Checklist')}</b>${t.solo ? `<i class="todo-lock" title="Only the author checks off tasks">${PI.lock}</i>` : ''}<span>${done}/${t.items.length}</span></p>
     <ul class="todo-list">${t.items.map((i) => {
       const who = (i.done ?? []).map((u) => db.get(u)).filter(Boolean);
       const mine = (i.done ?? []).includes(myId);
       return `<li class="todo-item${who.length ? ' is-done' : ''}">
-        <button class="todo-check${mine ? ' is-mine' : ''}" type="button" data-todo-toggle="${i.id}" aria-pressed="${mine}" aria-label="${escapeHtml(i.text)}">${PI.check}</button>
+        <button class="todo-check${mine ? ' is-mine' : ''}${locked && who.length ? ' is-other' : ''}" type="button" ${locked ? 'disabled' : `data-todo-toggle="${i.id}"`} aria-pressed="${mine}" aria-label="${escapeHtml(i.text)}">${PI.check}</button>
         <span class="todo-text">${escapeHtml(i.text)}</span>
         <span class="todo-who">${who.slice(0, 3).map((u) => userAvatarHtml(u, 'avatar-xxs')).join('')}</span>
       </li>`;

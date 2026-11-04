@@ -1,0 +1,92 @@
+/* ---------------------------------------------------------------------------
+   Меню, листы и окна — в стиле мессенджера: сплошной фон без стекла,
+   без преломления и «ободка». Стекло остаётся только на «хроме»
+   (шапка, нижняя панель, поле ввода).
+   --------------------------------------------------------------------------- */
+:root {
+  --c-pop-bg: #1c1c1e;
+  --c-pop-menu: #2c2c2e;
+  --c-pop-line: rgba(84, 84, 88, 0.55);
+  --c-pop-shadow: 0 12px 36px rgba(0, 0, 0, 0.45), 0 0 0 0.5px rgba(255, 255, 255, 0.06);
+}
+html[data-scheme="light"] {
+  --c-pop-bg: #fff;
+  --c-pop-menu: #fff;
+  --c-pop-line: rgba(60, 60, 67, 0.18);
+  --c-pop-shadow: 0 12px 36px rgba(0, 0, 0, 0.16), 0 0 0 0.5px rgba(0, 0, 0, 0.06);
+}
+
+html[data-theme="glass"] :is(.modal, .sheet, .attach-tray, .menu, .msg-actions, .emoji-picker, .react-bar) {
+  background: var(--c-pop-bg) !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  filter: none !important;
+  box-shadow: var(--c-pop-shadow) !important;
+}
+html[data-theme="glass"] :is(.menu, .msg-actions, .react-bar) { background: var(--c-pop-menu) !important; }
+html[data-theme="glass"] :is(.modal, .sheet, .attach-tray, .menu, .msg-actions, .emoji-picker)::before { content: none !important; }
+
+/* контекстные меню: строки с тонкими разделителями, как в iOS-мессенджерах */
+html[data-theme="glass"] .menu { border-radius: 16px; padding: 0; overflow: hidden; }
+html[data-theme="glass"] .menu .menu-item { border-radius: 0; min-height: 46px; }
+html[data-theme="glass"] .menu .menu-item + .menu-item { box-shadow: inset 0 0.5px 0 var(--c-pop-line); }
+html[data-theme="glass"] .modal { border-radius: 22px; }
+html[data-theme="glass"] .sheet { border-radius: 22px; }
+html[data-theme="glass"] .modal-scrim { background: rgba(0, 0, 0, 0.45); }
+
+/* строки выбора в листах (музыка, канал, «не беспокоить») — плоские, с разделителями */
+html[data-theme="glass"] .pick-list { gap: 0; border-radius: 14px; background: rgba(var(--ink), 0.06); }
+html[data-theme="glass"] .pick-list .pick-opt { background: none; }
+html[data-theme="glass"] .pick-list > * + * { box-shadow: inset 0 0.5px 0 var(--c-pop-line); }
+html[data-theme="glass"] .pm-opt { border-radius: 12px; }
+
+/* ---------- Цитирование: выделение прямо в сообщении ---------- */
+.is-quoting .bubble-row:not(.is-quoted) { opacity: 0.35; transition: opacity 200ms ease; }
+.bubble-row.is-quoted .b-text {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+  cursor: text;
+}
+.bubble-row.is-quoted .bubble { box-shadow: 0 0 0 2px var(--c-accent); }
+.bubble-row.is-quoted .b-text::selection { background: color-mix(in srgb, var(--c-accent) 45%, transparent); }
+.mine.is-quoted .b-text::selection { background: rgba(255, 255, 255, 0.4); color: inherit; }
+.quote-bar {
+  position: absolute;
+  z-index: 8;
+  left: 12px; right: 12px;
+  bottom: calc(max(12px, env(safe-area-inset-bottom)) + 4px);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 52px;
+  padding: 6px;
+  border-radius: 18px;
+  background: var(--c-pop-bg);
+  box-shadow: var(--c-pop-shadow);
+  animation: qb-in 320ms var(--spring) both;
+}
+.quote-bar.is-closing { animation: fade-out 160ms ease both; }
+@keyframes qb-in { from { opacity: 0; transform: translateY(16px); } }
+.qb-hint { flex: 1; text-align: center; font-size: 14px; color: var(--c-text-2); }
+.qb-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 40px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 12px;
+  background: rgba(var(--ink), 0.08);
+  color: var(--c-text);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+}
+.qb-btn .i { width: 18px; height: 18px; }
+.qb-go { background: var(--c-accent); color: #fff; }
+.qb-btn:active { scale: 0.96; }
+html[data-theme="material"] .quote-bar { background: var(--md-sys-color-surface-container-high); border-radius: 28px; }
+html[data-theme="material"] .qb-btn { border-radius: 20px; }
+html[data-theme="material"] .qb-go { background: var(--md-sys-color-primary); color: var(--md-sys-color-on-primary); }
+@media (prefers-reduced-motion: reduce) { .quote-bar { animation: none; } }

@@ -665,6 +665,10 @@ html[data-theme="material"] .avatar.avatar-room { clip-path: none !important; bo
 .mine .todo-check.is-mine { background: #fff; border-color: #fff; color: var(--c-accent); }
 .todo-check:active { scale: 0.85; }
 .todo-item.is-done .todo-text { text-decoration: line-through; opacity: 0.6; }
+.todo-check:disabled { cursor: default; }
+.todo-check.is-other { background: rgba(var(--ink), 0.35); border-color: transparent; color: #fff; }
+.todo-lock { display: inline-grid; place-items: center; margin-left: 4px; opacity: 0.6; }
+.todo-lock .i { width: 14px; height: 14px; }
 .todo-text { flex: 1; min-width: 0; }
 .todo-who { display: flex; }
 .todo-who .avatar { width: 18px; height: 18px; font-size: 8px; margin-left: -5px; box-shadow: 0 0 0 1.5px var(--c-cell-bg); }
