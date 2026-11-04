@@ -35,9 +35,9 @@ class Api(val base: String, private val token: () -> String?) {
 
     fun mediaUrl(id: String) = "$base/media/$id"
 
-    suspend fun call(method: String, path: String, body: JsonObject? = null, auth: Boolean = true): JsonObject {
+    suspend fun call(method: String, path: String, body: JsonObject? = null, auth: Boolean = true, as_: String? = null): JsonObject {
         val b = Request.Builder().url(base + path)
-        if (auth) token()?.let { b.header("Authorization", "Bearer $it") }
+        if (auth) (as_ ?: token())?.let { b.header("Authorization", "Bearer $it") }
         val rb = body?.toString()?.toRequestBody(jsonType) ?: if (method == "GET" || method == "DELETE") null else "{}".toRequestBody(jsonType)
         b.method(method, rb)
         val res = try { b.build().await(http) } catch (e: IOException) { throw ApiException(0, "offline", "No connection to the server") }

@@ -40,6 +40,7 @@ sealed interface Screen {
     data class Chat(val id: String, val other: String? = null, val focus: String? = null) : Screen
     data class User(val id: String) : Screen
     data object EditProfile : Screen
+    data object ChangeEmail : Screen
     data class Photo(val media: String) : Screen
     data class Video(val media: String) : Screen
     data object KosmoChat : Screen
@@ -58,6 +59,8 @@ sealed interface Screen {
 enum class Tab { Chats, Feed, Search, Profile }
 
 /** Состояние приложения: сеанс, синхронизация, навигация. */
+const val MAX_ACCOUNTS = 5
+
 class AppState(private val ctx: Context, val scope: CoroutineScope) {
     private val prefs = ctx.getSharedPreferences("kosmo", Context.MODE_PRIVATE)
     var token by mutableStateOf(prefs.getString("token", null))
@@ -127,21 +130,78 @@ class AppState(private val ctx: Context, val scope: CoroutineScope) {
         tab = Tab.Chats
         stack.clear()
         start()
+        rememberAccount(s.uid, s.token)
     }
+
+    /* ---------- Несколько аккаунтов (до 5), как accounts.js на сайте ---------- */
+    var accounts by mutableStateOf(readAccounts())
+        private set
+    private fun readAccounts(): List<JsonObject> = runCatching {
+        (JSON.parseToJsonElement(prefs.getString("accounts", "[]") ?: "[]") as JsonArray).mapNotNull { it as? JsonObject }.filter { it.str("token") != null }
+    }.getOrDefault(emptyList())
+    private fun writeAccounts(list: List<JsonObject>) { accounts = list.take(MAX_ACCOUNTS); prefs.edit().putString("accounts", JsonArray(accounts).toString()).apply() }
+    private fun rememberAccount(uid: String, tok: String) = writeAccounts(listOf(jobj("uid" to uid, "token" to tok)) + accounts.filter { it.str("uid") != uid })
+
+    init {
+        // имя и почта для строки аккаунта — после загрузки своего профиля
+        scope.launch {
+            kosmo.data.collect { d ->
+                val u = d.user ?: return@collect
+                val cur = accounts.firstOrNull { it.str("uid") == d.me } ?: token?.let { jobj("uid" to d.me, "token" to it) } ?: return@collect
+                val next = cur.with("name" to u.str("name"), "email" to u.str("email"), "avatar" to u.obj("avatar"))
+                val list = listOf(next) + accounts.filter { it.str("uid") != d.me }
+                if (list != accounts) writeAccounts(list)
+            }
+        }
+    }
+
+    fun switchAccount(uid: String) {
+        val t = accounts.firstOrNull { it.str("uid") == uid } ?: return
+        kosmo.disconnect()
+        kosmo.data.value = Data()
+        cache.delete()
+        prefs.edit().putString("token", t.str("token")).putString("uid", uid).apply()
+        token = t.str("token")
+        stack.clear()
+        tab = Tab.Chats
+        locked = false
+        scope.launch {
+            try { kosmo.load(); kosmo.connect() } catch (e: app.kosmo.chat.core.ApiException) {
+                if (e.status == 401) { writeAccounts(accounts.filter { it.str("uid") != uid }); toast = "This session was terminated"; signOut(local = true) }
+            }
+        }
+    }
+
+    /** «Add account»: на экран входа, не выходя из остальных. */
+    fun addAccount() {
+        if (accounts.size >= MAX_ACCOUNTS) { toast = "Maximum $MAX_ACCOUNTS accounts"; return }
+        kosmo.disconnect()
+        kosmo.data.value = Data()
+        cache.delete()
+        prefs.edit().remove("token").remove("uid").apply()
+        token = null
+        stack.clear()
+    }
+
+    /** «Не беспокоить»: время окончания или 0. */
+    fun dndUntil(): Long = (kosmo.data.value.user?.obj("settings")?.num("dnd") ?: 0L).takeIf { it > System.currentTimeMillis() } ?: 0L
 
     fun signOut(local: Boolean = false) {
         val wasToken = token
-        scope.launch {
-            if (!local && wasToken != null) auth.logout()
-            kosmo.disconnect()
-            kosmo.data.value = Data()
-        }
+        val meUid = kosmo.data.value.me
+        kosmo.disconnect()
+        kosmo.data.value = Data()
+        if (!local && wasToken != null) scope.launch { auth.logout(wasToken) }
         prefs.edit().remove("token").remove("uid").apply()
         cache.delete()
         locked = false
-        KosmoService.stop(ctx)
         token = null
         stack.clear()
+        // выход из одного аккаунта — переключение на следующий, если он есть
+        writeAccounts(accounts.filter { it.str("token") != wasToken && it.str("uid") != meUid })
+        val other = accounts.firstOrNull()
+        if (other != null) { switchAccount(other.str("uid")!!); return }
+        KosmoService.stop(ctx)
     }
 
     fun push(s: Screen) { lastNavForward = true; stack.add(s) }

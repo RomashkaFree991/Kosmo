@@ -10,6 +10,8 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import dev.chrisbanes.haze.haze
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -24,6 +26,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -116,6 +119,10 @@ private fun Main(app: AppState) {
         },
         label = "stack",
     ) { screen ->
+        // панели сайта лежат поверх обоев страницы: те же обои под каждым экраном (чат рисует свои)
+        val plain = screen != null && screen !is Screen.Chat && screen !is Screen.Photo && screen !is Screen.Video && screen !is Screen.Stories && screen != Screen.Round
+        Box(Modifier.fillMaxSize().then(if (plain) Modifier.background(LocalLook.current.page) else Modifier)) {
+        if (plain) Wallpaper(Modifier.fillMaxSize())
         when (screen) {
             null -> Tabs(app, data)
             is Screen.Chat -> ChatScreen(app, screen.id, screen.other, screen.focus)
@@ -125,6 +132,7 @@ private fun Main(app: AppState) {
             is Screen.Video -> VideoViewer(app, screen.media)
             Screen.KosmoChat -> KosmoChatScreen(app)
             Screen.Sessions -> SessionsScreen(app)
+            Screen.ChangeEmail -> ChangeEmailScreen(app)
             is Screen.Settings -> SettingsScreen(app, screen.page)
             is Screen.NewRoom -> NewRoomScreen(app, screen.type)
             is Screen.RoomInfo -> RoomInfoScreen(app, screen.id)
@@ -135,32 +143,43 @@ private fun Main(app: AppState) {
             is Screen.Forward -> ForwardScreen(app, screen.chatId, screen.msgId, screen.postId)
             Screen.Round -> RoundRecorder(app)
         }
+        }
     }
 }
 
 @Composable
 private fun Tabs(app: AppState, data: Data) {
-    val unread = remember(data) { data.chatList().sumOf { if (data.muted(it)) 0 else data.unread(it) } }
+    val look = LocalLook.current
+    val unread = remember(data) { data.chatList().sumOf { if (data.muted(it)) 0 else data.unread(it) } + data.kosmoUnread() }
+    val haze = remember { dev.chrisbanes.haze.HazeState() }
     Box(Modifier.fillMaxSize()) {
-        MaterialWallpaper(Modifier.fillMaxSize())
-        when (app.tab) {
-            Tab.Chats -> ChatListScreen(app, data)
-            Tab.Feed -> FeedScreen(app, data)
-            Tab.Search -> SearchScreen(app, data)
-            Tab.Profile -> ProfileScreen(app, data)
+        // контент — источник размытия для стеклянной панели и шапки
+        Box(Modifier.fillMaxSize().then(if (look.glass) Modifier.haze(haze) else Modifier)) {
+            Wallpaper(Modifier.fillMaxSize())
+            // внутри размываемого слоя стекло без размытия (Haze не вкладывается)
+            androidx.compose.runtime.CompositionLocalProvider(LocalHaze provides null) {
+                when (app.tab) {
+                    Tab.Chats -> ChatListScreen(app, data)
+                    Tab.Feed -> FeedScreen(app, data)
+                    Tab.Search -> SearchScreen(app, data)
+                    Tab.Profile -> ProfileScreen(app, data)
+                }
+            }
         }
-        TabBar(
-            listOf(
-                TabItem("Chats", Icons.Outlined.ChatBubbleOutline, Icons.Rounded.ChatBubble, unread),
-                TabItem("Feed", Icons.Outlined.Newspaper, Icons.Rounded.Newspaper),
-                TabItem("Search", Icons.Outlined.Search, Icons.Rounded.Search),
-                TabItem("Profile", Icons.Outlined.Search, Icons.Rounded.Search, custom = { on ->
-                    Box(Modifier.size(26.dp).then(if (on) Modifier.clip(CircleShape).background(LocalLook.current.accent).padding(1.5.dp) else Modifier)) { UserAvatar(data.user, if (on) 23.dp else 26.dp) }
-                }),
-            ),
-            app.tab.ordinal,
-            Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(start = 14.dp, end = 14.dp, bottom = 14.dp),
-        ) { app.tab = Tab.entries[it] }
+        androidx.compose.runtime.CompositionLocalProvider(LocalHaze provides haze) {
+            TabBar(
+                listOf(
+                    TabItem("Chats", if (look.glass) PH.chatCircleDots else MS.chat, if (look.glass) PH.chatCircleDotsFill else MS.chatFill, unread),
+                    TabItem("Feed", if (look.glass) PH.newspaper else MS.dynamicFeed, if (look.glass) PH.newspaperFill else MS.dynamicFeedFill),
+                    TabItem("Search", if (look.glass) PH.magnifyingGlass else MS.search, if (look.glass) PH.magnifyingGlassFill else MS.searchFill),
+                    TabItem("Profile", MS.search, MS.search, custom = { on ->
+                        Box(Modifier.size(26.dp).then(if (on) Modifier.border(1.5.dp, LocalLook.current.accent, CircleShape).padding(2.dp) else Modifier)) { UserAvatar(data.user, if (on) 22.dp else 26.dp) }
+                    }),
+                ),
+                app.tab.ordinal,
+                Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(start = 14.dp, end = 14.dp, bottom = 14.dp),
+            ) { app.tab = Tab.entries[it] }
+        }
     }
 }
 
@@ -189,7 +208,7 @@ fun ChatListScreen(app: AppState, data: Data) {
     Column(Modifier.fillMaxSize()) {
         Header {
             Box {
-                CircleBtn(Icons.Rounded.Add, "New") { newMenu = true }
+                CircleBtn(WI.hdrPlus, "New") { newMenu = true }
                 KosmoMenu(newMenu, { newMenu = false }, listOf(
                     MenuItem(Icons.AutoMirrored.Outlined.Chat, "New chat") { app.tab = Tab.Search },
                     MenuItem(Icons.Rounded.Group, "New group") { app.push(Screen.NewRoom("group")) },
@@ -197,14 +216,14 @@ fun ChatListScreen(app: AppState, data: Data) {
                 ))
             }
             TitlePill(if (online || !data.loaded) "Chats" else "Connecting…")
-            CircleBtn(Icons.Rounded.Search, "Search") { app.tab = Tab.Search }
+            CircleBtn(WI.hdrSearch, "Search") { app.tab = Tab.Search }
         }
-        LazyRow(contentPadding = PaddingValues(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 6.dp)) {
+        LazyRow(contentPadding = PaddingValues(horizontal = 14.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(bottom = 8.dp)) {
             items(FOLDERS) { (id, label) ->
                 val count = when (id) {
-                    "personal" -> all.count { !isRoom(it) && data.unread(it) > 0 }
-                    "groups" -> all.count { it.str("type") == "group" && data.unread(it) > 0 }
-                    "channels" -> all.count { isChannel(it) && data.unread(it) > 0 }
+                    "personal" -> all.filter { !isRoom(it) }.sumOf { data.unread(it) } + data.kosmoUnread()
+                    "groups" -> all.filter { it.str("type") == "group" }.sumOf { data.unread(it) }
+                    "channels" -> all.filter { isChannel(it) }.sumOf { data.unread(it) }
                     else -> 0
                 }
                 Chip(label, folder == id, count) { folder = id }
@@ -219,22 +238,22 @@ fun ChatListScreen(app: AppState, data: Data) {
             }
             return@Column
         }
-        LazyColumn(contentPadding = PaddingValues(bottom = 110.dp)) {
+        LazyColumn(contentPadding = PaddingValues(start = 8.dp, end = 8.dp, bottom = 110.dp)) {
             if (archived.isNotEmpty() && folder == "all") item("archive") {
                 ChatRow(app, data, null, avatar = {
                     Box(Modifier.size(56.dp).clip(CircleShape).background(look.ink.copy(alpha = 0.1f)), contentAlignment = Alignment.Center) { Icon(Icons.Rounded.Archive, null, tint = look.text2) }
                 }, title = tr("Archived chats"), preview = archived.joinToString(", ") { data.chatTitle(it) }, time = "", unread = archived.sumOf { data.unread(it) }, onClick = { app.push(Screen.Archive) })
             }
             if (notes.isNotEmpty() && folder in setOf("all", "personal")) item("kosmo") {
-                ChatRow(app, data, null, avatar = { KosmoAvatar(56.dp) }, title = "Kosmo", verified = true, preview = tr(notes.last().title), time = listTime(notes.last().at), unread = 0) { app.push(Screen.KosmoChat) }
+                ChatRow(app, data, null, avatar = { KosmoAvatar(56.dp) }, title = "Kosmo", verified = true, preview = tr(notes.last().title), time = listTime(notes.last().at), unread = data.kosmoUnread(), first = archived.isEmpty() || folder != "all") { app.push(Screen.KosmoChat) }
             }
-            items(list, key = { it.str("id") ?: "" }) { c -> ChatListItem(app, data, c) }
+            items(list.size, key = { list[it].str("id") ?: "" }) { i -> ChatListItem(app, data, list[i], first = i == 0 && notes.isEmpty() && (archived.isEmpty() || folder != "all")) }
         }
     }
 }
 
 @Composable
-fun ChatListItem(app: AppState, data: Data, c: JsonObject) {
+fun ChatListItem(app: AppState, data: Data, c: JsonObject, first: Boolean = false) {
     val last = data.visibleMessages(c).lastOrNull()
     val me = data.me
     val mine = last?.takeIf { it.str("from") == me }?.let { m ->
@@ -244,12 +263,14 @@ fun ChatListItem(app: AppState, data: Data, c: JsonObject) {
             else -> TickState.Sent
         }
     }
-    val who = if (isRoom(c) && last != null && last.str("from") != me && last.str("kind") != "join") (firstName(data.accounts[last.str("from")]?.str("name")) + ": ") else if (isRoom(c) && last?.str("from") == me) tr("You") + ": " else ""
+    // «Вы:» / «Имя:» — жирнее, как <b> на сайте
+    val who = if (last == null || last.str("kind") == "join" || isChannel(c)) "" else if (last.str("from") == me) tr("You") + ": " else if (isRoom(c)) firstName(data.accounts[last.str("from")]?.str("name")) + ": " else ""
     ChatRow(
         app, data, c,
         avatar = { ChatAvatar(data, c, 56.dp) },
         title = data.chatTitle(c).let { if (isSaved(c)) tr(it) else it },
-        preview = if (last == null) tr(if (isChannel(c)) "Channel" else "No messages yet") else who + tr(data.previewText(last)),
+        preview = if (last == null) tr(if (isChannel(c)) "Channel" else "No messages yet") else tr(data.previewText(last)), who = who, first = first,
+        room = isRoom(c),
         time = listTime(last?.num("at") ?: c.num("createdAt")),
         unread = data.unread(c), mine = mine,
         pinned = data.pref(c.str("id"))?.bool("pinned") == true,
@@ -260,57 +281,71 @@ fun ChatListItem(app: AppState, data: Data, c: JsonObject) {
 
 enum class TickState { Pending, Sent, Read }
 
+/** Галочки сайта: одна — отправлено, две — прочитано, часы — ещё отправляется. */
 @Composable
-fun Ticks(state: TickState, modifier: Modifier = Modifier, tint: Color = LocalLook.current.accent) {
-    val icon = when (state) { TickState.Pending -> Icons.Rounded.Schedule; TickState.Sent -> Icons.Rounded.Done; TickState.Read -> Icons.Rounded.DoneAll }
-    Icon(icon, null, tint = tint, modifier = modifier.size(16.dp))
+fun Ticks(state: TickState, modifier: Modifier = Modifier, tint: Color = LocalLook.current.accent, size: androidx.compose.ui.unit.Dp = 16.dp) {
+    val icon = when (state) { TickState.Pending -> WI.clock; TickState.Sent -> WI.tickSent; TickState.Read -> WI.tickRead }
+    Icon(icon, null, tint = tint, modifier = modifier.size(size))
 }
 
-/** Строка чата как на сайте; долгое нажатие — меню чата. */
+/** Строка чата как на сайте (.chat): аватар 56, имя 16/600, текст 15, справа время и счётчик. */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ChatRow(
     app: AppState, data: Data, c: JsonObject?,
     avatar: @Composable () -> Unit, title: String, preview: String, time: String, unread: Int, mine: TickState? = null,
-    pinned: Boolean = false, muted: Boolean = false, verified: Boolean = false, onClick: () -> Unit,
+    pinned: Boolean = false, muted: Boolean = false, verified: Boolean = false, who: String = "", first: Boolean = false, room: Boolean = false, onClick: () -> Unit,
 ) {
     val look = LocalLook.current
     var menu by remember { mutableStateOf(false) }
     Box {
+        if (!first && look.glass) Box(Modifier.padding(start = 78.dp, end = 10.dp).fillMaxWidth().height(0.5.dp).background(look.hairline))
         Row(
-            Modifier.fillMaxWidth().combinedClickable(onClick = onClick, onLongClick = { if (c != null) menu = true }).padding(horizontal = 16.dp, vertical = 8.dp),
+            Modifier.fillMaxWidth().clip(androidx.compose.foundation.shape.RoundedCornerShape(if (look.glass) 20.dp else 28.dp))
+                .combinedClickable(onClick = onClick, onLongClick = { if (c != null) menu = true }).padding(horizontal = 10.dp, vertical = 9.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             avatar()
             Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    if (room && c != null) Icon(if (isChannel(c)) PH.megaphone else WI.users, null, tint = look.text2, modifier = Modifier.size(16.dp))
                     Text(title, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
-                    if (verified) VerifiedBadge(Modifier.padding(start = 4.dp), 16)
-                    if (muted) Icon(Icons.Rounded.VolumeOff, null, tint = look.text3, modifier = Modifier.padding(start = 4.dp).size(14.dp))
-                    Spacer(Modifier.weight(1f))
-                    if (mine != null) Ticks(mine, Modifier.padding(end = 4.dp))
-                    Text(time, fontSize = 13.sp, color = look.text2)
+                    if (verified) CosmicBadge(size = 16.dp)
+                    if (muted) Icon(WI.silent, null, tint = look.text3, modifier = Modifier.size(16.dp))
                 }
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 2.dp)) {
-                    Text(preview, fontSize = 15.sp, color = look.text2, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                    if (unread > 0) Box(Modifier.padding(start = 8.dp).size(width = maxOf(22, 10 + 7 * "$unread".length).dp, height = 22.dp).clip(CircleShape).background(if (muted) look.text3 else look.accent), contentAlignment = Alignment.Center) {
-                        Text("$unread", color = look.onAccent, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                    } else if (pinned) Icon(Icons.Rounded.PushPin, null, tint = look.text3, modifier = Modifier.padding(start = 8.dp).size(16.dp))
+                Text(
+                    androidx.compose.ui.text.buildAnnotatedString {
+                        if (who.isNotEmpty()) { pushStyle(androidx.compose.ui.text.SpanStyle(fontWeight = FontWeight.Medium, color = look.text)); append(who); pop() }
+                        append(preview)
+                    },
+                    fontSize = 15.sp, color = look.text2, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(start = 12.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (mine != null) Ticks(mine, Modifier.padding(end = 3.dp))
+                    Text(time, fontSize = 13.sp, color = look.text3)
                 }
-                HorizontalDivider(Modifier.padding(top = 10.dp), thickness = 0.5.dp, color = look.ink.copy(alpha = 0.1f))
+                if (unread > 0) Box(
+                    Modifier.height(22.dp).widthIn(min = 22.dp).clip(CircleShape)
+                        .background(if (muted) (if (look.glass) Color(0x4DEBEBF5) else MaterialTheme.colorScheme.surfaceContainerHighest) else look.accent).padding(horizontal = 7.dp),
+                    contentAlignment = Alignment.Center,
+                ) { Text("$unread", color = if (muted && !look.glass) MaterialTheme.colorScheme.onSurfaceVariant else look.onAccent, fontSize = 13.sp, fontWeight = FontWeight.SemiBold) }
+                else if (pinned) Icon(WI.pin, null, tint = look.text3, modifier = Modifier.size(16.dp))
+                else Spacer(Modifier.height(22.dp))
             }
         }
         if (c != null) {
             val id = c.str("id") ?: ""
             val p = data.pref(id)
             KosmoMenu(menu, { menu = false }, listOfNotNull(
-                MenuItem(Icons.Rounded.PushPin, if (p?.bool("pinned") == true) "Unpin" else "Pin") { app.setPref(id, "pinned", if (p?.bool("pinned") == true) null else true) },
-                MenuItem(Icons.Rounded.NotificationsOff, if (data.muted(c)) "Unmute notifications" else "Mute notifications") { app.setPref(id, "muted", if (data.muted(c)) null else true) },
-                MenuItem(if (p?.bool("archived") == true) Icons.Rounded.Unarchive else Icons.Rounded.Archive, if (p?.bool("archived") == true) "Unarchive" else "Archive") { app.setPref(id, "archived", if (p?.bool("archived") == true) null else true) },
-                if (unread > 0) MenuItem(Icons.Rounded.MarkChatRead, "Mark as read") { app.kosmo.markRead(id) } else null,
+                MenuItem(WI.pin, if (p?.bool("pinned") == true) "Unpin" else "Pin") { app.setPref(id, "pinned", if (p?.bool("pinned") == true) null else true) },
+                MenuItem(WI.silent, if (data.muted(c)) "Unmute notifications" else "Mute notifications") { app.setPref(id, "muted", if (data.muted(c)) null else true) },
+                MenuItem(if (p?.bool("archived") == true) WI.unarchive else Icons.Rounded.Archive, if (p?.bool("archived") == true) "Unarchive" else "Archive") { app.setPref(id, "archived", if (p?.bool("archived") == true) null else true) },
+                if (unread > 0) MenuItem(WI.check, "Mark as read") { app.kosmo.markRead(id) } else null,
                 MenuItem(Icons.Rounded.CleaningServices, "Clear history") { app.setPref(id, "clearedAt", System.currentTimeMillis()) },
-                MenuItem(Icons.Rounded.Delete, if (isRoom(c) && c.str("owner") != data.me) "Leave" else "Delete chat", danger = true) { app.deleteChat(id) },
+                MenuItem(WI.trash, if (isRoom(c) && c.str("owner") != data.me) "Leave" else "Delete chat", danger = true) { app.deleteChat(id) },
             ), offset = androidx.compose.ui.unit.DpOffset(80.dp, (-20).dp))
         }
     }
@@ -324,7 +359,7 @@ fun ArchiveScreen(app: AppState) {
     Column(Modifier.fillMaxSize().background(LocalLook.current.page)) {
         Header { BackBtn(app); TitlePill("Archived chats"); CircleSpacer() }
         LazyColumn(contentPadding = PaddingValues(bottom = 40.dp)) {
-            items(list, key = { it.str("id") ?: "" }) { c -> ChatListItem(app, data, c) }
+            items(list.size, key = { list[it].str("id") ?: "" }) { i -> ChatListItem(app, data, list[i], first = i == 0) }
         }
     }
 }

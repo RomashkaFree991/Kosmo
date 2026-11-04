@@ -51,6 +51,7 @@ import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.material.icons.rounded.Visibility
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -130,8 +131,8 @@ fun FeedScreen(app: AppState, data: Data) {
                     if (groups.none { it.first == data.me }) item("mine") {
                         Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clickable { pickStory.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }) {
                             Box {
-                                UserAvatar(data.user, 64.dp)
-                                Box(Modifier.align(Alignment.BottomEnd).size(22.dp).clip(CircleShape).background(look.accent).border(2.dp, look.page, CircleShape), contentAlignment = Alignment.Center) { Icon(Icons.Rounded.Add, null, tint = look.onAccent, modifier = Modifier.size(14.dp)) }
+                                UserAvatar(data.user, 66.dp)
+                                Box(Modifier.align(Alignment.BottomEnd).size(25.dp).clip(CircleShape).background(look.page).padding(3.dp).clip(CircleShape).background(look.accent), contentAlignment = Alignment.Center) { Icon(WI.plus, null, tint = Color.White, modifier = Modifier.size(14.dp)) }
                             }
                             Text(tr("Your story"), fontSize = 12.sp, color = look.text2, modifier = Modifier.padding(top = 4.dp))
                         }
@@ -140,8 +141,8 @@ fun FeedScreen(app: AppState, data: Data) {
                         val unseen = list.any { data.me !in it.strings("views") }
                         val u = data.accounts[author]
                         Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(72.dp).clickable { app.push(Screen.Stories(author)) }) {
-                            Box(Modifier.size(70.dp).clip(CircleShape).background(if (unseen) Brush.sweepGradient(listOf(PlanetA, PlanetB, PlanetA)) else SolidColor(look.ink.copy(alpha = 0.2f))).padding(3.dp).clip(CircleShape).background(look.page).padding(2.dp)) {
-                                UserAvatar(u, 62.dp)
+                            Box(Modifier.size(66.dp).clip(CircleShape).background(if (unseen) Brush.sweepGradient(listOf(look.accent, Color(0xFFFF6EC4), Color(0xFFFFB347), look.accent)) else SolidColor(look.ink.copy(alpha = 0.18f))).padding(3.dp).clip(CircleShape).background(look.page).padding(3.dp)) {
+                                UserAvatar(u, 54.dp)
                             }
                             Text(if (author == data.me) tr("Your story") else firstName(u?.str("name")), fontSize = 12.sp, color = look.text2, maxLines = 1, modifier = Modifier.padding(top = 4.dp))
                         }
@@ -169,14 +170,15 @@ fun PostCard(app: AppState, data: Data, p: JsonObject, full: Boolean = false) {
     val me = data.me
     var menu by remember { mutableStateOf(false) }
     val id = p.str("id") ?: ""
-    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(look.cell).combinedClickable(onClick = { if (!full) app.push(Screen.Post(id)) }, onLongClick = {}).padding(14.dp)) {
+    val cardBg = if (look.glass) androidx.compose.ui.graphics.lerp(Color(0xFF101012), look.accent, 0.07f) else MaterialTheme.colorScheme.surfaceContainer
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(if (look.glass) 26.dp else 28.dp)).background(cardBg).combinedClickable(onClick = { if (!full) app.push(Screen.Post(id)) }, onLongClick = {}).padding(start = 14.dp, end = 14.dp, top = 14.dp, bottom = 10.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Row(Modifier.weight(1f).clickable { p.str("author")?.let { if (it != me) app.push(Screen.User(it)) } }, verticalAlignment = Alignment.CenterVertically) {
-                UserAvatar(author, 40.dp)
+                UserAvatar(author, 42.dp)
                 Column(Modifier.padding(start = 10.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(author?.str("name") ?: tr("Deleted account"), fontWeight = FontWeight.SemiBold)
-                        if (author?.bool("official") == true) VerifiedBadge(Modifier.padding(start = 4.dp), 16)
+                        Text(author?.str("name") ?: tr("Deleted account"), fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+                        if (author?.bool("official") == true) CosmicBadge(size = 16.dp, modifier = Modifier.padding(start = 4.dp))
                     }
                     Text(ago(p.num("at")) + if (p.bool("edited")) " · " + tr("edited") else "", fontSize = 13.sp, color = look.text2)
                 }
@@ -188,13 +190,13 @@ fun PostCard(app: AppState, data: Data, p: JsonObject, full: Boolean = false) {
                 }))
             }
         }
-        p.str("text")?.takeIf { it.isNotEmpty() }?.let { Text(it, fontSize = 16.sp, lineHeight = 22.sp, modifier = Modifier.padding(top = 10.dp), maxLines = if (full) Int.MAX_VALUE else 12, overflow = TextOverflow.Ellipsis) }
+        p.str("text")?.takeIf { it.isNotEmpty() }?.let { Text(it, fontSize = 16.sp, lineHeight = 23.sp, modifier = Modifier.padding(top = 10.dp, start = 2.dp, end = 2.dp), maxLines = if (full) Int.MAX_VALUE else 12, overflow = TextOverflow.Ellipsis) }
         val media = p.arr("media").objects()
         if (media.isNotEmpty()) {
             val m = media.first()
             val w = m.num("w")?.toFloat() ?: 4f
             val h = m.num("h")?.toFloat() ?: 3f
-            Box(Modifier.padding(top = 10.dp)) {
+            Box(Modifier.padding(top = 10.dp).padding(horizontal = 0.dp)) {
                 AsyncImage(
                     LocalMedia.current(m.str("media") ?: ""), null, contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxWidth().aspectRatio((w / h).coerceIn(0.6f, 1.9f)).clip(RoundedCornerShape(18.dp)).background(Color(0xFF1A1A1E))
@@ -208,34 +210,43 @@ fun PostCard(app: AppState, data: Data, p: JsonObject, full: Boolean = false) {
                 modifier = Modifier.padding(top = 10.dp).fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Color(0xFF0D0D10)).padding(12.dp))
         }
         val reactions = p.obj("reactions") ?: JsonObject(emptyMap())
-        Row(Modifier.padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-            listOf("heart", "fire", "laugh", "like").forEach { key ->
-                val who = (reactions[key] as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.content }.orEmpty()
-                val mine = me in who
-                Text(
-                    "${EMOJI[key]}${if (who.isNotEmpty()) " ${who.size}" else ""}", fontSize = 14.sp,
-                    modifier = Modifier.clip(CircleShape).background(if (mine) look.accent.copy(alpha = 0.3f) else look.ink.copy(alpha = 0.08f))
-                        .clickable {
-                            me ?: return@clickable
-                            val next = reactions.mapValues { (_, v) -> JsonArray((v as? JsonArray)?.filter { (it as? JsonPrimitive)?.content != me }.orEmpty()) }.toMutableMap()
-                            if (!mine) next[key] = JsonArray(((next[key] as? JsonArray)?.toList().orEmpty()) + JsonPrimitive(me))
-                            app.kosmo.commit(jobj("col" to "feed", "id" to id, "op" to "put", "set" to jobj("reactions" to JsonObject(next.filterValues { (it as JsonArray).isNotEmpty() }))))
-                        }.padding(horizontal = 10.dp, vertical = 5.dp),
-                )
+        var pick by remember { mutableStateOf(false) }
+        fun react(key: String) {
+            me ?: return
+            val mine = (reactions[key] as? JsonArray)?.any { (it as? JsonPrimitive)?.content == me } == true
+            val next = reactions.mapValues { (_, v) -> JsonArray((v as? JsonArray)?.filter { (it as? JsonPrimitive)?.content != me }.orEmpty()) }.toMutableMap()
+            if (!mine) next[key] = JsonArray(((next[key] as? JsonArray)?.toList().orEmpty()) + JsonPrimitive(me))
+            app.kosmo.commit(jobj("col" to "feed", "id" to id, "op" to "put", "set" to jobj("reactions" to JsonObject(next.filterValues { (it as JsonArray).isNotEmpty() }))))
+        }
+        Row(Modifier.padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
+            reactions.entries.filter { (it.value as? JsonArray)?.isNotEmpty() == true }.forEach { (key, v) ->
+                val who = (v as JsonArray).mapNotNull { (it as? JsonPrimitive)?.content }
+                Row(
+                    Modifier.height(30.dp).clip(CircleShape).background(if (me in who) look.accent.copy(alpha = 0.3f) else look.ink.copy(alpha = 0.1f)).border(1.dp, look.ink.copy(alpha = 0.06f), CircleShape).clickable { react(key) }.padding(start = 5.dp, end = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) { Text(emojiChar(key), fontSize = 18.sp); Text(" ${who.size}", fontSize = 13.sp, fontWeight = FontWeight.SemiBold) }
+            }
+            Box {
+                Box(Modifier.height(30.dp).clip(CircleShape).background(look.ink.copy(alpha = 0.1f)).border(1.dp, look.ink.copy(alpha = 0.06f), CircleShape).clickable { pick = true }.padding(horizontal = 7.dp), contentAlignment = Alignment.Center) {
+                    Icon(WI.smile, tr("Add reaction"), tint = look.text2, modifier = Modifier.size(19.dp))
+                }
+                KosmoMenu(pick, { pick = false }, emptyList(), header = {
+                    LazyRow(Modifier.padding(horizontal = 8.dp).width(260.dp)) { items(REACTIONS) { r -> Text(EMOJI[r]!!, fontSize = 26.sp, modifier = Modifier.clip(CircleShape).clickable { pick = false; react(r) }.padding(6.dp)) } }
+                })
             }
         }
         Row(Modifier.padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-            Row(Modifier.clip(CircleShape).clickable { app.push(Screen.Post(id)) }.padding(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Outlined.ChatBubbleOutline, null, Modifier.size(19.dp), tint = look.text2)
-                Text(" ${p.arr("comments").size.takeIf { it > 0 } ?: ""}", color = look.text2, fontSize = 14.sp)
+            Row(Modifier.height(38.dp).clip(CircleShape).clickable { app.push(Screen.Post(id)) }.padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(WI.comment, null, Modifier.size(20.dp), tint = look.text2)
+                Text(" ${p.arr("comments").size.takeIf { it > 0 } ?: ""}", color = look.text2, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
             }
-            Row(Modifier.clip(CircleShape).clickable { app.push(Screen.Forward(postId = id)) }.padding(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.AutoMirrored.Rounded.Send, null, Modifier.size(19.dp), tint = look.text2)
-                Text(" ${p.num("forwards")?.takeIf { it > 0 } ?: ""}", color = look.text2, fontSize = 14.sp)
+            Row(Modifier.height(38.dp).clip(CircleShape).clickable { app.push(Screen.Forward(postId = id)) }.padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(WI.share, null, Modifier.size(20.dp), tint = look.text2)
+                Text(" ${p.num("forwards")?.takeIf { it > 0 } ?: ""}", color = look.text2, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
             }
             Spacer(Modifier.weight(1f))
-            Icon(Icons.Rounded.Visibility, null, Modifier.size(17.dp), tint = look.text2)
-            Text(" ${p.strings("views").size}", color = look.text2, fontSize = 14.sp)
+            Icon(WI.eye, null, Modifier.size(20.dp), tint = look.text3)
+            Text(" ${p.strings("views").size}", color = look.text3, fontSize = 13.sp, modifier = Modifier.padding(end = 6.dp))
         }
     }
     // просмотр засчитывается один раз
@@ -253,7 +264,7 @@ fun PostScreen(app: AppState, id: String) {
     val p = data.feed.firstOrNull { it.str("id") == id }
     var text by remember { mutableStateOf("") }
     val comments = p?.arr("comments")?.objects().orEmpty()
-    Column(Modifier.fillMaxSize().background(look.page).imePadding()) {
+    Column(Modifier.fillMaxSize().imePadding()) {
         Header { BackBtn(app); TitlePill(if (comments.isNotEmpty()) tr("${comments.size} ${if (comments.size == 1) "comment" else "comments"}") else "Post"); CircleSpacer() }
         if (p == null) { Text(tr("Post deleted"), Modifier.padding(24.dp), color = look.text2); return@Column }
         LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -300,7 +311,7 @@ fun NewPostScreen(app: AppState) {
     val photos = remember { mutableStateListOf<Uri>() }
     var busy by remember { mutableStateOf(false) }
     val pick = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(10)) { photos.addAll(it.take(10 - photos.size)) }
-    Column(Modifier.fillMaxSize().background(look.page).imePadding()) {
+    Column(Modifier.fillMaxSize().imePadding()) {
         Header {
             CircleBtn(Icons.Rounded.Close, "Cancel") { app.pop() }
             TitlePill("New post")
@@ -422,8 +433,17 @@ fun SearchScreen(app: AppState, data: Data) {
     var tab by remember { mutableStateOf("chats") }
     val me = data.me
     Column(Modifier.fillMaxSize()) {
-        Header { SearchField(q, "Search", Modifier.weight(1f)) { q = it } }
-        Segs(listOf("chats" to "Chats", "messages" to "Messages", "media" to "Media"), tab, Modifier.fillMaxWidth().padding(horizontal = 16.dp)) { tab = it }
+        Header { BackBtn(app) { app.tab = Tab.Chats }; SearchField(q, "Search", Modifier.weight(1f)) { q = it } }
+        Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            listOf("chats" to "Chats", "messages" to "Messages", "media" to "Media").forEach { (id, label) ->
+                val on = tab == id
+                Box(
+                    Modifier.weight(1f).height(36.dp).clip(RoundedCornerShape(12.dp))
+                        .background(if (on) (if (look.glass) look.accent else MaterialTheme.colorScheme.secondaryContainer) else look.ink.copy(alpha = 0.06f)).clickable { tab = id },
+                    contentAlignment = Alignment.Center,
+                ) { Text(tr(label), fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = if (on) (if (look.glass) Color.White else MaterialTheme.colorScheme.onSecondaryContainer) else look.text2) }
+            }
+        }
         val s = q.trim().removePrefix("@").lowercase()
         when (tab) {
             "chats" -> {
@@ -432,14 +452,15 @@ fun SearchScreen(app: AppState, data: Data) {
                         u.str("id") != me && ((u.str("username") ?: "").startsWith(s) || (u.str("name") ?: "").lowercase().split(Regex("\\s+")).any { it.startsWith(s) } || u.num("publicId")?.toString() == s)
                     }.sortedByDescending { it.bool("official") }.take(40)
                 }
-                val rooms = remember(s, data.chats) { if (s.isEmpty()) emptyList() else data.chats.values.filter { isRoom(it) && ((it.str("name") ?: "").lowercase().contains(s) || (it.str("username") ?: "").startsWith(s)) } }
+                val rooms = remember(s, data.chats) { data.chats.values.filter { isRoom(it) && (s.isEmpty() || (it.str("name") ?: "").lowercase().contains(s) || (it.str("username") ?: "").startsWith(s)) } }
                 LazyColumn(contentPadding = PaddingValues(top = 8.dp, bottom = 110.dp)) {
                     item { SectionLabel("Chats") }
                     if (s.isEmpty() || "kosmo official".contains(s)) item {
                         ResultRow({ KosmoAvatar(48.dp) }, "Kosmo", tr("official account"), verified = true) { app.push(Screen.KosmoChat) }
                     }
+                    if (rooms.isNotEmpty()) item { SectionLabel("Groups and channels") }
                     items(rooms, key = { "r" + it.str("id") }) { c ->
-                        ResultRow({ ChatAvatar(data, c, 48.dp) }, c.str("name") ?: "", tr("${c.strings("members").size} ${if (isChannel(c)) "subscribers" else "members"}") + (c.str("username")?.takeIf { it.isNotEmpty() }?.let { " · @$it" } ?: "")) { app.openChat(c.str("id")!!) }
+                        ResultRow({ ChatAvatar(data, c, 48.dp) }, c.str("name") ?: "", tr("${if (isChannel(c)) "Channel" else "Group"} · ${c.strings("members").size} ${if (isChannel(c)) "subscribers" else "members"}") + (c.str("username")?.takeIf { it.isNotEmpty() }?.let { " · @$it" } ?: "")) { app.openChat(c.str("id")!!) }
                     }
                     if (people.isNotEmpty()) item { SectionLabel("People") }
                     items(people, key = { "p" + it.str("id") }) { u ->
@@ -481,9 +502,9 @@ private fun ResultRow(avatar: @Composable () -> Unit, title: String, sub: String
         Column(Modifier.padding(start = 12.dp).weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(title, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                if (verified) VerifiedBadge(Modifier.padding(start = 4.dp), 16)
+                if (verified) CosmicBadge(size = 16.dp, modifier = Modifier.padding(start = 4.dp))
             }
-            Text(sub, color = look.text2, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(sub, color = look.text2, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }

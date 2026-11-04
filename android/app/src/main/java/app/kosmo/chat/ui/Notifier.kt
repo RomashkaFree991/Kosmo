@@ -67,6 +67,7 @@ class Notifier(private val ctx: Context, private val app: AppState, scope: Corou
         seen = ids
         if (!primed) { primed = d.loaded; return }
         val notify = d.user?.obj("settings")?.obj("notify")
+        if (app.dndUntil() > 0) return   // «Не беспокоить»
         for ((chatId, m) in fresh) {
             val c = d.chats[chatId] ?: continue
             if (d.muted(c)) continue

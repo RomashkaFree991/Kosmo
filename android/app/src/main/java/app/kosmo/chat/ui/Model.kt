@@ -186,3 +186,11 @@ fun Data.kosmoNotes(): List<KosmoNote> {
         KosmoNote(title, text, m.num("at") ?: 0, rows)
     }.sortedBy { it.at }
 }
+
+/** Непрочитанные сообщения Kosmo (как kosmoUnread() на сайте). */
+fun Data.kosmoUnread(): Int {
+    val u = user ?: return 0
+    val cur = u.arr("sessions").objects().firstOrNull { it.bool("current") }
+    val readAt = pref(KOSMO_CHAT)?.num("readAt") ?: ((cur?.num("createdAt") ?: 0) - 1)
+    return u.arr("messages").objects().count { (it.num("at") ?: 0) > readAt }
+}

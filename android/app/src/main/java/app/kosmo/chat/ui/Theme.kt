@@ -45,6 +45,11 @@ object Design {
     var scheme by mutableStateOf("dark")         // dark / light / auto
     var seed by mutableStateOf(SEEDS[0])
     var colorStyle by mutableStateOf("tonal")
+    var glassWp by mutableStateOf("black")      // обои отдельно для каждого стиля, как на сайте
+    var materialWp by mutableStateOf("shapes")
+    var chatShape by mutableStateOf("cookie9")     // формы аватарок Material You, как на сайте
+    var profileShape by mutableStateOf("clover")
+    fun wallpaper(glass: Boolean) = if (glass) glassWp else materialWp
     private var ctx: Context? = null
 
     fun init(c: Context) {
@@ -54,12 +59,18 @@ object Design {
         scheme = p.getString("scheme", "dark") ?: "dark"
         seed = Color(p.getInt("seed", SEEDS[0].toArgb()))
         colorStyle = p.getString("colorStyle", "tonal") ?: "tonal"
+        glassWp = p.getString("wpGlass", "black") ?: "black"
+        materialWp = p.getString("wpMaterial", "shapes") ?: "shapes"
+        chatShape = p.getString("chatShape", "cookie9") ?: "cookie9"
+        profileShape = p.getString("profileShape", "clover") ?: "clover"
     }
 
     fun save() {
         ctx?.getSharedPreferences("kosmo", Context.MODE_PRIVATE)?.edit()
             ?.putString("style", if (glass) "glass" else "material")?.putString("scheme", scheme)
-            ?.putInt("seed", seed.toArgb())?.putString("colorStyle", colorStyle)?.apply()
+            ?.putInt("seed", seed.toArgb())?.putString("colorStyle", colorStyle)
+            ?.putString("wpGlass", glassWp)?.putString("wpMaterial", materialWp)
+            ?.putString("chatShape", chatShape)?.putString("profileShape", profileShape)?.apply()
     }
 }
 
@@ -80,6 +91,9 @@ data class Look(
     val text2: Color,
     val text3: Color,
     val ink: Color,             // «белила»: белый в тёмной теме, чёрный в светлой
+    val field: Color = Color(0x3D767680),   // --c-field-bg
+    val hairline: Color = Color(0x99545458),
+    val composer: Color = Color(0xA81C1C1E),  // rgba(28,28,30,.66)
 )
 
 val LocalLook = staticCompositionLocalOf { lookFor(true, true, SEEDS[0], null) }
@@ -92,18 +106,42 @@ private fun lookFor(glass: Boolean, dark: Boolean, seed: Color, cs: ColorScheme?
     return if (glass) Look(
         glass = true, dark = dark, accent = glassAccent, onAccent = Color.White,
         page = if (dark) Color.Black else Color(0xFFF2F2F7),
-        chrome = if (dark) Color(0xFF1C1C1E).copy(alpha = 0.82f) else Color.White.copy(alpha = 0.78f),
+        chrome = if (dark) Color(0x3D767680) else Color(0x1F767680),
         chromeBorder = ink.copy(alpha = if (dark) 0.14f else 0.08f),
-        bar = if (dark) Color(0xFF1C1C1E).copy(alpha = 0.86f) else Color.White.copy(alpha = 0.86f),
-        cell = if (dark) Color(0xFF1C1C1E) else Color.White,
-        theirs = if (dark) Color(0xFF262628) else Color.White,
+        bar = if (dark) Color(0xA31C1C1E) else Color.White.copy(alpha = 0.72f),
+        cell = if (dark) Color(0xFF121214) else Color.White,
+        theirs = if (dark) Color(0xFF26262A) else Color.White,
         text = ink, text2 = if (dark) Color(0x99EBEBF5) else Color(0x993C3C43), text3 = if (dark) Color(0x4DEBEBF5) else Color(0x4D3C3C43),
         ink = ink,
+        field = if (dark) Color(0x3D767680) else Color(0x1F767680),
+        hairline = if (dark) Color(0x99545458) else Color(0x4A3C3C43),
+        composer = if (dark) Color(0xA81C1C1E) else Color.White.copy(alpha = 0.8f),
     ) else Look(
         glass = false, dark = dark, accent = cs!!.primary, onAccent = cs.onPrimary,
         page = cs.surface, chrome = cs.secondaryContainer, chromeBorder = Color.Transparent,
-        bar = cs.surfaceContainer, cell = cs.surfaceContainerHigh, theirs = cs.surfaceContainerHigh,
+        bar = cs.surfaceContainer, cell = cs.surfaceContainerHighest, theirs = cs.surfaceContainerHigh,   // --c-cell-bg на сайте
         text = cs.onSurface, text2 = cs.onSurfaceVariant, text3 = cs.outline, ink = ink,
+        field = cs.surfaceContainerHigh, hairline = cs.outlineVariant, composer = cs.surfaceContainerHigh,
+    )
+}
+
+// Шрифты сайта: Liquid Glass — Inter, Material You — Roboto (Roboto Flex на сайте)
+val Inter = androidx.compose.ui.text.font.FontFamily(
+    androidx.compose.ui.text.font.Font(app.kosmo.chat.R.font.inter_400, FontWeight.Normal),
+    androidx.compose.ui.text.font.Font(app.kosmo.chat.R.font.inter_500, FontWeight.Medium),
+    androidx.compose.ui.text.font.Font(app.kosmo.chat.R.font.inter_600, FontWeight.SemiBold),
+    androidx.compose.ui.text.font.Font(app.kosmo.chat.R.font.inter_700, FontWeight.Bold),
+)
+private fun typeFor(glass: Boolean): Typography {
+    val base = KosmoType
+    if (!glass) return base
+    fun TextStyle.i() = copy(fontFamily = Inter)
+    return base.copy(
+        displayLarge = base.displayLarge.i(), displayMedium = base.displayMedium.i(), displaySmall = base.displaySmall.i(),
+        headlineLarge = base.headlineLarge.i(), headlineMedium = base.headlineMedium.i(), headlineSmall = base.headlineSmall.i(),
+        titleLarge = base.titleLarge.i(), titleMedium = base.titleMedium.i(), titleSmall = base.titleSmall.i(),
+        bodyLarge = base.bodyLarge.i(), bodyMedium = base.bodyMedium.i(), bodySmall = base.bodySmall.i(),
+        labelLarge = base.labelLarge.i(), labelMedium = base.labelMedium.i(), labelSmall = base.labelSmall.i(),
     )
 }
 
@@ -143,8 +181,13 @@ fun KosmoTheme(dark: Boolean? = null, content: @Composable () -> Unit) {
         secondaryContainer = if (isDark) Color(0xFF2C2C2E) else Color(0xFFE5E5EA), onSecondaryContainer = look.text,
         outline = look.text3, outlineVariant = look.ink.copy(alpha = 0.12f),
     ) else base
-    MaterialTheme(colorScheme = scheme, typography = KosmoType) {
-        // текст вне Surface — цвет текста темы (иначе чёрный по умолчанию)
-        CompositionLocalProvider(LocalContentColor provides look.text, LocalLook provides look, content = content)
+    val type = remember(glass) { typeFor(glass) }
+    MaterialTheme(colorScheme = scheme, typography = type) {
+        // текст вне Surface — цвет текста темы; шрифт сайта для всех Text
+        CompositionLocalProvider(
+            LocalContentColor provides look.text, LocalLook provides look,
+            androidx.compose.material3.LocalTextStyle provides type.bodyLarge,
+            content = content,
+        )
     }
 }

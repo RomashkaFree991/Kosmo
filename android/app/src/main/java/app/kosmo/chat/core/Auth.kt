@@ -24,7 +24,7 @@ class Auth(private val api: Api, private val device: String) {
 
     suspend fun usernameFree(name: String): Boolean = api.call("GET", "/api/username/$name").bool("free")
 
-    suspend fun logout() { runCatching { api.call("POST", "/api/logout") } }
+    suspend fun logout(token: String? = null) { runCatching { api.call("POST", "/api/logout", as_ = token) } }
 
     private fun session(r: JsonObject) = SessionInfo(r.str("token")!!, r.str("uid")!!, r.str("sid"))
 }

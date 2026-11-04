@@ -223,6 +223,7 @@ class Kosmo(val api: Api, private val scope: CoroutineScope, private val token: 
             "read" to mapOf(me to now),
             "createdAt" to now,
             "saved" to (if (saved) true else null),
+            "secret" to (if (chatId.startsWith("secret_")) true else null),
         )
         commit(jobj("col" to "chats", "id" to chatId, "op" to "put", "set" to set, "msgs" to jobj("up" to listOf(m))))
         return m

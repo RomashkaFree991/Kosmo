@@ -40,6 +40,10 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Reply
 import androidx.compose.material.icons.automirrored.rounded.Send
@@ -71,6 +75,8 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.LocalTextStyle
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -95,9 +101,14 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.layout.onSizeChanged
+import dev.chrisbanes.haze.haze
 import androidx.core.content.ContextCompat
 import app.kosmo.chat.core.KosmoEvent
 import app.kosmo.chat.core.jobj
+import app.kosmo.chat.core.bool
+import app.kosmo.chat.core.arr
+import app.kosmo.chat.core.objects
 import app.kosmo.chat.core.num
 import app.kosmo.chat.core.obj
 import app.kosmo.chat.core.str
@@ -172,6 +183,23 @@ fun ChatScreen(app: AppState, chatId: String, otherId: String?, focus: String? =
         replyTo = null
         typing = null
     }
+
+    // отправить текст из поля (кнопка или Enter на клавиатуре)
+    fun submit() {
+        if (text.isBlank()) return
+        val t = text.trim()
+                            val e = editing
+                            if (e != null) {
+                                val field = if (e.str("kind") == "text") "text" else "caption"
+                                if ((e.str(field) ?: "") != t) app.kosmo.editMessage(chatId, e.with(field to t, "edited" to true))
+                                editing = null
+                            } else {
+                                val lone = t.takeIf { it.codePointCount(0, it.length) <= 2 && (EMOJI.containsValue(it) || it in EMOJI_ALL) }
+                                send(if (lone != null) jobj("kind" to "emoji", "emoji" to lone) else jobj("kind" to "text", "text" to t))
+                            }
+        text = ""
+    }
+    val sendEnter = data.user?.obj("settings")?.get("sendEnter")?.toString() != "false"
 
     fun upload(u: Upload, mime: String, build: (String) -> JsonObject) {
         uploads.add(u)
@@ -253,11 +281,50 @@ fun ChatScreen(app: AppState, chatId: String, otherId: String?, focus: String? =
     }
     LaunchedEffect(hits, hit) { hits.getOrNull(hit)?.let { list.animateScrollToItem(it + uploads.size) } }
 
-    Box(Modifier.fillMaxSize().background(look.page)) {
-        MaterialWallpaper(Modifier.fillMaxSize())
-        // свои обои чата
-        data.pref(chatId)?.str("wp")?.let { wp -> AsyncImage(LocalMedia.current(wp), null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize(), alpha = 0.85f) }
-        Column(Modifier.fillMaxSize().imePadding()) {
+    val haze = remember { dev.chrisbanes.haze.HazeState() }
+    var topH by remember { mutableIntStateOf(0) }
+    var botH by remember { mutableIntStateOf(0) }
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    Box(Modifier.fillMaxSize().background(look.page).imePadding()) {
+        // обои и сообщения — под стеклом шапки и поля ввода (размываются, как на сайте)
+        Box(Modifier.fillMaxSize().then(if (look.glass) Modifier.haze(haze) else Modifier)) {
+            Wallpaper(Modifier.fillMaxSize())
+            data.pref(chatId)?.str("wp")?.let { wp -> AsyncImage(LocalMedia.current(wp), null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize(), alpha = 0.85f) }
+                LazyColumn(
+                    state = list, reverseLayout = true, modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(start = 10.dp, end = 10.dp, top = with(density) { topH.toDp() } + 8.dp, bottom = with(density) { botH.toDp() } + 8.dp), verticalArrangement = Arrangement.spacedBy(3.dp),
+                ) {
+                    items(uploads.size, key = { "up-" + uploads.asReversed()[it].id }) { i -> val u = uploads.asReversed()[i]; UploadBubble(u) { uploads.remove(u) } }
+                    items(rows.size, key = { rows[it].str("id") ?: "$it" }) { i ->
+                        val m = rows[i]
+                        val older = rows.getOrNull(i + 1)
+                        Column {
+                            val at = m.num("at") ?: 0
+                            if (older == null || !sameDay(older.num("at") ?: 0, at)) DayPill(dayLabel(at))
+                            MessageRow(
+                                app, data, chat, m, mine = m.str("from") == me,
+                                showName = older?.str("from") != m.str("from") || older?.str("kind") == "join",
+                                highlight = (searching && hits.getOrNull(hit) == i) || focus == m.str("id"),
+                                byId = { id -> messages.firstOrNull { it.str("id") == id } },
+                                onReply = { replyTo = m; editing = null },
+                                onEdit = { editing = m; replyTo = null; text = m.str("text") ?: m.str("caption") ?: "" },
+                            )
+                        }
+                    }
+                    if (messages.isEmpty() && uploads.isEmpty()) item("empty") {
+                        Column(Modifier.fillMaxWidth().padding(top = 80.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            PlanetLogo(Modifier.size(110.dp))
+                            Text(tr(if (saved) "Save messages, photos and notes here" else "No messages yet"), color = look.text2, modifier = Modifier.padding(top = 8.dp))
+                            if (!saved && !room) Column(
+                                Modifier.padding(top = 16.dp).chrome(look, RoundedCornerShape(22.dp)).clickable { send(jobj("kind" to "sticker", "sticker" to jobj("emoji" to "like", "anim" to "wave", "text" to "Hi!"))) }.padding(18.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                            ) { Text("👍", fontSize = 48.sp); Text(tr("Say hi"), fontSize = 14.sp) }
+                        }
+                    }
+                }
+        }
+        androidx.compose.runtime.CompositionLocalProvider(LocalHaze provides haze) {
+        Column(Modifier.fillMaxWidth().align(Alignment.TopCenter).onSizeChanged { topH = it.height }) {
             if (searching) Header {
                 CircleBtn(Icons.Rounded.Close, "Close search") { searching = false; query = "" }
                 SearchField(query, "Search messages", Modifier.weight(1f), autofocus = true) { query = it; hit = 0 }
@@ -271,10 +338,10 @@ fun ChatScreen(app: AppState, chatId: String, otherId: String?, focus: String? =
                 }
                 TitlePill(
                     if (saved) "Saved Messages" else chat?.let { data.chatTitle(it) } ?: other?.str("name") ?: "Chat",
-                    sub, subAccent = typing != null,
+                    sub, subAccent = typing != null, subLock = !saved && !(room && !chat?.str("username").isNullOrEmpty()),
                 ) { if (room) app.push(Screen.RoomInfo(chatId)) else if (other != null && !saved) app.push(Screen.User(other.str("id")!!)) }
                 Box {
-                    CircleBtn(Icons.Rounded.MoreVert, "Chat options") { menu = true }
+                    CircleBtn(WI.hdrMore, "Chat options") { menu = true }
                     KosmoMenu(menu, { menu = false }, listOfNotNull(
                         MenuItem(Icons.Rounded.Search, "Search") { searching = true },
                         if (!room && !saved && other != null) MenuItem(Icons.Rounded.Call, "Voice call") { app.startCall(other.str("id")!!, false) } else null,
@@ -305,39 +372,8 @@ fun ChatScreen(app: AppState, chatId: String, otherId: String?, focus: String? =
                 }
             }
 
-            LazyColumn(
-                state = list, reverseLayout = true, modifier = Modifier.weight(1f).fillMaxWidth(),
-                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(3.dp),
-            ) {
-                items(uploads.size, key = { "up-" + uploads.asReversed()[it].id }) { i -> val u = uploads.asReversed()[i]; UploadBubble(u) { uploads.remove(u) } }
-                items(rows.size, key = { rows[it].str("id") ?: "$it" }) { i ->
-                    val m = rows[i]
-                    val older = rows.getOrNull(i + 1)
-                    Column {
-                        val at = m.num("at") ?: 0
-                        if (older == null || !sameDay(older.num("at") ?: 0, at)) DayPill(dayLabel(at))
-                        MessageRow(
-                            app, data, chat, m, mine = m.str("from") == me,
-                            showName = older?.str("from") != m.str("from") || older?.str("kind") == "join",
-                            highlight = (searching && hits.getOrNull(hit) == i) || focus == m.str("id"),
-                            byId = { id -> messages.firstOrNull { it.str("id") == id } },
-                            onReply = { replyTo = m; editing = null },
-                            onEdit = { editing = m; replyTo = null; text = m.str("text") ?: m.str("caption") ?: "" },
-                        )
-                    }
-                }
-                if (messages.isEmpty() && uploads.isEmpty()) item("empty") {
-                    Column(Modifier.fillMaxWidth().padding(top = 80.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                        PlanetLogo(Modifier.size(110.dp))
-                        Text(tr(if (saved) "Save messages, photos and notes here" else "No messages yet"), color = look.text2, modifier = Modifier.padding(top = 8.dp))
-                        if (!saved && !room) Column(
-                            Modifier.padding(top = 16.dp).chrome(look, RoundedCornerShape(22.dp)).clickable { send(jobj("kind" to "sticker", "sticker" to jobj("emoji" to "like", "anim" to "wave", "text" to "Hi!"))) }.padding(18.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                        ) { Text("👍", fontSize = 48.sp); Text(tr("Say hi"), fontSize = 14.sp) }
-                    }
-                }
-            }
-
+        }
+        Column(Modifier.fillMaxWidth().align(Alignment.BottomCenter).onSizeChanged { botH = it.height }) {
             if (searching) Row(Modifier.fillMaxWidth().navigationBarsPadding().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(if (query.length < 2) "" else if (hits.isEmpty()) tr("No messages found") else tr("${hit + 1} of ${hits.size}"), color = look.text2, modifier = Modifier.weight(1f).padding(start = 8.dp))
                 CircleBtn(Icons.Rounded.KeyboardArrowUp, "Older", enabled = hit < hits.lastIndex) { hit++ }
@@ -378,7 +414,7 @@ fun ChatScreen(app: AppState, chatId: String, otherId: String?, focus: String? =
                         CircleBtn(Icons.AutoMirrored.Rounded.Send, "Send", accent = true) { toggleRecord() }
                     } else {
                         Box {
-                            CircleBtn(if (plus) Icons.Rounded.Close else Icons.Rounded.Add, "Attach") { plus = !plus; emoji = false }
+                            CircleBtn(WI.plus, "Attach", modifier = Modifier.graphicsLayer { rotationZ = if (plus) 45f else 0f }, fill = look.composer) { plus = !plus; emoji = false }
                             AttachMenu(plus, { plus = false }) { what ->
                                 when (what) {
                                     "photo" -> pickMedia.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo))
@@ -390,7 +426,7 @@ fun ChatScreen(app: AppState, chatId: String, otherId: String?, focus: String? =
                             }
                         }
                         Row(
-                            Modifier.weight(1f).heightIn(min = 48.dp).chrome(look, RoundedCornerShape(24.dp)).padding(start = 16.dp, end = 4.dp),
+                            Modifier.weight(1f).heightIn(min = 48.dp).chrome(look, RoundedCornerShape(24.dp), fill = look.composer).padding(start = 18.dp, end = 6.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Box(Modifier.weight(1f).padding(vertical = 12.dp)) {
@@ -398,26 +434,19 @@ fun ChatScreen(app: AppState, chatId: String, otherId: String?, focus: String? =
                                 BasicTextField(
                                     value = text,
                                     onValueChange = { v -> if (v.length > text.length) app.kosmo.typing(chatId); text = v },
-                                    textStyle = TextStyle(color = look.text, fontSize = 16.sp), cursorBrush = SolidColor(look.accent), maxLines = 6,
-                                    modifier = Modifier.fillMaxWidth(),
+                                    textStyle = LocalTextStyle.current.copy(color = look.text, fontSize = 16.sp, lineHeight = 22.sp), cursorBrush = SolidColor(look.accent), maxLines = 6,
+                                    modifier = Modifier.fillMaxWidth().onPreviewKeyEvent { ev ->
+                                        val enter = ev.key == androidx.compose.ui.input.key.Key.Enter || ev.key == androidx.compose.ui.input.key.Key.NumPadEnter
+                                        if (enter && !ev.isShiftPressed && sendEnter) { if (ev.type == androidx.compose.ui.input.key.KeyEventType.KeyDown) submit(); true } else false
+                                    },
                                 )
                             }
-                            IconButton({ emoji = !emoji; plus = false }) { Icon(Icons.Outlined.EmojiEmotions, tr("Emoji"), tint = look.text2) }
+                            Icon(WI.smile, tr("Emoji"), tint = look.text2, modifier = Modifier.size(36.dp).clip(CircleShape).clickable { emoji = !emoji; plus = false }.padding(7.dp))
                         }
                         val hasText = text.isNotBlank()
-                        CircleBtn(if (hasText) Icons.AutoMirrored.Rounded.Send else Icons.Rounded.Mic, if (hasText) "Send" else "Record voice", accent = true) {
+                        CircleBtn(if (hasText) WI.send else WI.mic, if (hasText) "Send" else "Record voice", accent = true) {
                             if (!hasText) { toggleRecord(); return@CircleBtn }
-                            val t = text.trim()
-                            val e = editing
-                            if (e != null) {
-                                val field = if (e.str("kind") == "text") "text" else "caption"
-                                if ((e.str(field) ?: "") != t) app.kosmo.editMessage(chatId, e.with(field to t, "edited" to true))
-                                editing = null
-                            } else {
-                                val lone = t.takeIf { it.codePointCount(0, it.length) <= 2 && (EMOJI.containsValue(it) || it in EMOJI_ALL) }
-                                send(if (lone != null) jobj("kind" to "emoji", "emoji" to lone) else jobj("kind" to "text", "text" to t))
-                            }
-                            text = ""
+                            submit()
                         }
                     }
                 }
@@ -425,6 +454,7 @@ fun ChatScreen(app: AppState, chatId: String, otherId: String?, focus: String? =
                     EmojiPanel(onEmoji = { text += it }, onSticker = { st -> send(jobj("kind" to "sticker", "sticker" to st)); emoji = false })
                 }
             }
+        }
         }
     }
     sheet?.let { s ->
@@ -453,8 +483,8 @@ fun SearchField(value: String, hint: String, modifier: Modifier = Modifier, auto
     val look = LocalLook.current
     val focus = remember { FocusRequester() }
     if (autofocus) LaunchedEffect(Unit) { focus.requestFocus() }
-    Row(modifier.height(48.dp).chrome(look, RoundedCornerShape(24.dp)).padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-        Icon(Icons.Rounded.Search, null, tint = look.text2, modifier = Modifier.size(20.dp))
+    Row(modifier.height(46.dp).clip(CircleShape).background(look.field).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+        Icon(WI.hdrSearch, null, tint = look.text2, modifier = Modifier.size(18.dp))
         Box(Modifier.weight(1f).padding(start = 10.dp)) {
             if (value.isEmpty()) Text(tr(hint), color = look.text3, fontSize = 16.sp)
             BasicTextField(value, onChange, singleLine = true, textStyle = TextStyle(color = look.text, fontSize = 16.sp), cursorBrush = SolidColor(look.accent), modifier = Modifier.fillMaxWidth().focusRequester(focus))
@@ -463,16 +493,14 @@ fun SearchField(value: String, hint: String, modifier: Modifier = Modifier, auto
     }
 }
 
+/** Статус человека — как lastSeen() на сайте: по последней активности его сеансов. */
 fun lastSeen(u: JsonObject): String {
-    if (u.str("online") == "true" || u["online"]?.toString() == "true") return tr("online")
-    val at = u.num("lastSeen") ?: return tr("last seen recently")
-    val mins = (System.currentTimeMillis() - at) / 60000
-    return when {
-        mins < 2 -> tr("online")
-        mins < 60 -> tr("last seen $mins min ago")
-        sameDay(at, System.currentTimeMillis()) -> tr("last seen at ${timeOf(at)}")
-        else -> tr("last seen ${listTime(at)}")
-    }
+    if (u.bool("official")) return tr("official account")
+    if (u.bool("bot")) return tr("bot")
+    if (u.obj("privacy")?.str("lastSeen") == "nobody") return tr("last seen recently")
+    val t = u.arr("sessions").objects().maxOfOrNull { it.num("lastActive") ?: 0 } ?: 0
+    if (t > 0 && System.currentTimeMillis() - t < 120_000) return tr("online")
+    return if (t > 0) tr("last seen ${ago(t)}") else tr("last seen recently")
 }
 
 @Composable

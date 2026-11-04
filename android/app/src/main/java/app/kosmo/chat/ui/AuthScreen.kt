@@ -70,6 +70,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.kosmo.chat.core.ApiException
+import app.kosmo.chat.core.str
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -183,11 +184,15 @@ fun AuthScreen(app: AppState) {
                 }
             }
         }
+        // добавление ещё одного аккаунта: «назад» к уже вошедшему (#auth-cancel на сайте)
+        app.accounts.firstOrNull()?.let { back ->
+            Box(Modifier.statusBarsPadding().padding(12.dp)) { CircleBtn(WI.hdrBack, "Back") { app.switchAccount(back.str("uid")!!) } }
+        }
     }
 }
 
 @Composable
-private fun Title(text: String) = Text(text, style = MaterialTheme.typography.headlineMedium, textAlign = TextAlign.Center)
+internal fun Title(text: String) = Text(text, style = MaterialTheme.typography.headlineMedium, textAlign = TextAlign.Center)
 
 @Composable
 private fun ErrorText(error: String?) {
@@ -219,7 +224,7 @@ private fun EmailStep(initial: String, busy: Boolean, error: String?, onNext: (S
 
 /** Код из письма: 6 клеток, ввод — скрытым полем. */
 @Composable
-private fun CodeStep(email: String, error: String?, onCode: (String) -> Unit) {
+internal fun CodeStep(email: String, error: String?, onCode: (String) -> Unit) {
     var code by remember { mutableStateOf("") }
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { focus.requestFocus() }

@@ -99,7 +99,7 @@ fun NewRoomScreen(app: AppState, type: String) {
         data.chatList().filter { !isRoom(it) && !isSaved(it) }.mapNotNull { data.otherOf(it) }.distinctBy { it.str("id") }
     }
     val okUser = username.isEmpty() || (Regex("^(?=.*[a-z])[a-z0-9]{3,32}$").matches(username) && free != false)
-    Column(Modifier.fillMaxSize().background(look.page)) {
+    Column(Modifier.fillMaxSize()) {
         Header {
             BackBtn(app)
             TitlePill(if (channel) "New channel" else "New group")
@@ -170,7 +170,7 @@ fun RoomInfoScreen(app: AppState, id: String) {
     val admin = owner || me in c.strings("admins")
     val channel = isChannel(c)
     val members = c.strings("members")
-    Column(Modifier.fillMaxSize().background(look.page)) {
+    Column(Modifier.fillMaxSize()) {
         Header { BackBtn(app); TitlePill(if (channel) "Channel info" else "Group info"); CircleSpacer() }
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).navigationBarsPadding().padding(bottom = 32.dp)) {
             Column(Modifier.fillMaxWidth().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -246,7 +246,7 @@ fun ForwardScreen(app: AppState, chatId: String?, msgId: String?, postId: String
     val targets = remember(data, q) {
         data.chatList().filter { c -> (!isChannel(c) || c.str("owner") == me || me in c.strings("admins")) && data.chatTitle(c).lowercase().contains(q.lowercase()) }
     }
-    Column(Modifier.fillMaxSize().background(look.page)) {
+    Column(Modifier.fillMaxSize()) {
         Header { BackBtn(app); TitlePill(if (postId != null) "Share post" else "Forward to"); CircleSpacer() }
         SearchField(q, "Search", Modifier.padding(horizontal = 16.dp).fillMaxWidth()) { q = it }
         LazyColumn(contentPadding = PaddingValues(vertical = 8.dp)) {

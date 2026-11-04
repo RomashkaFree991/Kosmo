@@ -35,9 +35,11 @@ fun Avatar(
     avatar: JsonObject?,
     size: Dp,
     modifier: Modifier = Modifier,
-    shape: Shape = CircleShape,
+    shape: Shape? = null,
     media: (String) -> String = LocalMedia.current,
 ) {
+    // Material You: аватарки в форме M3 (Designs → Chat avatars), как clip-path на сайте
+    val shape = shape ?: if (LocalLook.current.glass) CircleShape else m3Shape(Design.chatShape)
     val idx = avatar?.num("color")?.toInt()?.takeIf { it in AvatarColors.indices } ?: avatarIndex(name.orEmpty())
     val (c1, c2) = AvatarColors[idx]
     val photo = avatar?.str("photo")
@@ -52,8 +54,8 @@ fun Avatar(
 }
 
 @Composable
-fun UserAvatar(u: JsonObject?, size: Dp, modifier: Modifier = Modifier) =
-    Avatar(u?.str("name"), u?.obj("avatar"), size, modifier)
+fun UserAvatar(u: JsonObject?, size: Dp, modifier: Modifier = Modifier, shape: Shape? = null) =
+    Avatar(u?.str("name"), u?.obj("avatar"), size, modifier, shape)
 
 /** Аватарка чата: человек, группа/канал (скруглённый квадрат у каналов) или «Избранное». */
 @Composable
@@ -72,4 +74,38 @@ fun KosmoAvatar(size: Dp, modifier: Modifier = Modifier) {
     Box(modifier.size(size).clip(CircleShape).background(Color(0xFF14102A)), contentAlignment = Alignment.Center) {
         PlanetLogo(Modifier.size(size * 1.1f))
     }
+}
+
+/* ---------- Формы Material 3 (как SHAPES в web/js/design.js) ---------- */
+val SHAPE_IDS = listOf("circle" to "Circle", "squircle" to "Square", "cookie4" to "4-sided cookie", "cookie7" to "7-sided cookie", "cookie9" to "9-sided cookie", "cookie12" to "12-sided cookie", "clover" to "4-leaf clover", "flower" to "Flower")
+
+private val shapeCache = HashMap<String, List<Pair<Float, Float>>>()
+
+/** Точки контура в единичном круге [-1, 1] — тот же расчёт, что shapePoints() на сайте. */
+private fun shapePoints(id: String): List<Pair<Float, Float>> = shapeCache.getOrPut(id) {
+    val wave: Pair<Int, Double>? = when (id) {
+        "cookie4" -> 4 to 0.07; "cookie7" -> 7 to 0.065; "cookie9" -> 9 to 0.055; "cookie12" -> 12 to 0.04
+        "clover" -> 4 to 0.24; "flower" -> 8 to 0.12; else -> null
+    }
+    val pts = (0 until 200).map { i ->
+        val t = i / 200.0 * Math.PI * 2 - Math.PI / 2
+        if (id == "squircle") {
+            val e = 2.0 / 5
+            Math.signum(Math.cos(t)) * Math.pow(Math.abs(Math.cos(t)), e) to Math.signum(Math.sin(t)) * Math.pow(Math.abs(Math.sin(t)), e)
+        } else {
+            val r = if (wave == null) 1.0 else 1 + wave.second * Math.cos(wave.first * t)
+            Math.cos(t) * r to Math.sin(t) * r
+        }
+    }
+    val mx = pts.maxOf { maxOf(Math.abs(it.first), Math.abs(it.second)) }
+    pts.map { (it.first / mx).toFloat() to (it.second / mx).toFloat() }
+}
+
+fun m3Shape(id: String): Shape = if (id == "circle") CircleShape else androidx.compose.foundation.shape.GenericShape { size, _ ->
+    val pts = shapePoints(id)
+    pts.forEachIndexed { i, (x, y) ->
+        val px = size.width / 2 * (1 + x); val py = size.height / 2 * (1 + y)
+        if (i == 0) moveTo(px, py) else lineTo(px, py)
+    }
+    close()
 }
