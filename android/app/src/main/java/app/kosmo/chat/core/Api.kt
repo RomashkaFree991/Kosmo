@@ -44,6 +44,8 @@ class Api(val base: String, private val token: () -> String?) {
         return res.use { r ->
             val text = withContext(Dispatchers.IO) { r.body?.string().orEmpty() }
             val data = runCatching { JSON.parseToJsonElement(text) as JsonObject }.getOrDefault(JsonObject(emptyMap()))
+            // 502/503/504 от nginx: сервер Kosmo не запущен или перезапускается — это не «неверный код»
+            if (!r.isSuccessful && r.code >= 500 && data.str("error") == null) throw ApiException(r.code, "server_down", "The Kosmo server is not responding. Try again in a minute")
             if (!r.isSuccessful) throw ApiException(r.code, data.str("error"), data.str("message"))
             data
         }

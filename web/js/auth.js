@@ -252,6 +252,14 @@ async function submitPass() {
     try {
       session = await api('POST', '/api/auth/login', { ticket: flow.ticket, passcode: pass, ...(await deviceAndPlace()) }, { auth: false });
     } catch (err) {
+      // сервер недоступен (502, нет сети) — код-пароль не проверялся: не трясём ячейки и не считаем попытку
+      if (err.status === 0 || err.code === 'server_down') {
+        toast(err.message);
+        pass = '';
+        renderPass();
+        passBusy = false;
+        return;
+      }
       attempts += 1;
       shake(passCells);
       await wait(500);

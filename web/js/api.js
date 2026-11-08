@@ -26,6 +26,7 @@ const myMsgIds = (patches) => patches.flatMap((p) => (p.col === 'chats' ? (p.msg
 const msgHandlers = new Set();
 
 /* ---------- REST ---------- */
+export const SERVER_DOWN = 'The Kosmo server is not responding. Try again in a minute';
 export class ApiError extends Error {
   constructor(status, code, message, data = {}) { super(message || code); this.status = status; this.code = code; this.data = data; }
 }
@@ -41,6 +42,8 @@ export async function api(method, path, body, { auth = true } = {}) {
     throw new ApiError(0, 'offline', 'No connection to the server');
   }
   const data = await res.json().catch(() => ({}));
+  // 502/503/504 от nginx: сервер Kosmo не запущен или перезапускается — это не «неверный код»
+  if (!res.ok && res.status >= 500 && !data.error) throw new ApiError(res.status, 'server_down', SERVER_DOWN);
   if (!res.ok) {
     if (res.status === 401 && data.error === 'unauthorized') document.dispatchEvent(new CustomEvent('kosmo:session-ended'));
     throw new ApiError(res.status, data.error, data.message, data);

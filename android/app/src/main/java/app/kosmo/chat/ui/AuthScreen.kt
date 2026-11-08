@@ -149,6 +149,9 @@ fun AuthScreen(app: AppState, preview: String? = null) {
     fun go(s: Step, fwd: Boolean = true) { forward = fwd; error = null; step = s }
     fun fail(e: Throwable) {
         busy = false
+        // сервер недоступен или нет сети — код не проверялся: без «тряски» и «неверного кода»
+        val code = (e as? ApiException)?.code
+        if (code == "server_down" || code == "offline") { app.toast = e.message; error = null; return }
         error = when ((e as? ApiException)?.code) {
             "bad_code", "wrong_code" -> "Wrong code"
             "wrong_passcode" -> "Wrong passcode"

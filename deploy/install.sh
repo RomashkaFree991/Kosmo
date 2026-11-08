@@ -95,6 +95,17 @@ fi
 (cd "$APP_DIR/server" && npm install --omit=dev --no-audit --no-fund --silent)
 mkdir -p "$DATA_DIR" && chmod 700 "$DATA_DIR"
 
+# Страховка: что бы ни случилось дальше (apt, certbot, почта, nginx…), сервер Kosmo
+# не должен остаться выключенным — иначе сайт отдаёт 502 и вход «не принимает» код-пароль.
+keep_kosmo_up() {
+  local rc=$?
+  if [ "$rc" != 0 ] && [ -f /etc/kosmo/kosmo.env ] && [ -f "$APP_DIR/deploy/ecosystem.config.cjs" ]; then
+    warn "Установка прервалась (код $rc) — запускаю сервер Kosmo с прежними настройками"
+    pm2 startOrRestart "$APP_DIR/deploy/ecosystem.config.cjs" --update-env >/dev/null 2>&1 && pm2 save >/dev/null 2>&1 || true
+  fi
+}
+trap keep_kosmo_up EXIT
+
 # ---------- Настройки (SMS и прочее) ----------
 new_gateway_key() { openssl rand -base64 96 | tr -dc 'A-HJ-NP-Z2-9' | cut -c1-16 | sed 's/.\{4\}/&-/g; s/-$//'; }
 sms_setup() {
@@ -206,9 +217,10 @@ set -a; . "$ENV_FILE"; set +a
 
 # ---------- Порт: на сервере могут жить другие проекты ----------
 port_busy() { (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null; }
-if pm2 describe kosmo >/dev/null 2>&1; then pm2 delete kosmo >/dev/null; sleep 1; fi
+# порт занят самим Kosmo (обновление) — это наш порт: сервер не гасим, чтобы сайт не отдавал 502
+kosmo_on() { curl -fsS --max-time 3 "http://127.0.0.1:$1/api/config" 2>/dev/null | grep -q '"channel"'; }
 PORT="${PORT:-3710}"; [ "$PORT" = 3000 ] && PORT=3710   # 3000 часто занят другими проектами
-while port_busy "$PORT"; do
+while port_busy "$PORT" && ! kosmo_on "$PORT"; do
   warn "Порт $PORT занят другой программой — беру следующий"
   PORT=$((PORT + 1))
 done
@@ -425,7 +437,7 @@ case "\${1:-}" in
            (cd $APP_DIR/server && npm install --omit=dev --no-audit --no-fund --silent) || echo "npm install: ошибка (см. выше)"
            pm2 startOrRestart $APP_DIR/deploy/ecosystem.config.cjs --update-env >/dev/null && pm2 save >/dev/null
            echo "Код: \$(git -C $APP_DIR log -1 --format='%h %s' | cut -c1-70)"
-           sleep 2; curl -fsS http://127.0.0.1:$PORT/api/config >/dev/null && echo "Сервер перезапущен и отвечает" || echo "Сервер не отвечает — смотрите: kosmo logs"
+           sleep 2; curl -fsS http://127.0.0.1:\$(sed -n 's/^PORT=//p' $ENV_FILE)/api/config >/dev/null && echo "Сервер перезапущен и отвечает" || echo "Сервер не отвечает — смотрите: kosmo logs"
            cp $APP_DIR/deploy/install.sh /tmp/kosmo-install.sh && exec bash /tmp/kosmo-install.sh "$DOMAIN" "$EMAIL" ;;
   version) git -C $APP_DIR log -1 --format='%h %ad %s' --date=short; curl -fsS http://127.0.0.1:$PORT/api/config; echo ;;
   mail-test)
@@ -444,10 +456,11 @@ const u = db.prepare('SELECT id, data FROM users WHERE email = ?').get(process.a
 if (!u) { console.error('Нет аккаунта с этой почтой'); process.exit(1); }
 const d = JSON.parse(u.data); d.premium = process.argv[2] !== 'off';
 db.prepare('UPDATE users SET data = ? WHERE id = ?').run(JSON.stringify(d), u.id);
-console.log(d.premium ? 'Kosmo Premium выдан' : 'Kosmo Premium снят');" "\$2" "\${3:-on}" && pm2 restart kosmo >/dev/null ;;
+console.log(d.premium ? 'Kosmo Premium выдан' : 'Kosmo Premium снят');" "\$2" "\${3:-on}" && pm2 startOrRestart $APP_DIR/deploy/ecosystem.config.cjs --update-env >/dev/null ;;
   logs)    exec pm2 logs kosmo ;;
-  restart) exec pm2 restart kosmo --update-env ;;
-  status)  pm2 status kosmo; curl -fsS http://127.0.0.1:$PORT/api/config; echo ;;
+  restart) pm2 startOrRestart $APP_DIR/deploy/ecosystem.config.cjs --update-env >/dev/null && pm2 save >/dev/null
+           sleep 2; curl -fsS http://127.0.0.1:\$(sed -n 's/^PORT=//p' $ENV_FILE)/api/config >/dev/null && echo "Сервер Kosmo работает" || echo "Сервер не отвечает — смотрите: kosmo logs" ;;
+  status)  pm2 status kosmo; curl -fsS http://127.0.0.1:\$(sed -n 's/^PORT=//p' $ENV_FILE)/api/config; echo ;;
   *) echo "kosmo update   — обновить код с GitHub (база и настройки сохранятся)"
      echo "kosmo mail-test адрес — отправить пробное письмо с кодом"
      echo "kosmo sms      — настроить SMS (на будущее, вход сейчас по почте)"

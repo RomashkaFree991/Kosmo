@@ -86,6 +86,7 @@ const RU = {
   'Passcodes don’t match': 'Коды не совпадают', 'Paste or write code': 'Вставьте или напишите код', 'People': 'Люди', 'People can find you in Search by your number.': 'Вас смогут найти в поиске по номеру.',
   'People who already chat with you can still write.': 'Те, с кем уже есть чат, смогут писать.', 'Personal': 'Личные', 'Phone': 'Телефон', 'Phone number': 'Номер телефона',
   'No connection to the server': 'Нет связи с сервером',
+  'The Kosmo server is not responding. Try again in a minute': 'Сервер Kosmo не отвечает. Попробуйте через минуту',
   'Could not save the change': 'Не удалось сохранить изменение',
   'Test mode: the code is in the server log': 'Тестовый режим: код — в логе сервера',
   'Send again': 'Отправить ещё раз',

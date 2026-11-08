@@ -16,8 +16,8 @@ android {
         applicationId = "app.kosmo.chat"
         minSdk = 26
         targetSdk = 35
-        versionCode = 4
-        versionName = "2.2"
+        versionCode = 5
+        versionName = "2.2.1"
         buildConfigField("String", "KOSMO_URL", "\"$kosmoUrl\"")
         // звонки (WebRTC): только ARM-телефоны — так APK меньше
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
