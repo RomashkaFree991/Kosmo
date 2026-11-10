@@ -1,0 +1,10 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <!-- планета Kosmo с кольцом -->
+    <path android:fillColor="#00000000" android:strokeColor="#BF5AF2" android:strokeWidth="3.5"
+        android:pathData="M24,62 C18,54 36,42 54,38 C72,34 90,38 84,46 C78,54 60,66 42,68 C30,70 26,66 24,62 Z" />
+    <path android:fillColor="#64D2FF" android:pathData="M54,54 m-16,0 a16,16 0 1,0 32,0 a16,16 0 1,0 -32,0" />
+    <path android:fillColor="#00000000" android:strokeColor="#BF5AF2" android:strokeWidth="3.5"
+        android:pathData="M70.5,47.5 C78,45 85,44 84,46" />
+</vector>

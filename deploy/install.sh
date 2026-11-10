@@ -1,0 +1,512 @@
+#!/usr/bin/env bash
+# Kosmo: установка на VPS одной командой (Ubuntu 22.04+/Debian 12+).
+#   curl -fsSL https://raw.githubusercontent.com/RomashkaFree991/Kosmo/ccr-c8594e95-6dq4vq/deploy/install.sh | sudo bash -s -- kosmochat.duckdns.org you@mail.com --duckdns ТОКЕН_DUCKDNS
+# Вход — по почте: коды отправляет сам сервер (напрямую получателю, с подписью DKIM).
+#   --duckdns ТОКЕН   записать ключ DKIM в TXT-запись домена DuckDNS (токен — на duckdns.org)
+#   --smtp URL        отправлять через свой почтовый ящик, если хостинг закрыл порт 25
+#                     (например smtps://you%40gmail.com:ПАРОЛЬ_ПРИЛОЖЕНИЯ@smtp.gmail.com)
+#   --test            адреса …@kosmo.test входят с кодом 000000 (для проверки)
+# Ставит Node 22, pm2, nginx, сертификат Let's Encrypt, coturn (звонки),
+# сервер Kosmo с базой SQLite в /var/lib/kosmo. Повторный запуск обновляет код,
+# настройки и база сохраняются.
+set -euo pipefail
+
+ORIG_ARGS=("$@")
+POS=()
+SMS_ARG=""
+DUCKDNS_ARG=""
+SMTP_ARG=""
+TEST_ARG=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --device)   SMS_ARG="device"; shift ;;
+    --tgbot)    SMS_ARG="tgbot|${2:-}"; shift 2 || shift $# ;;
+    --phone)    SMS_ARG="phone|${2:-}|${3:-}"; shift 3 || shift $# ;;
+    --smsru)    SMS_ARG="smsru|${2:-}"; shift 2 || shift $# ;;
+    --telegram) SMS_ARG="telegram|${2:-}"; shift 2 || shift $# ;;
+    --twilio)   SMS_ARG="twilio|${2:-}|${3:-}|${4:-}"; shift 4 || shift $# ;;
+    --no-sms)   SMS_ARG="log"; shift ;;
+    --duckdns)  DUCKDNS_ARG="${2:-}"; shift 2 || shift $# ;;
+    --smtp)     SMTP_ARG="${2:-}"; shift 2 || shift $# ;;
+    --test)     TEST_ARG=1; shift ;;
+    *) POS+=("$1"); shift ;;
+  esac
+done
+DOMAIN="${POS[0]:-${DOMAIN:-}}"
+EMAIL="${POS[1]:-${EMAIL:-}}"
+REPO="${REPO:-https://github.com/RomashkaFree991/Kosmo.git}"
+BRANCH="${BRANCH:-ccr-c8594e95-6dq4vq}"
+APP_DIR=/opt/kosmo
+DATA_DIR=/var/lib/kosmo
+ENV_DIR=/etc/kosmo
+ENV_FILE="$ENV_DIR/kosmo.env"
+PORT=3710   # если занят — берётся следующий свободный
+
+say()  { printf '\n\033[1;35m▸ %s\033[0m\n' "$*"; }
+warn() { printf '\033[1;33m! %s\033[0m\n' "$*"; }
+die()  { printf '\033[1;31m✗ %s\033[0m\n' "$*" >&2; exit 1; }
+ask()  { # ask "Вопрос" default → ответ (из терминала, даже при curl | bash; ждём до 5 минут)
+  local a=""
+  if { exec 3<>/dev/tty; } 2>/dev/null; then
+    printf '\033[1;36m? %s\033[0m ' "$1" >&3
+    IFS= read -r -t 300 a <&3 || printf '\n' >&3
+    exec 3>&-
+  fi
+  a="${a//$'\r'/}"
+  a="${a#"${a%%[![:space:]]*}"}"; a="${a%"${a##*[![:space:]]}"}"
+  printf '%s' "${a:-$2}"
+}
+
+[ "$(id -u)" = 0 ] || die "Запустите от root: … | sudo bash -s -- домен email"
+if [ -z "$DOMAIN" ] && [ -f "$ENV_FILE" ]; then DOMAIN="$(sed -n 's/^DOMAIN=//p' "$ENV_FILE")"; fi
+[ -n "$DOMAIN" ] || DOMAIN="$(ask 'Домен (например kosmochat.duckdns.org):' '')"
+[ -n "$DOMAIN" ] || die "Не указан домен"
+command -v apt-get >/dev/null || die "Нужен Ubuntu или Debian (apt)"
+export DEBIAN_FRONTEND=noninteractive
+
+say "Пакеты: nginx, certbot, coturn, git"
+apt-get update -qq
+apt-get install -y -qq curl ca-certificates git nginx certbot python3-certbot-nginx coturn openssl >/dev/null
+
+say "Node.js 22"
+if ! command -v node >/dev/null || [ "$(node -p 'process.versions.node.split(".")[0]')" -lt 22 ]; then
+  curl -fsSL https://deb.nodesource.com/setup_22.x | bash - >/dev/null
+  apt-get install -y -qq nodejs >/dev/null
+fi
+node -e 'const [a,b]=process.versions.node.split(".").map(Number); process.exit(a>22||(a===22&&b>=13)?0:1)' \
+  || { apt-get install -y -qq --only-upgrade nodejs >/dev/null; }
+command -v pm2 >/dev/null || npm install -g pm2 --silent >/dev/null
+echo "node $(node -v), pm2 $(pm2 -v)"
+
+say "Код Kosmo → $APP_DIR (ветка $BRANCH)"
+if [ -d "$APP_DIR/.git" ]; then
+  git -C "$APP_DIR" fetch -q --depth 1 origin "$BRANCH"
+  git -C "$APP_DIR" reset -q --hard FETCH_HEAD
+else
+  rm -rf "$APP_DIR"
+  git clone -q --depth 1 --branch "$BRANCH" "$REPO" "$APP_DIR"
+fi
+# скрипт из curl мог быть старым (кеш GitHub) — дальше выполняем свежий из репозитория
+# (запускаем копию во /tmp: bash читает скрипт по ходу, а git только что заменил файл)
+if [ -z "${KOSMO_REEXEC:-}" ]; then
+  cp "$APP_DIR/deploy/install.sh" /tmp/kosmo-install.sh
+  KOSMO_REEXEC=1 exec bash /tmp/kosmo-install.sh "${ORIG_ARGS[@]}"
+fi
+(cd "$APP_DIR/server" && npm install --omit=dev --no-audit --no-fund --silent)
+mkdir -p "$DATA_DIR" && chmod 700 "$DATA_DIR"
+
+# Страховка: что бы ни случилось дальше (apt, certbot, почта, nginx…), сервер Kosmo
+# не должен остаться выключенным — иначе сайт отдаёт 502 и вход «не принимает» код-пароль.
+keep_kosmo_up() {
+  local rc=$?
+  if [ "$rc" != 0 ] && [ -f /etc/kosmo/kosmo.env ] && [ -f "$APP_DIR/deploy/ecosystem.config.cjs" ]; then
+    warn "Установка прервалась (код $rc) — запускаю сервер Kosmo с прежними настройками"
+    pm2 startOrRestart "$APP_DIR/deploy/ecosystem.config.cjs" --update-env >/dev/null 2>&1 && pm2 save >/dev/null 2>&1 || true
+  fi
+}
+trap keep_kosmo_up EXIT
+
+# ---------- Настройки (SMS и прочее) ----------
+new_gateway_key() { openssl rand -base64 96 | tr -dc 'A-HJ-NP-Z2-9' | cut -c1-16 | sed 's/.\{4\}/&-/g; s/-$//'; }
+sms_setup() {
+  echo
+  echo "Как отправлять коды подтверждения?"
+  echo "  0) Telegram-бот  — бесплатно: свой бот из @BotFather, коды приходят в Telegram"
+  echo "  1) Свой телефон  — приложение Kosmo SMS: Android с SIM шлёт SMS сам"
+  echo "  2) SMS.ru        — SMS на номера РФ/СНГ (платно)"
+  echo "  3) Telegram Gateway — официальный, платно"
+  echo "  4) Twilio        — SMS по всему миру (платно)"
+  echo "  5) Пока без SMS  — код пишется в лог: kosmo logs"
+  echo "  6) SMS Gateway for Android (sms-gate.app)"
+  local c; c="$(ask 'Выбор [0-6, Enter = 0]:' 0)"
+  SMS_PROVIDER=log; SMSRU_API_ID=""; TG_GATEWAY_TOKEN=""; TWILIO_SID=""; TWILIO_TOKEN=""; TWILIO_FROM=""
+  SMSGATE_URL=""; SMSGATE_USER=""; SMSGATE_PASS=""; TG_BOT_TOKEN=""
+  case "$c" in
+    0) SMS_PROVIDER=tgbot
+       echo "  В Telegram откройте @BotFather → /newbot → придумайте имя → скопируйте токен (123456:ABC…)."
+       TG_BOT_TOKEN="$(ask 'Токен бота:' '')" ;;
+    1) SMS_PROVIDER=device ;;
+    6) SMS_PROVIDER=phone
+       echo "  В приложении включите Cloud server и скопируйте Username и Password с главного экрана."
+       echo "  Введите их ниже и нажмите Enter после каждого:"
+       SMSGATE_USER="$(ask 'Username:' '')"; SMSGATE_PASS="$(ask 'Password:' '')"
+       SMSGATE_URL="$(ask 'Адрес API [Enter = облако api.sms-gate.app]:' '')" ;;
+    2) SMS_PROVIDER=smsru;    SMSRU_API_ID="$(ask 'SMS.ru api_id:' '')" ;;
+    3) SMS_PROVIDER=telegram; TG_GATEWAY_TOKEN="$(ask 'Telegram Gateway token:' '')" ;;
+    4) SMS_PROVIDER=twilio;   TWILIO_SID="$(ask 'Twilio Account SID:' '')"; TWILIO_TOKEN="$(ask 'Twilio Auth Token:' '')"; TWILIO_FROM="$(ask 'Номер отправителя (+1…):' '')" ;;
+  esac
+  if [ "$SMS_PROVIDER" != log ] && [ "$SMS_PROVIDER" != device ] && [ -z "$SMSRU_API_ID$TG_GATEWAY_TOKEN$TWILIO_TOKEN$SMSGATE_PASS$TG_BOT_TOKEN" ]; then
+    warn "Ключ не введён — коды пока будут в логе (позже: kosmo sms)"; SMS_PROVIDER=log
+  fi
+  echo "Коды: $SMS_PROVIDER — продолжаю установку…"
+}
+
+write_env() {
+  mkdir -p "$ENV_DIR"
+  umask 077
+  cat > "$ENV_FILE" <<CONF
+# Kosmo — настройки сервера. После правки: pm2 restart kosmo --update-env
+DOMAIN=$DOMAIN
+PORT=$PORT
+HOST=127.0.0.1
+DATA_DIR=$DATA_DIR
+WEB_DIR=$APP_DIR/web
+PUBLIC_URL=https://$DOMAIN
+TRUST_PROXY=1
+MAX_UPLOAD_MB=50
+# свой Telegram-бот (@BotFather): коды приходят в Telegram, бесплатно
+TG_BOT_TOKEN=$TG_BOT_TOKEN
+# SMS: tgbot | device | phone | smsru | telegram | twilio | log
+# device — свой телефон с приложением Kosmo SMS, подключается с этим ключом
+GATEWAY_KEY=$GATEWAY_KEY
+SMS_PROVIDER=$SMS_PROVIDER
+SMSRU_API_ID=$SMSRU_API_ID
+TG_GATEWAY_TOKEN=$TG_GATEWAY_TOKEN
+TWILIO_SID=$TWILIO_SID
+TWILIO_TOKEN=$TWILIO_TOKEN
+TWILIO_FROM=$TWILIO_FROM
+# свой телефон (SMS Gateway for Android); пустой адрес = облако api.sms-gate.app
+SMSGATE_URL=$SMSGATE_URL
+SMSGATE_USER=$SMSGATE_USER
+SMSGATE_PASS=$SMSGATE_PASS
+# адреса …@kosmo.test (и номера +000…) входят с кодом 000000 — только для проверки; 0 — выключить
+TEST_NUMBERS=$TEST_NUMBERS
+# звонки: свой TURN (coturn)
+TURN_HOST=$DOMAIN
+TURN_SECRET=$TURN_SECRET
+CONF
+  umask 022
+}
+
+if [ -f "$ENV_FILE" ] && [ "${KOSMO_SMS_SETUP:-0}" != 1 ] && [ -z "$SMS_ARG" ]; then
+  say "Настройки уже есть: $ENV_FILE (сохраняю)"
+  set -a; . "$ENV_FILE"; set +a
+
+  sed -i "s/^DOMAIN=.*/DOMAIN=$DOMAIN/; s/^TURN_HOST=.*/TURN_HOST=$DOMAIN/; s#^PUBLIC_URL=.*#PUBLIC_URL=https://$DOMAIN#" "$ENV_FILE"
+  grep -q '^GATEWAY_KEY=.' "$ENV_FILE" || { sed -i '/^GATEWAY_KEY=/d' "$ENV_FILE"; echo "GATEWAY_KEY=$(new_gateway_key)" >> "$ENV_FILE"; }
+else
+  [ -f "$ENV_FILE" ] && { set -a; . "$ENV_FILE"; set +a; }
+  if [ -n "$SMS_ARG" ] || { [ -n "${SMS_PROVIDER:-}" ] && [ "${KOSMO_SMS_SETUP:-0}" != 1 ]; }; then
+    if [ -n "$SMS_ARG" ]; then   # провайдер из команды (--phone и т.п.)
+      IFS='|' read -r SMS_PROVIDER A1 A2 A3 <<<"$SMS_ARG"
+      SMSRU_API_ID=""; TG_GATEWAY_TOKEN=""; TWILIO_SID=""; TWILIO_TOKEN=""; TWILIO_FROM=""; SMSGATE_USER=""; SMSGATE_PASS=""; TG_BOT_TOKEN=""
+      case "$SMS_PROVIDER" in
+        tgbot) TG_BOT_TOKEN="$A1" ;;
+        phone) SMSGATE_USER="$A1"; SMSGATE_PASS="$A2" ;;
+        smsru) SMSRU_API_ID="$A1" ;;
+        telegram) TG_GATEWAY_TOKEN="$A1" ;;
+        twilio) TWILIO_SID="$A1"; TWILIO_TOKEN="$A2"; TWILIO_FROM="$A3" ;;
+      esac
+      echo "Коды: $SMS_PROVIDER"
+    fi
+  elif [ "${KOSMO_SMS_SETUP:-0}" = 1 ]; then
+    sms_setup
+  else
+    SMS_PROVIDER=log   # вход по почте; SMS пока не нужны (kosmo sms — позже)
+  fi
+  SMSRU_API_ID="${SMSRU_API_ID:-}"; TG_GATEWAY_TOKEN="${TG_GATEWAY_TOKEN:-}"
+  TWILIO_SID="${TWILIO_SID:-}"; TWILIO_TOKEN="${TWILIO_TOKEN:-}"; TWILIO_FROM="${TWILIO_FROM:-}"
+  SMSGATE_URL="${SMSGATE_URL:-}"; SMSGATE_USER="${SMSGATE_USER:-}"; SMSGATE_PASS="${SMSGATE_PASS:-}"
+  TG_BOT_TOKEN="${TG_BOT_TOKEN:-}"
+  TEST_NUMBERS="${TEST_NUMBERS:-0}"
+  TURN_SECRET="${TURN_SECRET:-$(openssl rand -hex 24)}"
+  GATEWAY_KEY="${GATEWAY_KEY:-$(new_gateway_key)}"
+  write_env
+fi
+set -a; . "$ENV_FILE"; set +a
+
+# ---------- Порт: на сервере могут жить другие проекты ----------
+port_busy() { (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null; }
+# порт занят самим Kosmo (обновление) — это наш порт: сервер не гасим, чтобы сайт не отдавал 502
+kosmo_on() { curl -fsS --max-time 3 "http://127.0.0.1:$1/api/config" 2>/dev/null | grep -q '"channel"'; }
+PORT="${PORT:-3710}"; [ "$PORT" = 3000 ] && PORT=3710   # 3000 часто занят другими проектами
+while port_busy "$PORT" && ! kosmo_on "$PORT"; do
+  warn "Порт $PORT занят другой программой — беру следующий"
+  PORT=$((PORT + 1))
+done
+sed -i "s/^PORT=.*/PORT=$PORT/" "$ENV_FILE"
+echo "Kosmo слушает 127.0.0.1:$PORT"
+
+# ---------- Почта: свой сервер отправки, подпись DKIM ----------
+say "Почта (коды входа отправляет сам сервер)"
+set_env() {   # set_env КЛЮЧ ЗНАЧЕНИЕ — заменить или добавить строку в kosmo.env
+  local v="${2//\'/}"   # значение в одинарных кавычках: годится и для bash, и для pm2
+  { grep -v "^$1=" "$ENV_FILE" || true; printf "%s='%s'\n" "$1" "$v"; } > "$ENV_FILE.tmp"
+  mv "$ENV_FILE.tmp" "$ENV_FILE"; chmod 600 "$ENV_FILE"
+}
+DKIM_FILE="$ENV_DIR/dkim.pem"
+[ -f "$DKIM_FILE" ] || openssl genrsa -out "$DKIM_FILE" 1024 2>/dev/null
+chmod 600 "$DKIM_FILE"
+DKIM_PUB="$(openssl rsa -in "$DKIM_FILE" -pubout -outform DER 2>/dev/null | base64 -w0)"
+DKIM_TXT="v=DKIM1; k=rsa; p=$DKIM_PUB"
+set_env DKIM_KEY_FILE "$DKIM_FILE"
+set_env DKIM_SELECTOR kosmo
+if [ -n "$TEST_ARG" ]; then set_env TEST_NUMBERS 1; else set_env TEST_NUMBERS 0; fi
+if [ -n "$SMTP_ARG" ]; then set_env SMTP_URL "$SMTP_ARG"; set_env MAIL_MODE smtp
+elif ! grep -q '^MAIL_MODE=' "$ENV_FILE"; then set_env MAIL_MODE direct; fi
+[ -n "$DUCKDNS_ARG" ] && set_env DUCKDNS_TOKEN "$DUCKDNS_ARG"
+set -a; . "$ENV_FILE"; set +a
+
+# DuckDNS: TXT-запись домена = публичный ключ DKIM (DuckDNS отдаёт её и для kosmo._domainkey)
+DKIM_OK=0
+if [[ "$DOMAIN" == *.duckdns.org ]] && [ -n "${DUCKDNS_TOKEN:-}" ]; then
+  SUB="${DOMAIN%.duckdns.org}"; SUB="${SUB##*.}"
+  R="$(curl -fsS --max-time 15 --get https://www.duckdns.org/update \
+        --data-urlencode "domains=$SUB" --data-urlencode "token=$DUCKDNS_TOKEN" \
+        --data-urlencode "txt=$DKIM_TXT" --data-urlencode "verbose=true" 2>/dev/null || true)"
+  if [[ "$R" == OK* ]]; then DKIM_OK=1; echo "DKIM записан в DuckDNS (TXT)"; else warn "DuckDNS не принял токен — проверьте токен на duckdns.org"; fi
+fi
+
+# Порт 25 наружу: многие хостинги его закрывают
+PORT25=0
+if [ "${MAIL_MODE:-direct}" = direct ]; then
+  if timeout 8 bash -c 'exec 3<>/dev/tcp/gmail-smtp-in.l.google.com/25' 2>/dev/null \
+    || timeout 8 bash -c 'exec 3<>/dev/tcp/mx.yandex.ru/25' 2>/dev/null; then PORT25=1; fi
+fi
+
+# ---------- nginx ----------
+say "nginx для $DOMAIN"
+mkdir -p /var/www/letsencrypt
+SITE=/etc/nginx/sites-available/kosmo
+cat > /etc/nginx/conf.d/kosmo-upgrade.conf <<'NGX'
+map $http_upgrade $kosmo_connection { default upgrade; '' close; }
+NGX
+LOCATIONS=$(cat <<NGX
+    client_max_body_size 60m;
+    location /.well-known/acme-challenge/ { root /var/www/letsencrypt; }
+    location /ws {
+        proxy_pass http://127.0.0.1:$PORT;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection \$kosmo_connection;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_read_timeout 1h;
+        proxy_send_timeout 1h;
+    }
+    location / {
+        proxy_pass http://127.0.0.1:$PORT;
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_request_buffering off;
+    }
+NGX
+)
+CERT=/etc/letsencrypt/live/$DOMAIN/fullchain.pem
+write_site() {
+  if [ -f "$CERT" ]; then
+    cat > "$SITE" <<NGX
+server {
+    listen 80;
+    listen [::]:80;
+    server_name $DOMAIN;
+    location /.well-known/acme-challenge/ { root /var/www/letsencrypt; }
+    location / { return 301 https://\$host\$request_uri; }
+}
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
+    server_name $DOMAIN;
+    ssl_certificate $CERT;
+    ssl_certificate_key /etc/letsencrypt/live/$DOMAIN/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    add_header Strict-Transport-Security "max-age=31536000" always;
+$LOCATIONS
+}
+NGX
+  else
+    cat > "$SITE" <<NGX
+server {
+    listen 80;
+    listen [::]:80;
+    server_name $DOMAIN;
+$LOCATIONS
+}
+NGX
+  fi
+  ln -sf "$SITE" /etc/nginx/sites-enabled/kosmo
+  # чужие сайты (в т.ч. default) не трогаем: наш блок выбирается по server_name
+  # старые nginx не знают «http2 on»
+  if ! nginx -t >/dev/null 2>&1; then
+    sed -i 's/^    http2 on;$//; s/listen 443 ssl;/listen 443 ssl http2;/; s/listen \[::\]:443 ssl;/listen [::]:443 ssl http2;/' "$SITE"
+  fi
+  nginx -t
+  systemctl enable -q nginx
+  systemctl reload nginx || systemctl restart nginx
+}
+
+# ---------- Брандмауэр ----------
+if command -v ufw >/dev/null && ufw status | grep -q "Status: active"; then
+  say "ufw: открываю 22, 80, 443, 3478, 5349, 49160-49200"
+  ufw allow 22/tcp >/dev/null; ufw allow 80/tcp >/dev/null; ufw allow 443/tcp >/dev/null
+  ufw allow 3478 >/dev/null; ufw allow 5349/tcp >/dev/null; ufw allow 49160:49200/udp >/dev/null
+fi
+
+write_site
+
+# ---------- Сертификат ----------
+if [ ! -f "$CERT" ]; then
+  say "Сертификат Let's Encrypt для $DOMAIN"
+  MYIP="$(curl -fsS4 --max-time 8 https://api.ipify.org || true)"
+  DNSIP="$(getent ahostsv4 "$DOMAIN" | awk 'NR==1{print $1}' || true)"
+  if [ -n "$MYIP" ] && [ -n "$DNSIP" ] && [ "$MYIP" != "$DNSIP" ]; then
+    warn "$DOMAIN указывает на $DNSIP, а у этого сервера IP $MYIP — проверьте DNS (duckdns)"
+  fi
+  if [ -n "$EMAIL" ]; then EM=(--email "$EMAIL"); else EM=(--register-unsafely-without-email); fi
+  if certbot certonly --webroot -w /var/www/letsencrypt -d "$DOMAIN" "${EM[@]}" --agree-tos --non-interactive --keep-until-expiring; then
+    write_site
+  else
+    warn "Сертификат не выдан — сайт пока по http://$DOMAIN. Проверьте DNS и порт 80, затем запустите команду ещё раз."
+  fi
+fi
+# продление: certbot.timer + перезагрузка nginx после продления
+mkdir -p /etc/letsencrypt/renewal-hooks/deploy
+printf '#!/bin/sh\nsystemctl reload nginx\n' > /etc/letsencrypt/renewal-hooks/deploy/kosmo-nginx.sh
+chmod +x /etc/letsencrypt/renewal-hooks/deploy/kosmo-nginx.sh
+systemctl enable -q --now certbot.timer 2>/dev/null || true
+
+# ---------- coturn (звонки через NAT) ----------
+say "coturn (TURN для звонков)"
+PUBIP="$(curl -fsS4 --max-time 8 https://api.ipify.org || hostname -I | awk '{print $1}')"
+PRIVIP="$(hostname -I | awk '{print $1}')"
+EXT="$PUBIP"; [ -n "$PRIVIP" ] && [ "$PRIVIP" != "$PUBIP" ] && EXT="$PUBIP/$PRIVIP"
+# TURN по TLS на 5349: мобильные сети часто режут UDP и «чужие» порты,
+# а TLS-соединение выглядит как обычный HTTPS. Сертификат — тот же, что у сайта.
+TURN_TLS_CONF="no-tls"
+if [ -f "$CERT" ]; then
+  mkdir -p /etc/coturn-certs
+  cat > /etc/letsencrypt/renewal-hooks/deploy/kosmo-coturn.sh <<HOOK
+#!/bin/sh
+cp -L /etc/letsencrypt/live/$DOMAIN/fullchain.pem /etc/coturn-certs/cert.pem
+cp -L /etc/letsencrypt/live/$DOMAIN/privkey.pem /etc/coturn-certs/key.pem
+# coturn работает от пользователя turnserver — ему нужно право чтения
+if chown root:turnserver /etc/coturn-certs/cert.pem /etc/coturn-certs/key.pem 2>/dev/null; then chmod 640 /etc/coturn-certs/*.pem; else chmod 644 /etc/coturn-certs/*.pem; fi
+systemctl restart coturn 2>/dev/null || true
+HOOK
+  chmod +x /etc/letsencrypt/renewal-hooks/deploy/kosmo-coturn.sh
+  sh /etc/letsencrypt/renewal-hooks/deploy/kosmo-coturn.sh >/dev/null 2>&1 || true
+  TURN_TLS_CONF="tls-listening-port=5349
+cert=/etc/coturn-certs/cert.pem
+pkey=/etc/coturn-certs/key.pem"
+  grep -q '^TURN_TLS=' "$ENV_FILE" && sed -i 's/^TURN_TLS=.*/TURN_TLS=1/' "$ENV_FILE" || echo "TURN_TLS=1" >> "$ENV_FILE"
+fi
+cat > /etc/turnserver.conf <<TURN
+listening-port=3478
+fingerprint
+use-auth-secret
+static-auth-secret=$TURN_SECRET
+realm=$DOMAIN
+external-ip=$EXT
+min-port=49160
+max-port=49200
+no-cli
+$TURN_TLS_CONF
+no-dtls
+no-multicast-peers
+denied-peer-ip=10.0.0.0-10.255.255.255
+denied-peer-ip=172.16.0.0-172.31.255.255
+denied-peer-ip=192.168.0.0-192.168.255.255
+denied-peer-ip=127.0.0.0-127.255.255.255
+total-quota=100
+stale-nonce=600
+log-file=syslog
+TURN
+[ -f /etc/default/coturn ] && sed -i 's/^#\?TURNSERVER_ENABLED=.*/TURNSERVER_ENABLED=1/' /etc/default/coturn
+systemctl enable -q coturn
+systemctl restart coturn || warn "coturn не запустился — звонки будут работать только без NAT"
+
+# ---------- pm2 ----------
+say "Сервер Kosmo через pm2"
+# startOrRestart: при обновлении уже запущенный сервер перезапускается с новым кодом
+pm2 startOrRestart "$APP_DIR/deploy/ecosystem.config.cjs" --update-env >/dev/null
+pm2 save >/dev/null
+pm2 startup systemd -u root --hp /root >/dev/null 2>&1 || true
+systemctl enable -q pm2-root 2>/dev/null || true
+
+# ---------- Команда kosmo ----------
+cat > /usr/local/bin/kosmo <<KOS
+#!/usr/bin/env bash
+# kosmo update | sms | logs | restart | status
+case "\${1:-}" in
+  update)  # новый код → зависимости → перезапуск сервера сразу (даже если дальше что-то не выйдет)
+           git -C $APP_DIR fetch -q --depth 1 origin $BRANCH && git -C $APP_DIR reset -q --hard FETCH_HEAD || { echo "Не удалось скачать код с GitHub"; exit 1; }
+           (cd $APP_DIR/server && npm install --omit=dev --no-audit --no-fund --silent) || echo "npm install: ошибка (см. выше)"
+           pm2 startOrRestart $APP_DIR/deploy/ecosystem.config.cjs --update-env >/dev/null && pm2 save >/dev/null
+           echo "Код: \$(git -C $APP_DIR log -1 --format='%h %s' | cut -c1-70)"
+           sleep 2; curl -fsS http://127.0.0.1:\$(sed -n 's/^PORT=//p' $ENV_FILE)/api/config >/dev/null && echo "Сервер перезапущен и отвечает" || echo "Сервер не отвечает — смотрите: kosmo logs"
+           cp $APP_DIR/deploy/install.sh /tmp/kosmo-install.sh && exec bash /tmp/kosmo-install.sh "$DOMAIN" "$EMAIL" ;;
+  version) git -C $APP_DIR log -1 --format='%h %ad %s' --date=short; curl -fsS http://127.0.0.1:$PORT/api/config; echo ;;
+  mail-test)
+           [ -n "\${2:-}" ] || { echo "Использование: kosmo mail-test адрес@почта"; exit 1; }
+           set -a; . $ENV_FILE; set +a; cd $APP_DIR/server
+           exec node --no-warnings=ExperimentalWarning --input-type=module -e "const m = await import('./src/mailer.js'); for (const l of await m.diagnose()) console.log(l); try { await m.codeMail(process.argv[1], '123456', 'login'); console.log('OK: письмо отправлено, проверьте почту (и папку «Спам»)'); } catch (e) { console.error('Ошибка:', e.message); process.exit(1); }" "\$2" ;;
+  sms)     KOSMO_SMS_SETUP=1 exec bash $APP_DIR/deploy/install.sh "$DOMAIN" "$EMAIL" ;;
+  sms-key) . $ENV_FILE; echo "Приложение: https://$DOMAIN/kosmo-sms.apk"; echo "Сервер: $DOMAIN"; echo "Ключ:   \$GATEWAY_KEY"
+           echo "Телефонов в сети: \$(curl -fsS http://127.0.0.1:$PORT/api/gateway | grep -o '[0-9]*')" ;;
+  premium) # kosmo premium адрес@почта [off] — значок Kosmo Premium (только с сервера)
+           [ -n "\${2:-}" ] || { echo "Использование: kosmo premium адрес@почта [off]"; exit 1; }
+           cd $APP_DIR/server && node --no-warnings=ExperimentalWarning --input-type=module -e "
+import { DatabaseSync } from 'node:sqlite';
+const db = new DatabaseSync('$DATA_DIR/kosmo.db');
+const u = db.prepare('SELECT id, data FROM users WHERE email = ?').get(process.argv[1].toLowerCase());
+if (!u) { console.error('Нет аккаунта с этой почтой'); process.exit(1); }
+const d = JSON.parse(u.data); d.premium = process.argv[2] !== 'off';
+db.prepare('UPDATE users SET data = ? WHERE id = ?').run(JSON.stringify(d), u.id);
+console.log(d.premium ? 'Kosmo Premium выдан' : 'Kosmo Premium снят');" "\$2" "\${3:-on}" && pm2 startOrRestart $APP_DIR/deploy/ecosystem.config.cjs --update-env >/dev/null ;;
+  logs)    exec pm2 logs kosmo ;;
+  restart) pm2 startOrRestart $APP_DIR/deploy/ecosystem.config.cjs --update-env >/dev/null && pm2 save >/dev/null
+           sleep 2; curl -fsS http://127.0.0.1:\$(sed -n 's/^PORT=//p' $ENV_FILE)/api/config >/dev/null && echo "Сервер Kosmo работает" || echo "Сервер не отвечает — смотрите: kosmo logs" ;;
+  status)  pm2 status kosmo; curl -fsS http://127.0.0.1:\$(sed -n 's/^PORT=//p' $ENV_FILE)/api/config; echo ;;
+  *) echo "kosmo update   — обновить код с GitHub (база и настройки сохранятся)"
+     echo "kosmo mail-test адрес — отправить пробное письмо с кодом"
+     echo "kosmo sms      — настроить SMS (на будущее, вход сейчас по почте)"
+     echo "kosmo sms-key  — ключ и ссылка на приложение Kosmo SMS для телефона"
+     echo "kosmo premium адрес [off] — значок Kosmo Premium"
+     echo "kosmo logs     — логи сервера (здесь коды, если SMS не настроены)"
+     echo "kosmo restart  — перезапустить сервер"
+     echo "kosmo status   — состояние"
+     echo "kosmo version  — какая версия кода работает" ;;
+esac
+KOS
+chmod +x /usr/local/bin/kosmo
+
+# ---------- Проверка ----------
+ok=0
+for _ in $(seq 1 20); do
+  if curl -fsS "http://127.0.0.1:$PORT/api/config" >/dev/null 2>&1; then ok=1; break; fi
+  sleep 1
+done
+[ "$ok" = 1 ] || { pm2 logs kosmo --lines 30 --nostream || true; die "Сервер не отвечает — логи выше"; }
+
+URL="http://$DOMAIN"; [ -f "$CERT" ] && URL="https://$DOMAIN"
+printf '\n\033[1;32m✓ Kosmo работает: %s\033[0m\n' "$URL"
+echo "  База данных: $DATA_DIR/kosmo.db (SQLite)    Файлы: $DATA_DIR/media"
+printf '\n\033[1;36m  Почта (коды входа):\033[0m\n'
+if [ "${MAIL_MODE:-direct}" = smtp ]; then
+  echo "  Письма уходят через ваш SMTP-ящик."
+elif [ "$PORT25" = 1 ]; then
+  echo "  Порт 25 открыт — сервер сам отправляет письма получателям."
+else
+  warn "Хостинг закрыл исходящий порт 25 — письма напрямую не уйдут."
+  echo "  Варианты: попросите поддержку VPS открыть порт 25,"
+  echo "  или запустите установку с --smtp (свой ящик Gmail/Яндекс с паролем приложения)."
+fi
+if [ "$DKIM_OK" = 1 ]; then
+  echo "  Подпись DKIM: включена (ключ в DuckDNS)."
+elif [[ "$DOMAIN" == *.duckdns.org ]]; then
+  warn "DKIM не записан: добавьте к команде --duckdns ТОКЕН (токен — вверху страницы duckdns.org)."
+  echo "  Без подписи Gmail чаще кладёт письма в «Спам» или отклоняет."
+else
+  echo "  Добавьте в DNS домена TXT-запись kosmo._domainkey.$DOMAIN:"
+  echo "  $DKIM_TXT"
+fi
+PTR="$(getent hosts "$PUBIP" | awk '{print $2}' | head -1 || true)"
+if [ "$PTR" != "$DOMAIN" ]; then
+  echo "  Совет: в панели VPS укажите обратную запись (rDNS/PTR) для $PUBIP = $DOMAIN — письма реже попадут в спам."
+fi
+echo "  Проверить отправку: kosmo mail-test ваш@адрес"
+echo "  Обновить код: kosmo update   ·   Помощь: kosmo"
